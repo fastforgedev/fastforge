@@ -24,18 +24,6 @@ fastforge publish \
 
 You can provide additional parameters to customize your upload:
 
-```
-fastforge publish \
-  --path dist/1.0.0+1/hello_world-1.0.0+1-android.apk \
-  --targets pgyer \
-  --pgyer-description "My awesome app description" \
-  --pgyer-update-description "Fixed bugs and improved performance" \
-  --pgyer-install-type 2 \
-  --pgyer-password "mypassword"
-```
-
-### Available Parameters
-
 - `--pgyer-oversea`: Upload acceleration (1=overseas, 2=domestic, empty=auto-detect)
 - `--pgyer-install-type`: Installation type (1=public, 2=password, 3=invite, default: 1)
 - `--pgyer-password`: App installation password (required for password installation)

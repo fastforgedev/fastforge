@@ -24,18 +24,6 @@ fastforge publish \
 
 你可以提供额外的参数来自定义上传：
 
-```
-fastforge publish \
-  --path dist/1.0.0+1/hello_world-1.0.0+1-android.apk \
-  --targets pgyer \
-  --pgyer-description "我的应用描述" \
-  --pgyer-update-description "修复了bug并提升了性能" \
-  --pgyer-install-type 2 \
-  --pgyer-password "mypassword"
-```
-
-### 可用参数
-
 - `--pgyer-oversea`: 上传加速选择（1=海外加速，2=国内加速，空=自动判断）
 - `--pgyer-install-type`: 应用安装方式（1=公开安装，2=密码安装，3=邀请安装，默认：1）
 - `--pgyer-password`: 应用安装密码（密码安装时必需）
