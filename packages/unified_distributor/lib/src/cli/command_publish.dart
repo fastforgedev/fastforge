@@ -164,6 +164,54 @@ class CommandPublish extends Command {
     argParser.addOption('minio-bucket', valueHelp: '');
     argParser.addOption('minio-savekey-prefix', valueHelp: '');
 
+    // Pgyer
+    argParser.addSeparator('pgyer');
+    argParser.addOption(
+      'pgyer-oversea',
+      valueHelp: '1|2',
+      help: 'Upload acceleration: 1=overseas, 2=domestic, empty=auto-detect',
+    );
+    argParser.addOption(
+      'pgyer-install-type',
+      valueHelp: '1|2|3',
+      help: 'Installation type: 1=public, 2=password, 3=invite (default: 1)',
+    );
+    argParser.addOption(
+      'pgyer-password',
+      valueHelp: '',
+      help: 'App installation password (required for password installation)',
+    );
+    argParser.addOption(
+      'pgyer-description',
+      valueHelp: '',
+      help: 'Application description (optional)',
+    );
+    argParser.addOption(
+      'pgyer-update-description',
+      valueHelp: '',
+      help: 'Version update description (optional)',
+    );
+    argParser.addOption(
+      'pgyer-install-date',
+      valueHelp: '1|2',
+      help: 'Installation validity: 1=set time, 2=permanent (optional)',
+    );
+    argParser.addOption(
+      'pgyer-install-start-date',
+      valueHelp: 'YYYY-MM-DD',
+      help: 'Installation validity start date (e.g., 2018-01-01)',
+    );
+    argParser.addOption(
+      'pgyer-install-end-date',
+      valueHelp: 'YYYY-MM-DD',
+      help: 'Installation validity end date (e.g., 2018-12-31)',
+    );
+    argParser.addOption(
+      'pgyer-channel-shortcut',
+      valueHelp: '',
+      help: 'Channel shortcut for update (e.g., abcd)',
+    );
+
     // PlayStore
     argParser.addSeparator('playstore');
     argParser.addOption('playstore-package-name', valueHelp: '');
@@ -244,6 +292,15 @@ class CommandPublish extends Command {
       'minio-region': argResults?['minio-region'],
       'minio-bucket': argResults?['minio-bucket'],
       'minio-savekey-prefix': argResults?['minio-savekey-prefix'],
+      'pgyer-oversea': argResults?['pgyer-oversea'],
+      'pgyer-install-type': argResults?['pgyer-install-type'],
+      'pgyer-password': argResults?['pgyer-password'],
+      'pgyer-description': argResults?['pgyer-description'],
+      'pgyer-update-description': argResults?['pgyer-update-description'],
+      'pgyer-install-date': argResults?['pgyer-install-date'],
+      'pgyer-install-start-date': argResults?['pgyer-install-start-date'],
+      'pgyer-install-end-date': argResults?['pgyer-install-end-date'],
+      'pgyer-channel-shortcut': argResults?['pgyer-channel-shortcut'],
       'playstore-package-name': argResults?['playstore-package-name'],
       'playstore-track': argResults?['playstore-track'],
       'qiniu-bucket': argResults?['qiniu-bucket'],
