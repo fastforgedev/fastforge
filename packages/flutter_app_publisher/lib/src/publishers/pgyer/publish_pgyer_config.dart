@@ -36,13 +36,15 @@ class PublishPgyerConfig extends PublishConfig {
       apiKey: apiKey!,
       oversea: _parseInt(publishArguments?['oversea']),
       buildInstallType: _parseInt(publishArguments?['install-type']),
-      buildPassword: publishArguments?['password'],
-      buildDescription: publishArguments?['description'],
-      buildUpdateDescription: publishArguments?['update-description'],
+      buildPassword: _parseString(publishArguments?['password']),
+      buildDescription: _parseString(publishArguments?['description']),
+      buildUpdateDescription:
+          _parseString(publishArguments?['update-description']),
       buildInstallDate: _parseInt(publishArguments?['install-date']),
-      buildInstallStartDate: publishArguments?['install-start-date'],
-      buildInstallEndDate: publishArguments?['install-end-date'],
-      buildChannelShortcut: publishArguments?['channel-shortcut'],
+      buildInstallStartDate:
+          _parseString(publishArguments?['install-start-date']),
+      buildInstallEndDate: _parseString(publishArguments?['install-end-date']),
+      buildChannelShortcut: _parseString(publishArguments?['channel-shortcut']),
     );
   }
 
@@ -105,5 +107,28 @@ class PublishPgyerConfig extends PublishConfig {
       return int.tryParse(value);
     }
     return null;
+  }
+
+  /// 解析字符串值
+  ///
+  /// 支持将任意类型安全转换为字符串；空字符串将按原样保留
+  static String? _parseString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    return value.toString();
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'oversea': oversea,
+      'buildInstallType': buildInstallType,
+      'buildPassword': buildPassword,
+      'buildDescription': buildDescription,
+      'buildUpdateDescription': buildUpdateDescription,
+      'buildInstallDate': buildInstallDate,
+      'buildInstallStartDate': buildInstallStartDate,
+      'buildInstallEndDate': buildInstallEndDate,
+      'buildChannelShortcut': buildChannelShortcut,
+    }..removeWhere((key, value) => value == null);
   }
 }

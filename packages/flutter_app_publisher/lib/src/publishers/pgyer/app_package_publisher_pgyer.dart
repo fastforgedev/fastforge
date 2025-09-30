@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_app_publisher/src/api/app_package_publisher.dart';
@@ -27,6 +28,8 @@ class AppPackagePublisherPgyer extends AppPackagePublisher {
 
     // 使用配置类解析参数
     final config = PublishPgyerConfig.parse(environment, publishArguments);
+    print(
+        'config:\n${const JsonEncoder.withIndent('  ').convert(config.toJson())}');
 
     var tokenInfo = await getCOSToken(config, file.path);
     String uploadKey = await uploadApp(tokenInfo, file, onPublishProgress);
