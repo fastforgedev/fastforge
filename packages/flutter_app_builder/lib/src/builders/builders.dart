@@ -7,6 +7,8 @@ export 'linux/app_builder_linux.dart';
 export 'linux/build_linux_result.dart';
 export 'macos/app_builder_macos.dart';
 export 'macos/build_macos_result.dart';
+export 'ohos/app_builder_ohos.dart';
+export 'ohos/build_ohos_result.dart';
 export 'web/app_builder_web.dart';
 export 'web/build_web_result.dart';
 export 'windows/app_builder_windows.dart';

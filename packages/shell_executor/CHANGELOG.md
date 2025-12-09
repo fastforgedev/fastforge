@@ -1,3 +1,7 @@
+## 0.3.0
+
+* Some fixes.
+
 ## 0.1.6
 
 * Add `workingDirectory` parameter to related methods in `Command` class.

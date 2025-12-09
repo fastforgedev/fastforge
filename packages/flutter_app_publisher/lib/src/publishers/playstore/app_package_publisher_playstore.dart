@@ -45,16 +45,27 @@ class AppPackagePublisherPlayStore extends AppPackagePublisher {
     );
     Media uploadMedia = Media(file.openRead(), file.lengthSync());
 
-    await publisherApi.edits.bundles.upload(
+    final bundle = await publisherApi.edits.bundles.upload(
       publishConfig.packageName,
       appEdit.id!,
       uploadMedia: uploadMedia,
     );
 
     if (publishConfig.track != null) {
-      //must update track before edit commit.
+      final versions = file.path.split('/').last.split('-')[1].split('+');
+      final name = '${versions[1]} (${versions[0]})';
+      final track = Track(
+        track: publishConfig.track,
+        releases: [
+          TrackRelease(
+            name: name,
+            versionCodes: [bundle.versionCode!.toString()],
+            status: 'completed',
+          ),
+        ],
+      );
       await publisherApi.edits.tracks.update(
-        Track(track: publishConfig.track),
+        track,
         publishConfig.packageName,
         appEdit.id!,
         publishConfig.track!,

@@ -6,11 +6,13 @@ import 'package:flutter_app_publisher/src/publishers/publishers.dart';
 class FlutterAppPublisher {
   final List<AppPackagePublisher> _publishers = [
     AppPackagePublisherAppCenter(),
+    AppPackagePublisherAppGallery(),
     AppPackagePublisherAppStore(),
     AppPackagePublisherFir(),
     AppPackagePublisherFirebase(),
     AppPackagePublisherFirebaseHosting(),
     AppPackagePublisherGithub(),
+    AppPackagePublisherMinio(),
     AppPackagePublisherPgyer(),
     AppPackagePublisherPlayStore(),
     AppPackagePublisherQiniu(),

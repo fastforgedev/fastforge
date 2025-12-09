@@ -1,6 +1,6 @@
 name: shell_executor
 description: A simple shell commands executor.
-version: 0.1.6
+version: 0.3.0
 homepage: https://fastforge.dev
 repository: https://github.com/fastforgedev/fastforge/tree/main/packages/shell_executor
 

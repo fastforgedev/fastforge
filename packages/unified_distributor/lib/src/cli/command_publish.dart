@@ -21,7 +21,7 @@ class CommandPublish extends Command {
       'targets',
       aliases: ['target'],
       valueHelp: [
-        'appcenter',
+        'appgallery',
         'appstore',
         'fir',
         'firebase',
@@ -34,25 +34,21 @@ class CommandPublish extends Command {
       help: 'The target provider(s) to publish to.',
     );
 
-    // AppCenter
-    argParser.addSeparator('appcenter');
-
     argParser.addOption(
-      'appcenter-owner-name',
+      'app-version',
       valueHelp: '',
-      help: 'The owner name for appcenter.',
+      help: [
+        'The version of the app',
+        'Must follow semantic versioning format, e.g., 1.0.0, 2.1.3-beta.1',
+      ].join('\n'),
     );
 
+    // AppGallery
+    argParser.addSeparator('appgallery');
     argParser.addOption(
-      'appcenter-app-name',
+      'appgallery-app-id',
       valueHelp: '',
-      help: 'The app name for appcenter.',
-    );
-
-    argParser.addOption(
-      'appcenter-distribution-group',
-      valueHelp: '',
-      help: 'The distribution group for appcenter.',
+      help: 'The unique ID of the application on AppGallery.',
     );
 
     // Firebase
@@ -121,21 +117,99 @@ class CommandPublish extends Command {
     argParser.addSeparator('github');
 
     argParser.addOption(
+      'github-repo',
+      valueHelp: '',
+      help: 'The repository to publish to, format: <owner>/<repo>',
+    );
+
+    argParser.addOption(
       'github-repo-owner',
       valueHelp: '',
-      help: 'The name of the target GitHub repository wner (namespace)',
+      help:
+          '[Deprecated] The name of the target GitHub repository owner (namespace)',
     );
 
     argParser.addOption(
       'github-repo-name',
       valueHelp: '',
-      help: 'The name of the target GitHub repository',
+      help: '[Deprecated] The name of the target GitHub repository',
     );
 
     argParser.addOption(
       'github-release-title',
       valueHelp: '',
       help: 'The title of the new release on GitHub',
+    );
+
+    argParser.addOption(
+      'github-release-draft',
+      valueHelp: 'true|false',
+      help: 'Whether to create a draft release',
+      defaultsTo: 'false',
+    );
+
+    argParser.addOption(
+      'github-release-prerelease',
+      valueHelp: 'true|false',
+      help: 'Whether to create a prerelease',
+      defaultsTo: 'false',
+    );
+
+    // Minio
+    argParser.addSeparator('minio');
+    argParser.addOption('minio-endpoint', valueHelp: '');
+    argParser.addOption('minio-access-key', valueHelp: '');
+    argParser.addOption('minio-secret-key', valueHelp: '');
+    argParser.addOption('minio-region', valueHelp: '');
+    argParser.addOption('minio-bucket', valueHelp: '');
+    argParser.addOption('minio-savekey-prefix', valueHelp: '');
+
+    // Pgyer
+    argParser.addSeparator('pgyer');
+    argParser.addOption(
+      'pgyer-oversea',
+      valueHelp: '1|2',
+      help: 'Upload acceleration: 1=overseas, 2=domestic, empty=auto-detect',
+    );
+    argParser.addOption(
+      'pgyer-install-type',
+      valueHelp: '1|2|3',
+      help: 'Installation type: 1=public, 2=password, 3=invite (default: 1)',
+    );
+    argParser.addOption(
+      'pgyer-password',
+      valueHelp: '',
+      help: 'App installation password (required for password installation)',
+    );
+    argParser.addOption(
+      'pgyer-description',
+      valueHelp: '',
+      help: 'Application description (optional)',
+    );
+    argParser.addOption(
+      'pgyer-update-description',
+      valueHelp: '',
+      help: 'Version update description (optional)',
+    );
+    argParser.addOption(
+      'pgyer-install-date',
+      valueHelp: '1|2',
+      help: 'Installation validity: 1=set time, 2=permanent (optional)',
+    );
+    argParser.addOption(
+      'pgyer-install-start-date',
+      valueHelp: 'YYYY-MM-DD',
+      help: 'Installation validity start date (e.g., 2018-01-01)',
+    );
+    argParser.addOption(
+      'pgyer-install-end-date',
+      valueHelp: 'YYYY-MM-DD',
+      help: 'Installation validity end date (e.g., 2018-12-31)',
+    );
+    argParser.addOption(
+      'pgyer-channel-shortcut',
+      valueHelp: '',
+      help: 'Channel shortcut for update (e.g., abcd)',
     );
 
     // PlayStore
@@ -182,7 +256,6 @@ class CommandPublish extends Command {
       exit(1);
     }
 
-    print(targets);
     if (targets.isEmpty) {
       print('\nAt least one \'target\' must be specified!'.red(bold: true));
       exit(1);
@@ -197,10 +270,8 @@ class CommandPublish extends Command {
     }
 
     Map<String, String?> publishArguments = {
-      'appcenter-owner-name': argResults?['appcenter-owner-name'],
-      'appcenter-app-name': argResults?['appcenter-app-name'],
-      'appcenter-distribution-group':
-          argResults?['appcenter-distribution-group'],
+      'app-version': argResults?['app-version'],
+      'appgallery-app-id': argResults?['appgallery-app-id'],
       'firebase-app': argResults?['firebase-app'],
       'firebase-release-notes': argResults?['firebase-release-notes'],
       'firebase-release-notes-file': argResults?['firebase-release-notes-file'],
@@ -209,9 +280,27 @@ class CommandPublish extends Command {
       'firebase-groups': argResults?['firebase-groups'],
       'firebase-groups-file': argResults?['firebase-groups-file'],
       'firebase-hosting-project-id': argResults?['firebase-hosting-project-id'],
+      'github-repo': argResults?['github-repo'],
       'github-repo-owner': argResults?['github-repo-owner'],
       'github-repo-name': argResults?['github-repo-name'],
       'github-release-title': argResults?['github-release-title'],
+      'github-release-draft': argResults?['github-release-draft'],
+      'github-release-prerelease': argResults?['github-release-prerelease'],
+      'minio-endpoint': argResults?['minio-endpoint'],
+      'minio-access-key': argResults?['minio-access-key'],
+      'minio-secret-key': argResults?['minio-secret-key'],
+      'minio-region': argResults?['minio-region'],
+      'minio-bucket': argResults?['minio-bucket'],
+      'minio-savekey-prefix': argResults?['minio-savekey-prefix'],
+      'pgyer-oversea': argResults?['pgyer-oversea'],
+      'pgyer-install-type': argResults?['pgyer-install-type'],
+      'pgyer-password': argResults?['pgyer-password'],
+      'pgyer-description': argResults?['pgyer-description'],
+      'pgyer-update-description': argResults?['pgyer-update-description'],
+      'pgyer-install-date': argResults?['pgyer-install-date'],
+      'pgyer-install-start-date': argResults?['pgyer-install-start-date'],
+      'pgyer-install-end-date': argResults?['pgyer-install-end-date'],
+      'pgyer-channel-shortcut': argResults?['pgyer-channel-shortcut'],
       'playstore-package-name': argResults?['playstore-package-name'],
       'playstore-track': argResults?['playstore-track'],
       'qiniu-bucket': argResults?['qiniu-bucket'],

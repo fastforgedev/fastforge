@@ -1,6 +1,6 @@
 output: dist/
 variables:
-#  FLUTTER_ROOT: ~/fvm/versions/3.16.5
+  # FLUTTER_ROOT: ~/fvm/versions/3.16.5
   # PGYER_API_KEY: your api key
 releases:
   - name: dev-profile
@@ -26,6 +26,18 @@ releases:
           build_args:
             profile: true
             export-method: ad-hoc
+      - name: ohos-hap
+        package:
+          platform: ohos
+          target: hap
+          build_args:
+            profile: true
+      - name: ohos-app
+        package:
+          platform: ohos
+          target: app
+          build_args:
+            profile: true
       - name: linux-appimage
         package:
           platform: linux
@@ -103,6 +115,14 @@ releases:
           target: ipa
           build_args:
             export-method: ad-hoc
+      - name: ohos-hap
+        package:
+          platform: ohos
+          target: hap
+      - name: ohos-app
+        package:
+          platform: ohos
+          target: app
       - name: linux-appimage
         package:
           platform: linux

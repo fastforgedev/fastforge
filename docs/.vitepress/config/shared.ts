@@ -85,14 +85,14 @@ export const shared = defineConfig({
       gtag('js', new Date());
       gtag('config', '${googleAnalyticsId}');`
     ],
-    [
-      'script',
-      {
-        async: '',
-        src: `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6049036475236211`,
-        crossorigin: 'anonymous',
-      },
-    ],
+    // [
+    //   'script',
+    //   {
+    //     async: '',
+    //     src: `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6049036475236211`,
+    //     crossorigin: 'anonymous',
+    //   },
+    // ],
   ],
 
   themeConfig: {

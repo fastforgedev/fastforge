@@ -1,3 +1,7 @@
+## 0.3.0
+
+* Some fixes.
+
 ## 0.2.0
 
 * feat(shell_uikit): Add Spinner component

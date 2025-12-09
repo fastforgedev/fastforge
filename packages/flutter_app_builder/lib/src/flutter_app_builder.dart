@@ -9,6 +9,8 @@ class FlutterAppBuilder {
     AppBuilderIos(),
     AppBuilderLinux(),
     AppBuilderMacOs(),
+    AppBuilderOhos.hap(),
+    AppBuilderOhos.app(),
     AppBuilderWeb(),
     AppBuilderWindows(),
   ];

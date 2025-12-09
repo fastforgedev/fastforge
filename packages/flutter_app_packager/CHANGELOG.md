@@ -1,3 +1,11 @@
+## 0.6.5
+
+* MakeDebConfig Add StartupWMClass support #290
+
+## 0.6.0
+
+* feat: Support ohos platform.
+
 ## 0.4.6
 
 * fix(flutter_app_packager): fix build rpm on linux arm64 error (#204)

@@ -1,3 +1,7 @@
+## 0.6.0
+
+* feat: Support ohos platform.
+
 ## 0.4.6
 
 * chore: Bump version to 0.4.6 to match main package

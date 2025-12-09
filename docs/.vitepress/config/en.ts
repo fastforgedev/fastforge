@@ -55,10 +55,12 @@ function sidebarGuide(): DefaultTheme.SidebarItem[] {
       items: [
         { text: 'aab', link: 'makers/aab' },
         { text: 'apk', link: 'makers/apk' },
+        { text: 'app', link: 'makers/app' },
         { text: 'appimage', link: 'makers/appimage' },
         { text: 'deb', link: 'makers/deb' },
         { text: 'dmg', link: 'makers/dmg' },
         { text: 'exe', link: 'makers/exe' },
+        { text: 'hap', link: 'makers/hap' },
         { text: 'ipa', link: 'makers/ipa' },
         { text: 'msix', link: 'makers/msix' },
         { text: 'pkg', link: 'makers/pkg' },
@@ -70,7 +72,7 @@ function sidebarGuide(): DefaultTheme.SidebarItem[] {
       text: 'Publishers',
       collapsed: false,
       items: [
-        { text: 'App Center', link: 'publishers/appcenter' },
+        { text: 'App Gallery', link: 'publishers/appgallery' },
         { text: 'App Store', link: 'publishers/appstore' },
         { text: 'fir.im', link: 'publishers/fir' },
         {

@@ -92,6 +92,32 @@ releases:
             flavor: prod
             dart-define:
               APP_ENV: prod
+  - name: release-ohos
+    jobs:
+      - name: release-ohos-app-default
+        package:
+          platform: ohos
+          target: app
+          build_args:
+            flavor: default
+      - name: release-ohos-app-prod
+        package:
+          platform: ohos
+          target: prod
+          build_args:
+            flavor: prod
+      - name: release-ohos-hap-default
+        package:
+          platform: ohos
+          target: hap
+          build_args:
+            flavor: default
+      - name: release-ohos-hap-prod
+        package:
+          platform: ohos
+          target: hap
+          build_args:
+            flavor: prod
   - name: dmg-profile
     jobs:
       - name: dev

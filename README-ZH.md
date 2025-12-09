@@ -1,9 +1,11 @@
 # fastforge
 
-[![pub version][pub-image]][pub-url] [![][discord-image]][discord-url] [![melos](https://img.shields.io/badge/maintained%20with-melos-f700ff.svg?style=flat-square)](https://github.com/invertase/melos) [![All Contributors][all-contributors-image]](#contributors)
+[![pub version][pub-image]][pub-url] [![pub downloads][pub-dm-image]][pub-dm-url] [![][discord-image]][discord-url] [![melos](https://img.shields.io/badge/maintained%20with-melos-f700ff.svg?style=flat-square)](https://github.com/invertase/melos) [![All Contributors][all-contributors-image]](#contributors)
 
 [pub-image]: https://img.shields.io/pub/v/fastforge.svg?style=flat-square
 [pub-url]: https://pub.dev/packages/fastforge
+[pub-dm-image]: https://img.shields.io/pub/dm/fastforge.svg
+[pub-dm-url]: https://pub.dev/packages/fastforge/score
 [discord-image]: https://img.shields.io/discord/884679008049037342.svg?style=flat-square
 [discord-url]: https://discord.gg/zPa6EZ2jqb
 [all-contributors-image]: https://img.shields.io/github/all-contributors/fastforgedev/fastforge?color=ee8449&style=flat-square
@@ -24,7 +26,7 @@
 
 ## 主要特性
 
-- 🚀 一键打包：支持 Android APK/AAB、iOS IPA 等多种格式
+- 🚀 一键打包：支持 Android APK/AAB、iOS IPA、OpenHarmony HAP/APP 等多种格式
 - 📦 多平台发布：支持 App Store、Google Play、Firebase、蒲公英、fir.im 等
 - 🔄 CI/CD 集成：完美支持 GitHub Actions、GitLab CI 等持续集成平台
 - 🛠 灵活配置：支持多环境、多 flavor、自定义构建参数
@@ -33,6 +35,7 @@
 
 - **Android**: [AAB](https://fastforge.dev/zh/makers/aab), [APK](https://fastforge.dev/zh/makers/apk)
 - **iOS**: [IPA](https://fastforge.dev/zh/makers/ipa)
+- **OpenHarmony**: [HAP](https://fastforge.dev/zh/makers/hap), [APP](https://fastforge.dev/zh/makers/app)
 - **Linux**: [AppImage](https://fastforge.dev/zh/makers/appimage), [DEB](https://fastforge.dev/zh/makers/deb), [RPM](https://fastforge.dev/zh/makers/rpm), Pacman
 - **macOS**: [DMG](https://fastforge.dev/zh/makers/dmg), [PKG](https://fastforge.dev/zh/makers/pkg)
 - **Windows**: [EXE](https://fastforge.dev/zh/makers/exe), [MSIX](https://fastforge.dev/zh/makers/msix)
@@ -41,7 +44,6 @@
 
 ### 支持的分发平台
 
-- [App Center](https://fastforge.dev/zh/publishers/appcenter)
 - [App Store](https://fastforge.dev/zh/publishers/appstore)
 - [Firebase](https://fastforge.dev/zh/publishers/firebase)
 - [Firebase Hosting](https://fastforge.dev/zh/publishers/firebase-hosting)
@@ -206,6 +208,17 @@ jobs:
     </tr>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/LailaiMaster"><img src="https://avatars.githubusercontent.com/u/19606597?v=4?s=100" width="100px;" alt="lllgm"/><br /><sub><b>lllgm</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=LailaiMaster" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://arran4.github.io/"><img src="https://avatars.githubusercontent.com/u/111667?v=4?s=100" width="100px;" alt="Arran Ubels"/><br /><sub><b>Arran Ubels</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=arran4" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://0x0.ink/"><img src="https://avatars.githubusercontent.com/u/49977991?v=4?s=100" width="100px;" alt="Sherman Chu"/><br /><sub><b>Sherman Chu</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=yeliulee" title="Code">💻</a> <a href="https://github.com/fastforgedev/fastforge/commits?author=yeliulee" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Drsheppard01"><img src="https://avatars.githubusercontent.com/u/60893791?v=4?s=100" width="100px;" alt="DrSheppard"/><br /><sub><b>DrSheppard</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=Drsheppard01" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/cranst0n"><img src="https://avatars.githubusercontent.com/u/1173143?v=4?s=100" width="100px;" alt="cranst0n"/><br /><sub><b>cranst0n</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=cranst0n" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/duskygloom"><img src="https://avatars.githubusercontent.com/u/65943118?v=4?s=100" width="100px;" alt="duskygloom"/><br /><sub><b>duskygloom</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=duskygloom" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/imnadev"><img src="https://avatars.githubusercontent.com/u/46110906?v=4?s=100" width="100px;" alt="imnadev"/><br /><sub><b>imnadev</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=imnadev" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jenken827"><img src="https://avatars.githubusercontent.com/u/185325381?v=4?s=100" width="100px;" alt="jenken827"/><br /><sub><b>jenken827</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=jenken827" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/kecson"><img src="https://avatars.githubusercontent.com/u/10434414?v=4?s=100" width="100px;" alt="kecson"/><br /><sub><b>kecson</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=kecson" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/zzqayy"><img src="https://avatars.githubusercontent.com/u/29256984?v=4?s=100" width="100px;" alt="zzqayy"/><br /><sub><b>zzqayy</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=zzqayy" title="Code">💻</a></td>
     </tr>
   </tbody>
   <tfoot>

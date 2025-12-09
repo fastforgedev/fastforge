@@ -1,11 +1,11 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_app_publisher/src/api/app_package_publisher.dart';
+import 'package:flutter_app_publisher/src/publishers/pgyer/publish_pgyer_config.dart';
 
-const kEnvPgyerApiKey = 'PGYER_API_KEY';
-
-/// pgyer doc [https://www.pgyer.com/doc/view/api#uploadApp]
+/// pgyer doc [https://www.pgyer.com/doc/view/api#fastUploadApp]
 class AppPackagePublisherPgyer extends AppPackagePublisher {
   @override
   String get name => 'pgyer';
@@ -25,19 +25,20 @@ class AppPackagePublisherPgyer extends AppPackagePublisher {
     PublishProgressCallback? onPublishProgress,
   }) async {
     File file = fileSystemEntity as File;
-    String? apiKey = (environment ?? Platform.environment)[kEnvPgyerApiKey];
-    if ((apiKey ?? '').isEmpty) {
-      throw PublishError('Missing `$kEnvPgyerApiKey` environment variable.');
-    }
 
-    var tokenInfo = await getCOSToken(apiKey!, file.path);
+    // 使用配置类解析参数
+    final config = PublishPgyerConfig.parse(environment, publishArguments);
+    print(
+        'config:\n${const JsonEncoder.withIndent('  ').convert(config.toJson())}');
+
+    var tokenInfo = await getCOSToken(config, file.path);
     String uploadKey = await uploadApp(tokenInfo, file, onPublishProgress);
     if (uploadKey.isEmpty) {
       throw PublishError('UploadApp error');
     }
     // 重试次数设置为 0
     tryCount = 0;
-    var buildResult = await getBuildInfo(apiKey, uploadKey);
+    var buildResult = await getBuildInfo(config.apiKey, uploadKey);
     String buildKey = buildResult.data!['data']['buildKey'];
     return PublishResult(
       url: 'http://www.pgyer.com/$buildKey',
@@ -45,13 +46,40 @@ class AppPackagePublisherPgyer extends AppPackagePublisher {
   }
 
   /// 获取上传 Token 信息
-  /// [apiKey] apiKey
-  /// [filePath] 文件路径
-  Future<Response> getCOSToken(String apiKey, String filePath) async {
-    FormData formData = FormData.fromMap({
-      '_api_key': apiKey,
+  ///
+  /// 构建包含所有 pgyer API 参数的请求数据
+  /// 参考文档: https://www.pgyer.com/doc/view/api#fastUploadApp
+  ///
+  /// [config] 配置信息，包含所有 pgyer API 参数
+  /// [filePath] 文件路径，用于确定 buildType
+  Future<Response> getCOSToken(
+    PublishPgyerConfig config,
+    String filePath,
+  ) async {
+    Map<String, dynamic> formDataMap = {
+      '_api_key': config.apiKey,
       'buildType': filePath.split('.').last,
-    });
+    };
+
+    // 添加所有可选参数，只在有值时才添加
+    _addOptionalParameter(formDataMap, 'oversea', config.oversea);
+    _addOptionalParameter(
+        formDataMap, 'buildInstallType', config.buildInstallType);
+    _addOptionalParameter(formDataMap, 'buildPassword', config.buildPassword);
+    _addOptionalParameter(
+        formDataMap, 'buildDescription', config.buildDescription);
+    _addOptionalParameter(
+        formDataMap, 'buildUpdateDescription', config.buildUpdateDescription);
+    _addOptionalParameter(
+        formDataMap, 'buildInstallDate', config.buildInstallDate);
+    _addOptionalParameter(
+        formDataMap, 'buildInstallStartDate', config.buildInstallStartDate);
+    _addOptionalParameter(
+        formDataMap, 'buildInstallEndDate', config.buildInstallEndDate);
+    _addOptionalParameter(
+        formDataMap, 'buildChannelShortcut', config.buildChannelShortcut);
+
+    FormData formData = FormData.fromMap(formDataMap);
     try {
       Response response = await _dio.post(
         'https://www.pgyer.com/apiv2/app/getCOSToken',
@@ -63,6 +91,24 @@ class AppPackagePublisherPgyer extends AppPackagePublisher {
       return response;
     } catch (e) {
       throw PublishError(e.toString());
+    }
+  }
+
+  /// 添加可选参数到表单数据中
+  ///
+  /// 只在参数不为空且不为空字符串时才添加
+  ///
+  /// [formDataMap] 表单数据映射
+  /// [key] 参数键名
+  /// [value] 参数值
+  void _addOptionalParameter(
+      Map<String, dynamic> formDataMap, String key, dynamic value) {
+    if (value != null) {
+      if (value is String && value.isNotEmpty) {
+        formDataMap[key] = value;
+      } else if (value is! String) {
+        formDataMap[key] = value;
+      }
     }
   }
 

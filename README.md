@@ -1,9 +1,11 @@
 # fastforge
 
-[![pub version][pub-image]][pub-url] [![][discord-image]][discord-url] [![melos](https://img.shields.io/badge/maintained%20with-melos-f700ff.svg?style=flat-square)](https://github.com/invertase/melos) [![All Contributors][all-contributors-image]](#contributors)
+[![pub version][pub-image]][pub-url] [![pub downloads][pub-dm-image]][pub-dm-url] [![][discord-image]][discord-url] [![melos](https://img.shields.io/badge/maintained%20with-melos-f700ff.svg?style=flat-square)](https://github.com/invertase/melos) [![All Contributors][all-contributors-image]](#contributors)
 
 [pub-image]: https://img.shields.io/pub/v/fastforge.svg?style=flat-square
 [pub-url]: https://pub.dev/packages/fastforge
+[pub-dm-image]: https://img.shields.io/pub/dm/fastforge.svg
+[pub-dm-url]: https://pub.dev/packages/fastforge/score
 [discord-image]: https://img.shields.io/discord/884679008049037342.svg?style=flat-square
 [discord-url]: https://discord.gg/zPa6EZ2jqb
 [all-contributors-image]: https://img.shields.io/github/all-contributors/fastforgedev/fastforge?color=ee8449&style=flat-square
@@ -24,7 +26,7 @@ Complete documentation is available at [fastforge.dev](https://fastforge.dev/).
 
 ## Key Features
 
-- 🚀 One-Click Build: Support for Android APK/AAB, iOS IPA, and more
+- 🚀 One-Click Build: Support for Android APK/AAB, iOS IPA, OpenHarmony HAP/APP and more
 - 📦 Multi-Platform Release: Support for App Store, Google Play, Firebase, Pgyer, fir.im, etc.
 - 🔄 CI/CD Integration: Perfect integration with GitHub Actions, GitLab CI, and more
 - 🛠 Flexible Configuration: Support for multiple environments, flavors, and custom build arguments
@@ -33,6 +35,7 @@ Complete documentation is available at [fastforge.dev](https://fastforge.dev/).
 
 - **Android**: [AAB](https://fastforge.dev/en/makers/aab), [APK](https://fastforge.dev/en/makers/apk)
 - **iOS**: [IPA](https://fastforge.dev/en/makers/ipa)
+- **OpenHarmony**: [HAP](https://fastforge.dev/en/makers/hap), [APP](https://fastforge.dev/en/makers/app)
 - **Linux**: [AppImage](https://fastforge.dev/en/makers/appimage), [DEB](https://fastforge.dev/en/makers/deb), [RPM](https://fastforge.dev/en/makers/rpm), Pacman
 - **macOS**: [DMG](https://fastforge.dev/en/makers/dmg), [PKG](https://fastforge.dev/en/makers/pkg)
 - **Windows**: [EXE](https://fastforge.dev/en/makers/exe), [MSIX](https://fastforge.dev/en/makers/msix)
@@ -41,7 +44,6 @@ Complete documentation is available at [fastforge.dev](https://fastforge.dev/).
 
 ### Supported Distribution Platforms
 
-- [App Center](https://fastforge.dev/en/publishers/appcenter)
 - [App Store](https://fastforge.dev/en/publishers/appstore)
 - [Firebase](https://fastforge.dev/en/publishers/firebase)
 - [Firebase Hosting](https://fastforge.dev/en/publishers/firebase-hosting)
@@ -206,6 +208,17 @@ Please make sure to update tests as appropriate and follow the existing code sty
     </tr>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/LailaiMaster"><img src="https://avatars.githubusercontent.com/u/19606597?v=4?s=100" width="100px;" alt="lllgm"/><br /><sub><b>lllgm</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=LailaiMaster" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://arran4.github.io/"><img src="https://avatars.githubusercontent.com/u/111667?v=4?s=100" width="100px;" alt="Arran Ubels"/><br /><sub><b>Arran Ubels</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=arran4" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://0x0.ink/"><img src="https://avatars.githubusercontent.com/u/49977991?v=4?s=100" width="100px;" alt="Sherman Chu"/><br /><sub><b>Sherman Chu</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=yeliulee" title="Code">💻</a> <a href="https://github.com/fastforgedev/fastforge/commits?author=yeliulee" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Drsheppard01"><img src="https://avatars.githubusercontent.com/u/60893791?v=4?s=100" width="100px;" alt="DrSheppard"/><br /><sub><b>DrSheppard</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=Drsheppard01" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/cranst0n"><img src="https://avatars.githubusercontent.com/u/1173143?v=4?s=100" width="100px;" alt="cranst0n"/><br /><sub><b>cranst0n</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=cranst0n" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/duskygloom"><img src="https://avatars.githubusercontent.com/u/65943118?v=4?s=100" width="100px;" alt="duskygloom"/><br /><sub><b>duskygloom</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=duskygloom" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/imnadev"><img src="https://avatars.githubusercontent.com/u/46110906?v=4?s=100" width="100px;" alt="imnadev"/><br /><sub><b>imnadev</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=imnadev" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jenken827"><img src="https://avatars.githubusercontent.com/u/185325381?v=4?s=100" width="100px;" alt="jenken827"/><br /><sub><b>jenken827</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=jenken827" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/kecson"><img src="https://avatars.githubusercontent.com/u/10434414?v=4?s=100" width="100px;" alt="kecson"/><br /><sub><b>kecson</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=kecson" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/zzqayy"><img src="https://avatars.githubusercontent.com/u/29256984?v=4?s=100" width="100px;" alt="zzqayy"/><br /><sub><b>zzqayy</b></sub></a><br /><a href="https://github.com/fastforgedev/fastforge/commits?author=zzqayy" title="Code">💻</a></td>
     </tr>
   </tbody>
   <tfoot>

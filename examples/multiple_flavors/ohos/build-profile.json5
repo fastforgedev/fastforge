@@ -1,0 +1,43 @@
+
+{
+  "app": {
+    "signingConfigs": [],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default", // replace with your own signing config in production
+        "compatibleSdkVersion": "5.0.0(12)",
+        "runtimeOS": "HarmonyOS",
+      },
+      {
+        "name": "prod",
+        "signingConfig": "default", // replace with your own signing config in production
+        "compatibleSdkVersion": "5.0.0(12)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "debuggable": false
+        }
+      },
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default",
+          ]
+        },
+        {
+          "name": "prod", // target name defined in build-profile.json5 in entry module
+          "applyToProducts": [
+            "prod", // apply to 'prod' product defined above
+          ]
+        }
+      ]
+    }
+  ]
+}

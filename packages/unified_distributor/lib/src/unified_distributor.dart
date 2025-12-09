@@ -310,6 +310,16 @@ class UnifiedDistributor {
 
         if (publishArguments != null) {
           for (var key in publishArguments.keys) {
+            // Keep app- prefixed arguments
+            if (key.startsWith('app-')) {
+              newPublishArguments.putIfAbsent(
+                key,
+                () => publishArguments[key],
+              );
+              continue;
+            }
+
+            // Handle target-prefixed arguments, remove the target prefix and keep the rest
             if (!key.startsWith('$target-')) continue;
             dynamic value = publishArguments[key];
 
@@ -382,7 +392,7 @@ class UnifiedDistributor {
         outputDirectory.createSync(recursive: true);
       }
 
-      List<Release> releases = [];
+      List<Release> releases = distributeOptions.releases;
 
       if (name.isNotEmpty) {
         releases =
