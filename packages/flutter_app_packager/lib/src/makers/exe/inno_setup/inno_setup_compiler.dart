@@ -6,19 +6,29 @@ import 'package:shell_executor/shell_executor.dart';
 
 class InnoSetupCompiler {
   Future<bool> compile(InnoSetupScript script) async {
+    File file = await script.createFile();
+
+    ProcessResult processResult;
+
+    // First, try the default installation path
     Directory innoSetupDirectory =
         Directory('C:\\Program Files (x86)\\Inno Setup 6');
 
-    if (!innoSetupDirectory.existsSync()) {
-      throw Exception('`Inno Setup 6` was not installed.');
+    if (innoSetupDirectory.existsSync()) {
+      // Use ISCC from the default installation directory
+      processResult = await $(
+        p.join(innoSetupDirectory.path, 'ISCC.exe'),
+        [file.path],
+      );
+    } else {
+      // Fall back to PATH
+      try {
+        processResult = await $('ISCC', [file.path]);
+      } on ProcessException {
+        throw Exception(
+            '`Inno Setup 6` was not installed or ISCC is not in PATH.');
+      }
     }
-
-    File file = await script.createFile();
-
-    ProcessResult processResult = await $(
-      p.join(innoSetupDirectory.path, 'ISCC.exe'),
-      [file.path],
-    );
 
     if (processResult.exitCode != 0) {
       return false;
