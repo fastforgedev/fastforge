@@ -26,7 +26,7 @@ class InnoSetupCompiler {
         processResult = await $('ISCC', [file.path]);
       } on ProcessException {
         throw Exception(
-            '`Inno Setup 6` was not installed or ISCC is not in PATH.');
+            '\'Inno Setup 6\' was not installed or ISCC is not in PATH.');
       }
     }
 
