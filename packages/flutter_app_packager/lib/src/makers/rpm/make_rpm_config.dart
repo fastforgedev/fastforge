@@ -35,6 +35,7 @@ class MakeRPMConfig extends MakeConfig {
     this.defattr,
     this.attr,
     this.changelog,
+    this.specMacros,
   });
 
   factory MakeRPMConfig.fromJson(Map<String, dynamic> json) {
@@ -68,6 +69,7 @@ class MakeRPMConfig extends MakeConfig {
       defattr: json['defattr'] as String?,
       attr: json['attr'] as String?,
       changelog: json['changelog'] as String?,
+      specMacros: (json['spec_macros'] as List<dynamic>?)?.cast<String>(),
     );
   }
 
@@ -102,6 +104,7 @@ class MakeRPMConfig extends MakeConfig {
   String? defattr;
   String? attr;
   String? changelog;
+  List<String>? specMacros;
 
   @override
   Map<String, dynamic> toJson() {
@@ -200,9 +203,12 @@ class MakeRPMConfig extends MakeConfig {
             (e) => '${e.key}=${e.value}',
           ),
     ].join('\n');
+    final macrosStr = specMacros != null && specMacros!.isNotEmpty
+        ? '${specMacros!.join('\n')}\n\n'
+        : '';
     final map = {
       'DESKTOP': desktopFile,
-      'SPEC': '$preamble\n\n$body\n\n$inlineBody',
+      'SPEC': '$macrosStr$preamble\n\n$body\n\n$inlineBody',
     };
     return Map.castFrom<String, String?, String, String>(map);
   }
