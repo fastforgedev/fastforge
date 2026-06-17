@@ -187,9 +187,11 @@ class AppPackageMakerAppImage extends AppPackageMaker {
           makeConfig.packagingDirectory.path,
           '${makeConfig.appName}.AppDir/lib',
         ),
-      )
-          .listSync()
-          .where((e) => !defaultSharedObjects.contains(path.basename(e.path)));
+      ).listSync().where(
+            (e) =>
+                !defaultSharedObjects.contains(path.basename(e.path)) &&
+                !FileSystemEntity.isDirectorySync(e.path),
+          );
 
       await $('mkdir', [
         '-p',
