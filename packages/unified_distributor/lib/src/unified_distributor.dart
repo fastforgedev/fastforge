@@ -144,6 +144,7 @@ class UnifiedDistributor {
     required bool cleanBeforeBuild,
     required Map<String, dynamic> buildArguments,
     Map<String, String>? variables,
+    Map<String, dynamic>? hooks,
   }) async {
     // Pass environment variables (e.g. INNO_SETUP_PATH) to the packager via static setter
     if (variables != null && variables.isNotEmpty) {
@@ -199,6 +200,9 @@ class UnifiedDistributor {
             'channel': channel,
             'artifact_name': artifactName,
           };
+          if (hooks != null) {
+            arguments['hooks'] = hooks;
+          }
           MakeResult makeResult = await _packager.package(
             platform,
             target,
@@ -376,6 +380,7 @@ class UnifiedDistributor {
             cleanBeforeBuild: needCleanBeforeBuild,
             buildArguments: job.package.buildArgs ?? {},
             variables: variables,
+            hooks: job.package.hooks,
           );
           // Clean only once
           needCleanBeforeBuild = false;

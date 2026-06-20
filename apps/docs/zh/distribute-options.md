@@ -63,3 +63,53 @@ releases:
 | `env`      | `map`    | environment variables. |
 | `output`   | `string` | e.g. `dist/`           |
 | `releases` | -        | -                      |
+
+## Hooks
+
+Package hooks 允许你在 job 的打包步骤前后执行 shell 命令。
+
+### 示例
+
+```yaml
+releases:
+  - name: dev
+    jobs:
+      - name: android-apk
+        package:
+          platform: android
+          target: apk
+          hooks:
+            pre: echo "开始打包..."
+            post:
+              - echo "打包完成!"
+              - ls -la dist/
+```
+
+### 规范
+
+Hooks 定义在 job 的 `package.hooks` 下。每个 hook 的值可以是：
+
+| 类型     | 示例                                                |
+| -------- | ---------------------------------------------------- |
+| `string` | `pre: echo "before"`                                 |
+| `list`   | `post: [echo "step 1", echo "step 2"]`            |
+
+| Hook   | 描述               | 失败时终止 |
+| ------ | ------------------ | ---------- |
+| `pre`  | 打包前执行         | ✅ 是      |
+| `post` | 打包完成后执行     | ✅ 是      |
+
+> **注意**：如果 hook 命令返回非零退出码，打包过程将被终止。
+
+### 环境变量
+
+以下环境变量可在 hook 命令中使用：
+
+| 变量                     | 说明                                            |
+| ------------------------ | ----------------------------------------------- |
+| `PLATFORM`               | 平台名称，如 `android`、`ios`、`macos`          |
+| `PACKAGE_FORMAT`         | 包格式，如 `apk`、`ipa`、`dmg`                  |
+| `BUILD_MODE`             | 构建模式，如 `release`、`profile`               |
+| `OUTPUT_DIRECTORY`       | 输出目录路径                                    |
+| `BUILD_OUTPUT_DIRECTORY` | Flutter 构建产物输出目录路径                    |
+| `BUILD_OUTPUT_FILES`     | 冒号分隔的构建产物文件路径列表                  |

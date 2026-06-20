@@ -84,6 +84,18 @@ class CommandPackage extends Command {
       help: 'The --export-options-plist argument passed \'flutter build\'',
     );
 
+    argParser.addOption(
+      'hook-pre',
+      valueHelp: '',
+      help: 'Shell command to run before packaging.',
+    );
+
+    argParser.addOption(
+      'hook-post',
+      valueHelp: '',
+      help: 'Shell command to run after packaging.',
+    );
+
     argParser.addMultiOption(
       'build-dart-define',
       valueHelp: 'foo=bar',
@@ -118,6 +130,8 @@ class CommandPackage extends Command {
     final String? artifactName = argResults?['artifact-name'];
     final String? flutterBuildArgs = argResults?['flutter-build-args'];
     final bool isSkipClean = argResults?.wasParsed('skip-clean') ?? false;
+    final String? hookPre = argResults?['hook-pre'];
+    final String? hookPost = argResults?['hook-post'];
     final Map<String, dynamic> buildArguments =
         _generateBuildArgs(flutterBuildArgs);
 
@@ -132,6 +146,15 @@ class CommandPackage extends Command {
       exit(1);
     }
 
+    final Map<String, dynamic>? hooks;
+    if (hookPre != null || hookPost != null) {
+      hooks = {};
+      if (hookPre != null) hooks['pre'] = hookPre;
+      if (hookPost != null) hooks['post'] = hookPost;
+    } else {
+      hooks = null;
+    }
+
     return distributor.package(
       platform,
       targets,
@@ -139,6 +162,7 @@ class CommandPackage extends Command {
       artifactName: artifactName,
       cleanBeforeBuild: !isSkipClean,
       buildArguments: buildArguments,
+      hooks: hooks,
     );
   }
 

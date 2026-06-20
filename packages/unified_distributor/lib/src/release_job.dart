@@ -4,14 +4,20 @@ class ReleaseJobPackage {
     required this.target,
     this.channel,
     this.buildArgs,
+    this.hooks,
   });
 
   factory ReleaseJobPackage.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic>? hooks;
+    if (json.containsKey('hooks') && json['hooks'] != null) {
+      hooks = Map<String, dynamic>.from(json['hooks']);
+    }
     return ReleaseJobPackage(
       platform: json['platform'],
       target: json['target'],
       channel: json['channel'],
       buildArgs: json['build_args'],
+      hooks: hooks,
     );
   }
 
@@ -20,12 +26,16 @@ class ReleaseJobPackage {
   final String? channel;
   final Map<String, dynamic>? buildArgs;
 
+  /// Package lifecycle hooks, e.g. `{ "pre": "...", "post": "..." }`
+  final Map<String, dynamic>? hooks;
+
   Map<String, dynamic> toJson() {
     return {
       'platform': platform,
       'target': target,
       'channel': channel,
       'build_args': buildArgs,
+      'hooks': hooks,
     }..removeWhere((key, value) => value == null);
   }
 }

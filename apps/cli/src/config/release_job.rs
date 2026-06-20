@@ -10,6 +10,10 @@ pub struct ReleaseJobPackage {
     /// Build arguments passed to `flutter build`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub build_args: Option<HashMap<String, serde_yaml::Value>>,
+    /// Package lifecycle hooks, e.g. `{ "pre": "echo before", "post": ["cmd1", "cmd2"] }`.
+    /// Values can be a single string or a list of strings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hooks: Option<HashMap<String, serde_yaml::Value>>,
 }
 
 /// Publish step of a release job.
@@ -59,6 +63,7 @@ mod tests {
                 target: "apk".to_string(),
                 channel: None,
                 build_args: None,
+                hooks: None,
             },
             publish: Some(ReleaseJobPublish {
                 target: "github".to_string(),
@@ -79,6 +84,7 @@ mod tests {
                 target: "ipa".to_string(),
                 channel: None,
                 build_args: None,
+                hooks: None,
             },
             publish: Some(ReleaseJobPublish {
                 target: "github".to_string(),
@@ -99,6 +105,7 @@ mod tests {
                 target: "dmg".to_string(),
                 channel: None,
                 build_args: None,
+                hooks: None,
             },
             publish: None,
             publish_to: None,

@@ -16,6 +16,9 @@ releases:
           target: apk
           build_args:
             target-platform: android-arm,android-arm64
+          hooks:
+            pre: 'echo "[HOOK] prepackage: platform=$PLATFORM, build_output=$BUILD_OUTPUT_DIRECTORY"'
+            post: 'echo "[HOOK] postpackage: output=$OUTPUT_DIRECTORY, files=$BUILD_OUTPUT_FILES"'
       - name: ios-ipa
         package:
           platform: ios

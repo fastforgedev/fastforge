@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use std::process::Command;
 use clap::Args;
 use fastforge_app_builder::{FlutterAppBuilder, Platform};
 use fastforge_app_packager::{
@@ -6,6 +7,7 @@ use fastforge_app_packager::{
 };
 use serde::Deserialize;
 use serde_json::{Map, Value};
+use serde_yaml;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -20,6 +22,14 @@ pub struct PackageArgs {
     pub skip_clean: bool,
     #[arg(long = "build-target")]
     pub build_target: Option<String>,
+
+    /// Shell command to run before packaging.
+    #[arg(long = "hook-pre")]
+    pub hook_pre: Option<String>,
+
+    /// Shell command to run after packaging.
+    #[arg(long = "hook-post")]
+    pub hook_post: Option<String>,
 }
 
 pub async fn execute(args: &PackageArgs) -> Result<()> {
@@ -38,6 +48,18 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
         build_args.insert("target".to_string(), Value::String(value.clone()));
     }
 
+    // Build hooks map from CLI args
+    let hooks: Option<HashMap<String, serde_yaml::Value>> = {
+        let mut map = HashMap::new();
+        if let Some(cmd) = &args.hook_pre {
+            map.insert("pre".to_string(), serde_yaml::Value::String(cmd.clone()));
+        }
+        if let Some(cmd) = &args.hook_post {
+            map.insert("post".to_string(), serde_yaml::Value::String(cmd.clone()));
+        }
+        if map.is_empty() { None } else { Some(map) }
+    };
+
     let artifacts = package_flutter_artifact(
         platform,
         target,
@@ -46,6 +68,7 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
         "dist/",
         None,
         !args.skip_clean,
+        hooks.as_ref(),
     )?;
 
     for artifact in artifacts {
@@ -62,6 +85,7 @@ pub fn package_flutter_artifact(
     output: &str,
     artifact_name: Option<String>,
     clean_before_build: bool,
+    hooks: Option<&HashMap<String, serde_yaml::Value>>,
 ) -> Result<Vec<PathBuf>> {
     let platform = Platform::from_str(platform_str)
         .map_err(|e| anyhow!("Invalid platform '{}': {}", platform_str, e))?;
@@ -72,6 +96,9 @@ pub fn package_flutter_artifact(
             .clean(Some(&environment))
             .map_err(|e| anyhow!("{}", e))?;
     }
+
+    // Clone environment before it's moved into build()
+    let hook_env_base = environment.clone();
 
     let build = builder
         .build(&platform, Some(target), build_args, Some(environment))
@@ -105,10 +132,101 @@ pub fn package_flutter_artifact(
         ));
     }
 
+    // Resolve hooks: YAML allows both a single string and a list of strings
+    let pre_hooks = resolve_hooks(hooks, "pre");
+    let post_hooks = resolve_hooks(hooks, "post");
+
+    // Build hook environment
+    let mut hook_env = hook_env_base;
+    hook_env.insert(
+        "PLATFORM".to_string(),
+        package_config.platform.as_str().to_string(),
+    );
+    hook_env.insert(
+        "PACKAGE_FORMAT".to_string(),
+        package_config.package_format.clone(),
+    );
+    hook_env.insert(
+        "BUILD_MODE".to_string(),
+        package_config.build_mode.clone(),
+    );
+    hook_env.insert(
+        "OUTPUT_DIRECTORY".to_string(),
+        package_config.output_dir.to_string_lossy().to_string(),
+    );
+    hook_env.insert(
+        "BUILD_OUTPUT_DIRECTORY".to_string(),
+        package_config
+            .build_output_dir
+            .to_string_lossy()
+            .to_string(),
+    );
+    hook_env.insert(
+        "BUILD_OUTPUT_FILES".to_string(),
+        package_config
+            .build_output_files
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(":"),
+    );
+
+    // Run prepackage hooks
+    run_hooks(&pre_hooks, &hook_env)?;
+
     let result = packager
         .package(&package_config)
         .map_err(|e| anyhow!("{}", e))?;
+
+    // Run postpackage hooks
+    run_hooks(&post_hooks, &hook_env)?;
+
     Ok(result.artifacts)
+}
+
+/// Extract and normalize hook commands for a given key ("pre" or "post").
+/// Supports both a single string and a list of strings.
+fn resolve_hooks(
+    hooks: Option<&HashMap<String, serde_yaml::Value>>,
+    key: &str,
+) -> Vec<String> {
+    let Some(hooks) = hooks else { return vec![] };
+    let Some(value) = hooks.get(key) else { return vec![] };
+    match value {
+        serde_yaml::Value::String(cmd) => vec![cmd.clone()],
+        serde_yaml::Value::Sequence(seq) => {
+            seq.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+        }
+        _ => vec![],
+    }
+}
+
+/// Execute a list of shell hook commands.
+fn run_hooks(hooks: &[String], env: &HashMap<String, String>) -> Result<()> {
+    for hook in hooks {
+        let output = Command::new("sh")
+            .args(["-c", hook])
+            .envs(env)
+            .output()
+            .map_err(|e| anyhow!("Failed to execute hook '{}': {}", hook, e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!(
+                "Hook failed (exit {}): {}\n{}",
+                output.status.code().unwrap_or(-1),
+                hook,
+                stderr,
+            ));
+        }
+
+        // Print hook stdout so users can see the output
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !stdout.is_empty() {
+            print!("{}", stdout);
+        }
+    }
+    Ok(())
 }
 
 fn macos_packager(target: &str) -> Result<Box<dyn AppPackager + Send + Sync>> {

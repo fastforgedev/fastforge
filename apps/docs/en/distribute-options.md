@@ -63,3 +63,53 @@ releases:
 | `env`      | `map`    | environment variables. |
 | `output`   | `string` | e.g. `dist/`           |
 | `releases` | -        | -                      |
+
+## Hooks
+
+Package hooks allow you to run shell commands before and after the packaging step of a job.
+
+### Example
+
+```yaml
+releases:
+  - name: dev
+    jobs:
+      - name: android-apk
+        package:
+          platform: android
+          target: apk
+          hooks:
+            pre: echo "Starting packaging..."
+            post:
+              - echo "Packaging complete!"
+              - ls -la dist/
+```
+
+### Specification
+
+Hooks are defined under `package.hooks` in a job. The value of each hook can be:
+
+| Type     | Example                                              |
+| -------- | ---------------------------------------------------- |
+| `string` | `pre: echo "before"`                                 |
+| `list`   | `post: [echo "step 1", echo "step 2"]`            |
+
+| Hook  | Description                    | Fail on error |
+| ----- | ------------------------------ | ------------- |
+| `pre` | Runs before packaging starts   | ✅ Yes        |
+| `post`| Runs after packaging completes | ✅ Yes        |
+
+> **Note**: If a hook command exits with a non-zero exit code, the packaging process is aborted.
+
+### Environment variables
+
+The following environment variables are available in hook commands:
+
+| Variable                | Description                                            |
+| ----------------------- | ------------------------------------------------------ |
+| `PLATFORM`              | Platform name, e.g. `android`, `ios`, `macos`          |
+| `PACKAGE_FORMAT`        | Package format, e.g. `apk`, `ipa`, `dmg`               |
+| `BUILD_MODE`            | Build mode, e.g. `release`, `profile`                  |
+| `OUTPUT_DIRECTORY`      | Output directory path                                  |
+| `BUILD_OUTPUT_DIRECTORY`| Flutter build output directory path                    |
+| `BUILD_OUTPUT_FILES`    | Colon-separated list of build output file paths        |

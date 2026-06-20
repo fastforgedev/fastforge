@@ -24,6 +24,12 @@ class MakeConfig {
   late String packageFormat;
   late Directory outputDirectory;
 
+  /// Shell commands to run before packaging.
+  List<String>? prepackageHooks;
+
+  /// Shell commands to run after packaging.
+  List<String>? postpackageHooks;
+
   String get appName => pubspec.name;
   String get appBinaryName => pubspec.name;
   Version get appVersion => pubspec.version!;
@@ -46,6 +52,8 @@ class MakeConfig {
     artifactName = makeConfig.artifactName;
     packageFormat = makeConfig.packageFormat;
     outputDirectory = makeConfig.outputDirectory;
+    prepackageHooks = makeConfig.prepackageHooks;
+    postpackageHooks = makeConfig.postpackageHooks;
     return this;
   }
 
@@ -163,7 +171,7 @@ class DefaultMakeConfigLoader extends MakeConfigLoader {
     required Directory buildOutputDirectory,
     required List<File> buildOutputFiles,
   }) {
-    return MakeConfig()
+    final config = MakeConfig()
       ..platform = platform
       ..buildMode = arguments?['build_mode']
       ..buildOutputDirectory = buildOutputDirectory
@@ -173,6 +181,24 @@ class DefaultMakeConfigLoader extends MakeConfigLoader {
       ..artifactName = arguments?['artifact_name']
       ..packageFormat = packageFormat
       ..outputDirectory = outputDirectory;
+
+    // Parse hooks from arguments
+    if (arguments?['hooks'] != null) {
+      final hooks = Map<String, dynamic>.from(arguments!['hooks']);
+      config.prepackageHooks = _normalizeHookList(hooks['pre']);
+      config.postpackageHooks = _normalizeHookList(hooks['post']);
+    }
+
+    return config;
+  }
+
+  /// Normalize a hook value to [List<String>].
+  /// Supports both a single string and a list of strings.
+  List<String>? _normalizeHookList(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return [value];
+    if (value is List) return value.cast<String>();
+    return null;
   }
 }
 

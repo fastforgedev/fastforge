@@ -132,6 +132,7 @@ pub async fn execute(args: &ReleaseArgs) -> Result<()> {
                 &opts.output,
                 opts.artifact_name.clone(),
                 !args.skip_clean,
+                job.package.hooks.as_ref(),
             )?;
 
             for artifact in &artifacts {

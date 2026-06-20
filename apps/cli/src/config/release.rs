@@ -47,6 +47,7 @@ mod tests {
                 target: "apk".to_string(),
                 channel: None,
                 build_args: None,
+                hooks: None,
             },
             publish: None,
             publish_to: None,
