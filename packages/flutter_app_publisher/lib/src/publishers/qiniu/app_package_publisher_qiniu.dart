@@ -56,7 +56,7 @@ class AppPackagePublisherQiniu extends AppPackagePublisher {
 
       putController.addSendProgressListener((double percent) {
         if (onPublishProgress != null) {
-          sent = (total * percent).toInt();
+          sent = (total * percent).round().clamp(0, total);
           onPublishProgress(sent, total);
         }
       });

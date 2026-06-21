@@ -15,7 +15,7 @@ dependencies:
   parse_app_package: ^0.6.0
   pub_semver: ^2.2.0
   pubspec_parse: ^1.1.0
-  qiniu_sdk_base: ^0.5.0
+  qiniu_sdk_base: ^0.8.0
   shell_executor: ^0.3.0
 
 dev_dependencies:
