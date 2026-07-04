@@ -26,6 +26,15 @@ create_desktop_icon: true
 locales:
   - en
   - zh
+# 允许安装程序运行的 CPU 架构列表（逗号分隔）。
+# 参见：https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed
+# 默认值为 `x64`。
+# architectures_allowed: x64
+
+# 触发 64 位安装模式的架构列表（逗号分隔）。
+# 参见：https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode
+# 默认值为 `x64`。
+# architectures_install_in_64bit_mode: x64
 ```
 
 运行：
@@ -52,9 +61,24 @@ fastforge package --platform windows --targets exe
 
 如果没有设置 `INNO_SETUP_PATH`，`fastforge` 会先检查默认路径，然后回退到在系统 `PATH` 中查找 `iscc`（适用于通过 Scoop 安装或手动将 Inno Setup 添加到 PATH 的场景）。
 
+### 目标架构
+
+默认情况下，生成的安装程序仅允许在 **x64**（64 位 x86）系统上安装。你可以通过 `architectures_allowed` 和 `architectures_install_in_64bit_mode` 选项自定义此行为，以支持其他架构（如 ARM64）。
+
+```yaml
+# 允许在 x64 和 ARM64 系统上安装
+architectures_allowed: x64 arm64
+architectures_install_in_64bit_mode: x64 arm64
+```
+
+- `architectures_allowed` — 指定允许安装程序运行的 CPU 架构。参见 [Inno Setup 文档](https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed) 了解可用值。
+- `architectures_install_in_64bit_mode` — 指定应触发 64 位安装模式的架构（例如默认安装目录 `{autopf64}`）。参见 [Inno Setup 文档](https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode) 了解可用值。
+
+如果未指定，这两个选项默认值均为 `x64`，保持向后兼容。
+
 ### 自定义 Inno Setup 模板
 
-默认情况下，`fastforge` 会在构建时基于内部模板生成一个 Inno Setup 配置（`.iss`），并将其填充到 `make_config.yaml` 中提供的值。如果你需要对 Inno Setup 配置进行更多控制，你可以使用 `script_template` 选项提供一个自定义模板。
+默认情况下，`fastforge` 会在构建时基于内部模板生成一个 Inno Setup 配置（`.iss`），并填充 `make_config.yaml` 中提供的值。如果你需要对 Inno Setup 配置进行更多控制，可以使用 `script_template` 选项提供自定义模板。
 
 例如：
 

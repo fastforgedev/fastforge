@@ -26,6 +26,15 @@ create_desktop_icon: true
 locales:
   - en
   - zh
+# Comma-separated list of architectures the installer is allowed to run on.
+# See: https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed
+# Defaults to `x64` if not specified.
+# architectures_allowed: x64
+
+# Comma-separated list of 64-bit architectures that trigger 64-bit install mode.
+# See: https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode
+# Defaults to `x64` if not specified.
+# architectures_install_in_64bit_mode: x64
 ```
 
 Run:
@@ -51,6 +60,21 @@ fastforge package --platform windows --targets exe
 ```
 
 If `INNO_SETUP_PATH` is not set, `fastforge` will check the default path first, then fall back to looking for `iscc` in your system `PATH` (which is useful when Inno Setup is installed via Scoop or added to PATH manually).
+
+### Target Architecture
+
+By default, the generated installer only allows installation on **x64** (64-bit x86) systems. You can customize this behavior using the `architectures_allowed` and `architectures_install_in_64bit_mode` options to support additional architectures like ARM64.
+
+```yaml
+# Allow installation on both x64 and ARM64 systems
+architectures_allowed: x64 arm64
+architectures_install_in_64bit_mode: x64 arm64
+```
+
+- `architectures_allowed` — Specifies which CPU architectures the installer is allowed to run on. See the [Inno Setup documentation](https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed) for available values.
+- `architectures_install_in_64bit_mode` — Specifies which architectures should trigger 64-bit installation mode (e.g., `{autopf64}` for default install directory). See the [Inno Setup documentation](https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode) for available values.
+
+If not specified, both options default to `x64`, preserving backward compatibility.
 
 ### Custom Inno Setup Template
 
