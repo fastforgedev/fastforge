@@ -1,3 +1,6 @@
 display_name: HelloWorld
 msix_version: 1.0.0.0
 # logo_path: C:\path\to\logo.png
+# Target architecture: x64, x86, or arm64.
+# If not specified, auto-detected from the build output directory.
+# architecture: x64
