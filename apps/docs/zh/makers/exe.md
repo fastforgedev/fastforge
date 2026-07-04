@@ -28,13 +28,13 @@ locales:
   - zh
 # 允许安装程序运行的 CPU 架构标识符列表（空格分隔）。
 # 参见：https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed
-# 默认值为 `x64`。
-# architectures_allowed: x64
+# 默认值为 `x64compatible`。
+# architectures_allowed: x64compatible
 
 # 触发 64 位安装模式的架构标识符列表（空格分隔）。
 # 参见：https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode
-# 默认值为 `x64`。
-# architectures_install_in_64bit_mode: x64
+# 默认值为 `x64compatible`。
+# architectures_install_in_64bit_mode: x64compatible
 ```
 
 运行：
@@ -63,7 +63,7 @@ fastforge package --platform windows --targets exe
 
 ### 目标架构
 
-默认情况下，生成的安装程序仅允许在 **x64**（64 位 x86）系统上安装。你可以通过 `architectures_allowed` 和 `architectures_install_in_64bit_mode` 选项自定义此行为，以支持其他架构（如 ARM64）。
+默认情况下，生成的安装程序允许在 **x64 兼容的系统**上安装（包括原生 x64 和带 x64 模拟的 ARM64 系统）。你可以通过 `architectures_allowed` 和 `architectures_install_in_64bit_mode` 选项自定义此行为。
 
 ```yaml
 # 允许在 x64 和 ARM64 系统上安装
@@ -76,7 +76,7 @@ architectures_install_in_64bit_mode: x64compatible
 
 常用架构标识符：`x86`、`x64`、`arm64`、`x64compatible`、`x86compatible`。其中 `x64compatible` 会匹配原生 x64 系统和运行 x64 模拟的 ARM64 系统（如 Windows 11 on ARM），而 `x64` 仅匹配原生 x64 硬件。
 
-如果未指定，这两个选项默认值均为 `x64`，保持向后兼容。
+如果未指定，这两个选项默认值均为 `x64compatible`。
 
 ### 自定义 Inno Setup 模板
 

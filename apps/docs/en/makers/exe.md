@@ -28,13 +28,13 @@ locales:
   - zh
 # Space-separated list of architecture identifiers the installer is allowed to run on.
 # See: https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed
-# Defaults to `x64` if not specified.
-# architectures_allowed: x64
+# Defaults to `x64compatible` if not specified.
+# architectures_allowed: x64compatible
 
 # Space-separated list of architectures that should enable 64-bit install mode.
 # See: https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode
-# Defaults to `x64` if not specified.
-# architectures_install_in_64bit_mode: x64
+# Defaults to `x64compatible` if not specified.
+# architectures_install_in_64bit_mode: x64compatible
 ```
 
 Run:
@@ -63,7 +63,7 @@ If `INNO_SETUP_PATH` is not set, `fastforge` will check the default path first, 
 
 ### Target Architecture
 
-By default, the generated installer only allows installation on **x64** (64-bit x86) systems. You can customize this behavior using the `architectures_allowed` and `architectures_install_in_64bit_mode` options to support additional architectures like ARM64.
+By default, the generated installer allows installation on **x64-compatible systems** (both native x64 and ARM64 with x64 emulation). You can customize this behavior using the `architectures_allowed` and `architectures_install_in_64bit_mode` options.
 
 ```yaml
 # Allow installation on both x64 and ARM64 systems
@@ -76,7 +76,7 @@ architectures_install_in_64bit_mode: x64compatible
 
 Common architecture identifiers: `x86`, `x64`, `arm64`, `x64compatible`, `x86compatible`. Note that `x64compatible` matches both native x64 systems and ARM64 systems running x64 emulation (e.g., Windows 11 on ARM), while `x64` only matches native x64 hardware.
 
-If not specified, both options default to `x64`, preserving backward compatibility.
+If not specified, both options default to `x64compatible`.
 
 ### Custom Inno Setup Template
 

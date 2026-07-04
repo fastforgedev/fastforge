@@ -68,13 +68,13 @@ class MakeExeConfig extends MakeConfig {
 
   /// Space-separated list of architecture identifiers (or a boolean expression)
   /// specifying which architectures Setup is allowed to run on.
-  /// Defaults to `x64`.
+  /// Defaults to `x64compatible`.
   /// See: https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed
   String? architecturesAllowed;
 
   /// Space-separated list of architecture identifiers (or a boolean expression)
   /// specifying which architectures should enable 64-bit install mode.
-  /// Defaults to `x64`.
+  /// Defaults to `x64compatible`.
   /// See: https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode
   String? architecturesInstallIn64BitMode;
 
