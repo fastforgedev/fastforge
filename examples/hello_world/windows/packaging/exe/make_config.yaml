@@ -8,3 +8,10 @@ launch_at_startup: true
 # install_dir_name: "D:\\HELLO-WORLD"
 locales:
   - zh
+# Space-separated list of architecture identifiers the installer is allowed to run on.
+# Defaults to `x64` if not specified.
+# architectures_allowed: x64
+
+# Space-separated list of architectures that should enable 64-bit install mode.
+# Defaults to `x64` if not specified.
+# architectures_install_in_64bit_mode: x64

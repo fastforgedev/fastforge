@@ -26,12 +26,12 @@ create_desktop_icon: true
 locales:
   - en
   - zh
-# Comma-separated list of architectures the installer is allowed to run on.
+# Space-separated list of architecture identifiers the installer is allowed to run on.
 # See: https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed
 # Defaults to `x64` if not specified.
 # architectures_allowed: x64
 
-# Comma-separated list of 64-bit architectures that trigger 64-bit install mode.
+# Space-separated list of architectures that should enable 64-bit install mode.
 # See: https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode
 # Defaults to `x64` if not specified.
 # architectures_install_in_64bit_mode: x64
@@ -67,12 +67,14 @@ By default, the generated installer only allows installation on **x64** (64-bit 
 
 ```yaml
 # Allow installation on both x64 and ARM64 systems
-architectures_allowed: x64 arm64
-architectures_install_in_64bit_mode: x64 arm64
+architectures_allowed: x64compatible
+architectures_install_in_64bit_mode: x64compatible
 ```
 
-- `architectures_allowed` — Specifies which CPU architectures the installer is allowed to run on. See the [Inno Setup documentation](https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed) for available values.
-- `architectures_install_in_64bit_mode` — Specifies which architectures should trigger 64-bit installation mode (e.g., `{autopf64}` for default install directory). See the [Inno Setup documentation](https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode) for available values.
+- `architectures_allowed` — Specifies which CPU architectures the installer is allowed to run on. Values are space-separated architecture identifiers or boolean expressions. See the [Inno Setup documentation](https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed) for available values.
+- `architectures_install_in_64bit_mode` — Specifies which architectures should enable 64-bit install mode (e.g., `{autopf64}` for default install directory). Values are space-separated architecture identifiers or boolean expressions. See the [Inno Setup documentation](https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode) for available values.
+
+Common architecture identifiers: `x86`, `x64`, `arm64`, `x64compatible`, `x86compatible`. Note that `x64compatible` matches both native x64 systems and ARM64 systems running x64 emulation (e.g., Windows 11 on ARM), while `x64` only matches native x64 hardware.
 
 If not specified, both options default to `x64`, preserving backward compatibility.
 
