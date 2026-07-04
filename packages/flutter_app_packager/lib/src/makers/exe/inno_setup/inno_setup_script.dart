@@ -53,8 +53,8 @@ SolidCompression=yes
 SetupIconFile={{SETUP_ICON_FILE}}
 WizardStyle=modern
 PrivilegesRequired={{PRIVILEGES_REQUIRED}}
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed={{ARCHITECTURES_ALLOWED}}
+ArchitecturesInstallIn64BitMode={{ARCHITECTURES_INSTALL_IN_64BIT_MODE}}
 
 [Languages]
 {% for locale in LOCALES %}
@@ -180,6 +180,9 @@ class InnoSetupScript {
       'LOCALES': _getAvailableLocales(),
       'SETUP_ICON_FILE': makeConfig.setupIconFile ?? '',
       'PRIVILEGES_REQUIRED': makeConfig.privilegesRequired ?? 'none',
+      'ARCHITECTURES_ALLOWED': makeConfig.architecturesAllowed ?? 'x64',
+      'ARCHITECTURES_INSTALL_IN_64BIT_MODE':
+          makeConfig.architecturesInstallIn64BitMode ?? 'x64',
     }..removeWhere((key, value) => value == null);
 
     Context context = Context.create();

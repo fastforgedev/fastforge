@@ -17,6 +17,8 @@ class MakeExeConfig extends MakeConfig {
     this.setupIconFile,
     this.privilegesRequired,
     this.locales,
+    this.architecturesAllowed,
+    this.architecturesInstallIn64BitMode,
   });
 
   factory MakeExeConfig.fromJson(Map<String, dynamic> json) {
@@ -44,6 +46,9 @@ class MakeExeConfig extends MakeConfig {
       setupIconFile: iconfile,
       privilegesRequired: json['privileges_required'],
       locales: locales,
+      architecturesAllowed: json['architectures_allowed'],
+      architecturesInstallIn64BitMode:
+          json['architectures_install_in_64bit_mode'],
     );
     return makeExeConfig;
   }
@@ -60,6 +65,16 @@ class MakeExeConfig extends MakeConfig {
   String? setupIconFile;
   String? privilegesRequired;
   List<String>? locales;
+
+  /// Comma-separated list of architectures the installer is allowed to run on.
+  /// Defaults to `x64`.
+  /// See: https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesallowed
+  String? architecturesAllowed;
+
+  /// Comma-separated list of 64-bit architectures that trigger 64-bit install mode.
+  /// Defaults to `x64`.
+  /// See: https://jrsoftware.org/ishelp/index.php?topic=setup_architecturesinstallin64bitmode
+  String? architecturesInstallIn64BitMode;
 
   String get defaultExecutableName {
     File executableFile = packagingDirectory
@@ -93,6 +108,8 @@ class MakeExeConfig extends MakeConfig {
       'setup_icon_file': setupIconFile,
       'privileges_required': privilegesRequired,
       'locales': locales,
+      'architectures_allowed': architecturesAllowed,
+      'architectures_install_in_64bit_mode': architecturesInstallIn64BitMode,
     }..removeWhere((key, value) => value == null);
   }
 }
