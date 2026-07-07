@@ -24,7 +24,7 @@ summary: A really cool application
 group: Application/Emulator
 vendor: Kingkor Roy Tirtho
 packager: Kingkor Roy Tirtho
-packagerEmail: krtirtho@gmail.com
+packager_email: krtirtho@gmail.com
 license: GPLv3
 url: https://github.com/fastforgedev/fastforge
 

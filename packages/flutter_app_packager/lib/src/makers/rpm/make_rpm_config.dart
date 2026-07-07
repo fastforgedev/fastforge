@@ -54,7 +54,7 @@ class MakeRPMConfig extends MakeConfig {
       group: json['group'] as String?,
       vendor: json['vendor'] as String?,
       packager: json['packager'] as String?,
-      packagerEmail: json['packagerEmail'] as String?,
+      packagerEmail: (json['packagerEmail'] ?? json['packager_email']) as String?,
       license: json['license'] as String?,
       url: json['url'] as String?,
       buildArch: json['build_arch'] as String? ?? _getArchitecture(),
