@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_app_packager/src/api/make_error.dart';
+import 'package:flutter_app_packager/src/utils/apk_abi.dart';
 import 'package:mustache_template/mustache.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:pubspec_parse/pubspec_parse.dart';
@@ -18,6 +19,7 @@ class MakeConfig {
   late String platform;
   String? flavor;
   String? channel;
+  bool? splitPerAbi;
 
   /// https://mustache.github.io/mustache.5.html
   String? artifactName;
@@ -100,6 +102,13 @@ class MakeConfig {
     List<FileSystemEntity> artifacts = [];
     if (packageFormat.isEmpty) {
       artifacts.add(Directory(outputArtifactPath));
+    } else if (splitPerAbi == true) {
+      for (final outfile in buildOutputFiles) {
+        final abi = abiFromApkPath(outfile.path, buildMode);
+        final artifactPathWithAbi =
+            outputArtifactPath.replaceFirst('.apk', '$abi.apk');
+        artifacts.add(File(artifactPathWithAbi));
+      }
     } else {
       artifacts.add(File(outputArtifactPath));
     }
@@ -180,7 +189,8 @@ class DefaultMakeConfigLoader extends MakeConfigLoader {
       ..channel = arguments?['channel']
       ..artifactName = arguments?['artifact_name']
       ..packageFormat = packageFormat
-      ..outputDirectory = outputDirectory;
+      ..outputDirectory = outputDirectory
+      ..splitPerAbi = arguments?['split_per_abi'];
 
     // Parse hooks from arguments
     if (arguments?['hooks'] != null) {
