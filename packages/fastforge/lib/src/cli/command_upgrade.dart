@@ -1,7 +1,7 @@
 import 'package:args/command_runner.dart';
-import 'package:unified_distributor/src/unified_distributor.dart';
+import 'package:fastforge/src/unified_distributor.dart';
 
-/// Upgrade unified_distributor to the latest version
+/// Upgrade the current Fastforge-compatible CLI to the latest version.
 class CommandUpgrade extends Command {
   CommandUpgrade(this.distributor);
 

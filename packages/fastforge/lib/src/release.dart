@@ -1,4 +1,4 @@
-import 'package:unified_distributor/src/release_job.dart';
+import 'package:fastforge/src/release_job.dart';
 
 class Release {
   Release({

@@ -1,3 +1,8 @@
+## 0.6.11
+
+* depend directly on `fastforge` ^0.6.12
+* remove the dependency on `unified_distributor`
+
 ## 0.6.10
 
 * fix(rpm): enforce usage of `appBinaryName` for assets and fix symlink logic (#313)

@@ -1,3 +1,8 @@
+## 0.6.12
+
+* refactor: move the distributor implementation into `fastforge` and remove
+  the `unified_distributor` package
+
 ## 0.6.11
 
 * fix(flutter): use supported build version flags (#354)

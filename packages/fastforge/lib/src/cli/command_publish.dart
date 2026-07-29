@@ -1,13 +1,13 @@
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
-import 'package:unified_distributor/src/extensions/string.dart';
-import 'package:unified_distributor/src/unified_distributor.dart';
+import 'package:fastforge/src/extensions/string.dart';
+import 'package:fastforge/src/unified_distributor.dart';
 
 /// Publish an application to a third party provider
 ///
 /// This command wrapper defines, parses and transforms all passed arguments,
-/// so that they may be passed to `unified_distributor`. The distributor will
+/// so that they may be passed to Fastforge. The distributor will
 /// then publish an application bundle using `flutter_app_publisher`.
 class CommandPublish extends Command {
   CommandPublish(this.distributor) {

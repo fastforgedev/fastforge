@@ -1,11 +1,11 @@
 import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
+import 'package:fastforge/fastforge.dart';
+import 'package:fastforge/src/cli/command_package.dart';
+import 'package:fastforge/src/cli/command_publish.dart';
+import 'package:fastforge/src/cli/command_release.dart';
+import 'package:fastforge/src/cli/command_upgrade.dart';
 import 'package:shell_uikit/shell_uikit.dart';
-import 'package:unified_distributor/src/cli/command_package.dart';
-import 'package:unified_distributor/src/cli/command_publish.dart';
-import 'package:unified_distributor/src/cli/command_release.dart';
-import 'package:unified_distributor/src/cli/command_upgrade.dart';
-import 'package:unified_distributor/unified_distributor.dart';
 
 class UnifiedDistributorCommandLineInterface {
   UnifiedDistributorCommandLineInterface(
