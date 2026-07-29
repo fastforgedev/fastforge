@@ -1,6 +1,6 @@
 import 'package:logging/logging.dart';
 
-Logger logger = Logger('unified_distributor')
+Logger logger = Logger('fastforge')
   ..onRecord.listen((record) {
     print(record.message);
   });

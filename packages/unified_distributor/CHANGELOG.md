@@ -1,3 +1,8 @@
+## 0.2.12
+
+* refactor: move the implementation into `fastforge` and re-export its API
+* depend on `fastforge` ^0.6.12 as a compatibility package
+
 ## 0.2.11
 
 * bump `flutter_app_builder` to ^0.6.1 (#354)

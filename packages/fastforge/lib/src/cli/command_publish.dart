@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
-import 'package:unified_distributor/src/extensions/string.dart';
-import 'package:unified_distributor/src/unified_distributor.dart';
+import 'package:fastforge/src/extensions/string.dart';
+import 'package:fastforge/src/unified_distributor.dart';
 
 /// Publish an application to a third party provider
 ///

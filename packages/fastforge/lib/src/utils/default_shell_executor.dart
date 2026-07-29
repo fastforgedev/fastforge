@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:charset/charset.dart';
+import 'package:fastforge/src/extensions/string.dart';
+import 'package:fastforge/src/utils/logger.dart';
 import 'package:shell_executor/shell_executor.dart';
-import 'package:unified_distributor/src/extensions/string.dart';
-import 'package:unified_distributor/src/utils/logger.dart';
 
 /// Convert bytes to string (UTF-8 or detected charset)
 String convertToString(List<int> bytes) {

@@ -13,4 +13,7 @@
 >
 > Please visit https://fastforge.dev for more information.
 
+`flutter_distributor` now depends directly on `fastforge` and keeps its
+original executable and Dart API as compatibility wrappers.
+
 Part of [fastforge](https://github.com/fastforgedev/fastforge). For more information, visit https://fastforge.dev

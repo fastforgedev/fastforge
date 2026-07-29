@@ -7,4 +7,9 @@
 
 ---
 
-Part of [fastforge](https://github.com/fastforgedev), See also https://fastforge.dev
+The implementation now lives in the
+[`fastforge`](https://pub.dev/packages/fastforge) package. This package remains
+as a compatibility layer and re-exports the Fastforge API for existing users.
+
+New code should depend on and import `package:fastforge/fastforge.dart`
+directly.
