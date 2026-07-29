@@ -1,8 +1,6 @@
-# Test fixture for the Xcode Builder integration tests in
-# crates/app_builder/tests/xcode_builder.rs.
-#
-# Static reference only: Phase 1 tests call the builder crate API directly, not
-# `fastforge workflow run`.
+# Test fixture executed by apps/cli/tests/package_routing.rs via
+# `fastforge workflow run` (the top-level `fastforge package` command has no
+# way to pass Xcode's required `project`/`scheme` build-args yet).
 name: Xcode Builder iOS smoke package
 
 on:
@@ -20,4 +18,5 @@ jobs:
           output: dist/
           build-args: >-
             {"project":"NativeIOSFixture.xcodeproj","scheme":"NativeIOSFixture",
-            "configuration":"Release","export-method":"debugging"}
+            "configuration":"Release","export-method":"development",
+            "archive-path":"build/NativeIOSFixture.xcarchive","export-path":"build/ipa"}

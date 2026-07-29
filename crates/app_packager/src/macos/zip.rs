@@ -57,10 +57,18 @@ impl AppPackager for MacOSZipPackager {
         ]))?;
 
         let output_file = config.output_file();
+        // 7z runs with its cwd set to pkg_dir, so a relative output_file would
+        // resolve inside pkg_dir (and then get deleted by the cleanup below)
+        // instead of landing at the intended destination.
+        let absolute_output_file = if output_file.is_absolute() {
+            output_file.clone()
+        } else {
+            std::env::current_dir()?.join(&output_file)
+        };
         // 7z a <output.zip> *.app  (run from inside pkg_dir)
         run(Command::new("7z").current_dir(&pkg_dir).args([
             "a",
-            &output_file.display().to_string(),
+            &absolute_output_file.display().to_string(),
             "*.app",
         ]))?;
 

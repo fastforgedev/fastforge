@@ -1,9 +1,8 @@
-# Test fixture for the Gradle Builder integration tests in
-# crates/app_builder/tests/gradle_builder.rs.
-#
-# Static reference only: Phase 1 tests call the builder crate API directly, not
-# `fastforge workflow run`. Documents the equivalent CLI-level shape for when
-# Phase 2 wires up `apps/cli/tests/workflow_run.rs` against this fixture.
+# Static reference: apps/cli/tests/package_routing.rs exercises this fixture
+# through the plain top-level `fastforge package` command instead (no
+# flavor/module build-args needed here), so this workflow file itself isn't
+# executed by a test. Kept as a documented equivalent for `fastforge workflow
+# run`.
 name: Gradle Builder smoke package
 
 on:

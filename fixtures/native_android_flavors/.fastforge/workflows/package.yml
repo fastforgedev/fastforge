@@ -1,8 +1,6 @@
-# Test fixture for the Gradle Builder flavor-handling integration tests in
-# crates/app_builder/tests/gradle_builder.rs.
-#
-# Static reference only: Phase 1 tests call the builder crate API directly, not
-# `fastforge workflow run`.
+# Test fixture executed by apps/cli/tests/package_routing.rs via
+# `fastforge workflow run` (the top-level `fastforge package` command has no
+# generic `--build-args` flag to pass `flavor` yet).
 name: Gradle Builder flavor smoke package
 
 on:

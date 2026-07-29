@@ -239,6 +239,10 @@ pub(super) async fn sync_localization_screenshots(
         );
         let set_id = get_or_create_screenshot_set(ctx, localization_id, &display_type).await?;
         let remote = fetch_screenshots(ctx, &set_id).await?;
+        let remote_ids: Vec<_> = remote
+            .iter()
+            .map(|screenshot| screenshot.id.clone())
+            .collect();
         let plan = build_sync_plan(&local, &remote);
 
         for screenshot_id in &plan.delete_ids {
@@ -274,12 +278,18 @@ pub(super) async fn sync_localization_screenshots(
         }
 
         wait_for_processing(ctx, &verify_ids).await?;
-        replace_screenshot_order(ctx, &set_id, &desired_ids).await?;
+        if screenshot_order_changed(&remote_ids, &desired_ids) {
+            replace_screenshot_order(ctx, &set_id, &desired_ids).await?;
+        }
         let manifest_entries = screenshot_manifest_entries(&local, &desired_ids)?;
         write_screenshot_manifest(app_dir, &display_dir, &manifest_entries)?;
     }
 
     Ok(summary)
+}
+
+fn screenshot_order_changed(remote_ids: &[String], desired_ids: &[String]) -> bool {
+    remote_ids != desired_ids
 }
 
 fn screenshot_manifest_entries(
@@ -970,6 +980,25 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn unchanged_screenshot_order_does_not_need_an_update() {
+        let remote_ids = vec![
+            "first".to_string(),
+            "second".to_string(),
+            "third".to_string(),
+        ];
+
+        assert!(!screenshot_order_changed(&remote_ids, &remote_ids));
+        assert!(screenshot_order_changed(
+            &remote_ids,
+            &[
+                "second".to_string(),
+                "first".to_string(),
+                "third".to_string()
+            ]
+        ));
     }
 
     #[test]

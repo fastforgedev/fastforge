@@ -1,4 +1,5 @@
 use crate::AppStoreConnectContext;
+use crate::Error as AscError;
 use crate::cli::GlobalArgs;
 use crate::cli::commands::app::resolve_app;
 use crate::types::{
@@ -172,8 +173,18 @@ pub async fn execute_with_context(args: &PushArgs, ctx: &AppStoreConnectContext)
                 let loc: AppInfoLocalizationAttributes = read_yaml(&path)?;
                 let locale = loc.locale.clone().unwrap_or_default();
                 if let Some(existing) = existing_locales.iter().find(|e| e.locale == locale) {
-                    push_update_app_info_localization(ctx, &existing.id, &loc).await?;
-                    eprintln!("  ✓ info/{locale}.yaml (id: {})", existing.id);
+                    let updated = push_update_app_info_localization(
+                        ctx,
+                        &existing.id,
+                        &loc,
+                        &existing.attributes,
+                    )
+                    .await?;
+                    if updated {
+                        eprintln!("  ✓ info/{locale}.yaml (id: {})", existing.id);
+                    } else {
+                        eprintln!("  - info/{locale}.yaml (unchanged, id: {})", existing.id);
+                    }
                 } else {
                     push_create_app_info_localization(ctx, &current_app_info.id, &loc).await?;
                     eprintln!("  ✓ info/{locale}.yaml (new)");
@@ -222,9 +233,27 @@ pub async fn execute_with_context(args: &PushArgs, ctx: &AppStoreConnectContext)
             let mut vloc_yaml: AppStoreVersionLocalizationAttributes = read_yaml(&vloc_yaml_path)?;
             vloc_yaml.locale = Some(locale.clone());
             if let Some(existing) = existing_vlocs.iter().find(|e| e.locale == locale) {
-                push_update_version_localization(ctx, &existing.id, &vloc_yaml).await?;
+                let updated = push_update_version_localization(
+                    ctx,
+                    &existing.id,
+                    &vloc_yaml,
+                    &existing.attributes,
+                )
+                .await?;
+                if updated {
+                    eprintln!(
+                        "  ✓ versions/{platform_dir}/{version_dir}/{locale} (id: {})",
+                        existing.id
+                    );
+                } else {
+                    eprintln!(
+                        "  - versions/{platform_dir}/{version_dir}/{locale} (unchanged, id: {})",
+                        existing.id
+                    );
+                }
             } else {
                 push_create_version_localization(ctx, &version_id, &vloc_yaml).await?;
+                eprintln!("  ✓ versions/{platform_dir}/{version_dir}/{locale} (new)");
             }
         }
 
@@ -587,6 +616,7 @@ fn insert_category_relationship(
 struct CurrentAppInfoLocalization {
     id: String,
     locale: String,
+    attributes: serde_json::Value,
 }
 
 async fn fetch_current_app_info_localizations(
@@ -596,7 +626,13 @@ async fn fetch_current_app_info_localizations(
     let resp: Value = ctx
         .http
         .get(ctx.url(&format!("/v1/appInfos/{app_info_id}/appInfoLocalizations")))
-        .query(&[("limit", 200i64)])
+        .query(&[
+            ("limit", "200"),
+            (
+                "fields[appInfoLocalizations]",
+                "locale,name,subtitle,privacyPolicyUrl,privacyPolicyText,privacyChoicesUrl",
+            ),
+        ])
         .send()
         .await?
         .error_for_status()?
@@ -611,6 +647,7 @@ async fn fetch_current_app_info_localizations(
             Some(CurrentAppInfoLocalization {
                 id: item["id"].as_str()?.to_string(),
                 locale: item["attributes"]["locale"].as_str()?.to_string(),
+                attributes: item["attributes"].clone(),
             })
         })
         .collect())
@@ -620,30 +657,65 @@ async fn push_update_app_info_localization(
     ctx: &AppStoreConnectContext,
     id: &str,
     yaml: &AppInfoLocalizationAttributes,
-) -> Result<()> {
-    let mut attrs = json!({});
-    if let Some(ref v) = yaml.name {
-        attrs["name"] = json!(v);
+    remote_attrs: &serde_json::Value,
+) -> Result<bool> {
+    let attrs = asc_types::AppInfoLocalizationUpdateRequestDataAttributes {
+        name: yaml.name.clone(),
+        subtitle: yaml.subtitle.clone(),
+        privacy_policy_url: yaml.privacy_policy_url.clone(),
+        privacy_policy_text: yaml.privacy_policy_text.clone(),
+        privacy_choices_url: yaml.privacy_choices_url.clone(),
+    };
+
+    // Skip update if nothing changed
+    if attributes_match_remote_localization(&attrs, remote_attrs) {
+        return Ok(false);
     }
-    if let Some(ref v) = yaml.subtitle {
-        attrs["subtitle"] = json!(v);
+
+    let body = asc_types::AppInfoLocalizationUpdateRequest {
+        data: asc_types::AppInfoLocalizationUpdateRequestData {
+            attributes: Some(attrs),
+            id: id.to_string(),
+            type_: asc_types::AppInfoLocalizationUpdateRequestDataType::AppInfoLocalizations,
+        },
+    };
+
+    match ctx
+        .client
+        .app_info_localizations_update_instance(id, &body)
+        .await
+    {
+        Ok(_) => Ok(true),
+        Err(AscError::ErrorResponse(ref resp)) if resp.status().as_u16() == 409 => {
+            eprintln!("  ⚠ info/... (id: {id}) — 409 Conflict, resource may be locked; skipping");
+            Ok(false)
+        }
+        Err(e) => Err(anyhow!("failed to update app info localization {id}: {e}")),
     }
-    if let Some(ref v) = yaml.privacy_policy_url {
-        attrs["privacyPolicyUrl"] = json!(v);
+}
+
+/// Check if the local attributes match the remote attributes for all
+/// editable fields.
+fn attributes_match_remote_localization(
+    local: &asc_types::AppInfoLocalizationUpdateRequestDataAttributes,
+    remote: &serde_json::Value,
+) -> bool {
+    let fields: Vec<(&str, Option<&str>)> = vec![
+        ("name", local.name.as_deref()),
+        ("subtitle", local.subtitle.as_deref()),
+        ("privacyPolicyUrl", local.privacy_policy_url.as_deref()),
+        ("privacyPolicyText", local.privacy_policy_text.as_deref()),
+        ("privacyChoicesUrl", local.privacy_choices_url.as_deref()),
+    ];
+    for (key, local_val) in fields {
+        let remote_val = remote.get(key).and_then(|v| v.as_str());
+        match (local_val, remote_val) {
+            (None, None) => continue,
+            (Some(l), Some(r)) if l == r => continue,
+            _ => return false,
+        }
     }
-    if let Some(ref v) = yaml.privacy_policy_text {
-        attrs["privacyPolicyText"] = json!(v);
-    }
-    if let Some(ref v) = yaml.privacy_choices_url {
-        attrs["privacyChoicesUrl"] = json!(v);
-    }
-    ctx.http
-        .patch(ctx.url(&format!("/v1/appInfoLocalizations/{id}")))
-        .json(&json!({"data": {"type": "appInfoLocalizations", "id": id, "attributes": attrs}}))
-        .send()
-        .await?
-        .error_for_status()?;
-    Ok(())
+    true
 }
 
 async fn push_create_app_info_localization(
@@ -678,15 +750,12 @@ async fn push_update_version_localization(
     ctx: &AppStoreConnectContext,
     id: &str,
     yaml: &AppStoreVersionLocalizationAttributes,
-) -> Result<()> {
-    let attrs = AppStoreVersionLocalizationUpdateRequestDataAttributes {
-        description: yaml.description.clone(),
-        keywords: yaml.keywords.clone(),
-        marketing_url: yaml.marketing_url.clone(),
-        promotional_text: yaml.promotional_text.clone(),
-        support_url: yaml.support_url.clone(),
-        whats_new: yaml.whats_new.clone(),
-    };
+    remote: &AppStoreVersionLocalizationAttributes,
+) -> Result<bool> {
+    let attrs = changed_version_localization_attributes(yaml, remote);
+    if !has_version_localization_update_attributes(&attrs) {
+        return Ok(false);
+    }
 
     let body = AppStoreVersionLocalizationUpdateRequest {
         data: AppStoreVersionLocalizationUpdateRequestData {
@@ -699,7 +768,39 @@ async fn push_update_version_localization(
         .app_store_version_localizations_update_instance(id, &body)
         .await
         .map_err(|e| anyhow!("failed to update version localization {id}: {e}"))?;
-    Ok(())
+    Ok(true)
+}
+
+fn changed_version_localization_attributes(
+    desired: &AppStoreVersionLocalizationAttributes,
+    remote: &AppStoreVersionLocalizationAttributes,
+) -> AppStoreVersionLocalizationUpdateRequestDataAttributes {
+    AppStoreVersionLocalizationUpdateRequestDataAttributes {
+        description: changed_value(&desired.description, &remote.description),
+        keywords: changed_value(&desired.keywords, &remote.keywords),
+        marketing_url: changed_value(&desired.marketing_url, &remote.marketing_url),
+        promotional_text: changed_value(&desired.promotional_text, &remote.promotional_text),
+        support_url: changed_value(&desired.support_url, &remote.support_url),
+        whats_new: changed_value(&desired.whats_new, &remote.whats_new),
+    }
+}
+
+fn changed_value(desired: &Option<String>, remote: &Option<String>) -> Option<String> {
+    desired
+        .as_ref()
+        .filter(|desired| remote.as_ref() != Some(*desired))
+        .cloned()
+}
+
+fn has_version_localization_update_attributes(
+    attrs: &AppStoreVersionLocalizationUpdateRequestDataAttributes,
+) -> bool {
+    attrs.description.is_some()
+        || attrs.keywords.is_some()
+        || attrs.marketing_url.is_some()
+        || attrs.promotional_text.is_some()
+        || attrs.support_url.is_some()
+        || attrs.whats_new.is_some()
 }
 
 async fn push_create_version_localization(
@@ -793,6 +894,7 @@ async fn fetch_all_versions_simple(
 struct CurrentAppVersionLocalization {
     id: String,
     locale: String,
+    attributes: AppStoreVersionLocalizationAttributes,
 }
 
 async fn fetch_version_localizations_simple(
@@ -822,9 +924,11 @@ async fn fetch_version_localizations_simple(
         .data
         .into_iter()
         .filter_map(|v| {
+            let attributes = v.attributes?;
             Some(CurrentAppVersionLocalization {
                 id: v.id,
-                locale: v.attributes.as_ref()?.locale.clone()?,
+                locale: attributes.locale.clone()?,
+                attributes,
             })
         })
         .collect())
@@ -1156,5 +1260,44 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
 
         assert!(error.to_string().contains("keep only localization.yaml"));
+    }
+
+    #[test]
+    fn version_localization_update_only_contains_changed_configured_fields() {
+        let desired = AppStoreVersionLocalizationAttributes {
+            description: Some("Same description".into()),
+            keywords: Some("new,keywords".into()),
+            support_url: Some("https://example.com/support".into()),
+            ..Default::default()
+        };
+        let remote = AppStoreVersionLocalizationAttributes {
+            description: Some("Same description".into()),
+            keywords: Some("old,keywords".into()),
+            marketing_url: Some("https://example.com/marketing".into()),
+            support_url: Some("https://example.com/support".into()),
+            ..Default::default()
+        };
+
+        let attrs = changed_version_localization_attributes(&desired, &remote);
+
+        assert_eq!(attrs.description, None);
+        assert_eq!(attrs.keywords.as_deref(), Some("new,keywords"));
+        assert_eq!(attrs.marketing_url, None);
+        assert_eq!(attrs.support_url, None);
+        assert!(has_version_localization_update_attributes(&attrs));
+    }
+
+    #[test]
+    fn unchanged_version_localization_does_not_need_an_update() {
+        let desired = AppStoreVersionLocalizationAttributes {
+            description: Some("Same description".into()),
+            promotional_text: Some("Same promotion".into()),
+            ..Default::default()
+        };
+        let remote = desired.clone();
+
+        let attrs = changed_version_localization_attributes(&desired, &remote);
+
+        assert!(!has_version_localization_update_attributes(&attrs));
     }
 }

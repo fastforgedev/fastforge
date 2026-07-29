@@ -1,6 +1,6 @@
 name: fastforge
 description: A powerful and efficient tool for packaging and publishing your applications with ease.
-version: 0.6.10
+version: 0.6.11
 homepage: https://fastforge.dev
 repository: https://github.com/fastforgedev/fastforge/tree/main/packages/fastforge
 issue_tracker: https://github.com/fastforgedev/fastforge/issues
@@ -14,7 +14,7 @@ environment:
   sdk: ">=2.16.0 <4.0.0"
 
 dependencies:
-  unified_distributor: ^0.2.10
+  unified_distributor: ^0.2.11
 
 dev_dependencies:
   dependency_validator: ^3.0.0
