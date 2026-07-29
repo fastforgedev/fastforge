@@ -7,7 +7,7 @@ import 'package:fastforge/src/unified_distributor.dart';
 /// Package an application bundle for a specific platform and target
 ///
 /// This command wrapper defines, parses and transforms all passed arguments,
-/// so that they may be passed to `unified_distributor`. The distributor will
+/// so that they may be passed to Fastforge. The distributor will
 /// then build an application bundle using `flutter_app_packager`.
 class CommandPackage extends Command {
   CommandPackage(this.distributor) {

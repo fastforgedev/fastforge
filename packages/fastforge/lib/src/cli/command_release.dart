@@ -7,7 +7,7 @@ import 'package:fastforge/src/unified_distributor.dart';
 /// Release (package and publish) an application based on the config
 ///
 /// This command wrapper defines, parses and transforms all passed arguments,
-/// so that they may be passed to `unified_distributor`. The distributor will
+/// so that they may be passed to Fastforge. The distributor will
 /// then use the `distribute_options.yaml` file in the Flutter project root
 /// to run a release with one or multiple release jobs.
 ///
