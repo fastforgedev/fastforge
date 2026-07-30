@@ -1,0 +1,34 @@
+# Test fixture executed by apps/cli/tests/package_routing.rs via
+# `fastforge workflow run` (the top-level `fastforge package` command has no
+# generic `--build-args` flag to pass `flavor` yet).
+name: Gradle Builder flavor smoke package
+
+on:
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: Build flavor
+        default: dev
+
+jobs:
+  apk:
+    name: Android APK (flavor)
+    steps:
+      - name: Package APK
+        uses: fastforge/package@v1
+        with:
+          platform: android
+          target: apk
+          output: dist/
+          build-args: '{"flavor":"${{ inputs.flavor }}"}'
+
+  aab:
+    name: Android AAB (flavor)
+    steps:
+      - name: Package AAB
+        uses: fastforge/package@v1
+        with:
+          platform: android
+          target: aab
+          output: dist/
+          build-args: '{"flavor":"${{ inputs.flavor }}"}'

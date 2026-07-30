@@ -1,3 +1,8 @@
+## 0.6.11
+
+* fix(flutter): use supported build version flags (#354)
+* bump `unified_distributor` to ^0.2.11
+
 ## 0.6.10
 
 * fix(rpm): enforce usage of `appBinaryName` for assets and fix symlink logic (#313)

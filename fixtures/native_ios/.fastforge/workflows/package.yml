@@ -1,0 +1,22 @@
+# Test fixture executed by apps/cli/tests/package_routing.rs via
+# `fastforge workflow run` (the top-level `fastforge package` command has no
+# way to pass Xcode's required `project`/`scheme` build-args yet).
+name: Xcode Builder iOS smoke package
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ipa:
+    name: iOS IPA
+    steps:
+      - name: Package IPA
+        uses: fastforge/package@v1
+        with:
+          platform: ios
+          target: ipa
+          output: dist/
+          build-args: >-
+            {"project":"NativeIOSFixture.xcodeproj","scheme":"NativeIOSFixture",
+            "configuration":"Release","export-method":"development",
+            "archive-path":"build/NativeIOSFixture.xcarchive","export-path":"build/ipa"}

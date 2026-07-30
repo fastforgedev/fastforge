@@ -544,7 +544,12 @@ impl Action for FastforgePackageAction {
                 "[fastforge/package] Detected native macOS Xcode project (no pubspec.yaml)"
             );
             super::package::package_native_macos_artifact(
-                target, build_args, environment, &output, artifact_name, hooks.as_ref(),
+                target,
+                build_args,
+                environment,
+                &output,
+                artifact_name,
+                hooks.as_ref(),
             )
             .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
         } else if is_native && platform == "ios" {
@@ -552,21 +557,35 @@ impl Action for FastforgePackageAction {
                 "[fastforge/package] Detected native iOS Xcode project (no pubspec.yaml)"
             );
             super::package::package_native_ios_artifact(
-                target, build_args, environment, &output, artifact_name, hooks.as_ref(),
+                target,
+                build_args,
+                environment,
+                &output,
+                artifact_name,
+                hooks.as_ref(),
             )
             .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
         } else if is_native && platform == "android" {
-            tracing::info!(
-                "[fastforge/package] Detected native Android project (no pubspec.yaml)"
-            );
+            tracing::info!("[fastforge/package] Detected native Android project (no pubspec.yaml)");
             super::package::package_native_android_artifact(
-                target, build_args, environment, &output, artifact_name, hooks.as_ref(),
+                target,
+                build_args,
+                environment,
+                &output,
+                artifact_name,
+                hooks.as_ref(),
             )
             .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
         } else {
             super::package::package_flutter_artifact(
-                platform, target, build_args, environment, &output, artifact_name,
-                !skip_clean, hooks.as_ref(),
+                platform,
+                target,
+                build_args,
+                environment,
+                &output,
+                artifact_name,
+                !skip_clean,
+                hooks.as_ref(),
             )
             .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
         };

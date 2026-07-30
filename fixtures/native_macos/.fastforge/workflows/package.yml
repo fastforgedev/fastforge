@@ -1,0 +1,21 @@
+# Test fixture executed by apps/cli/tests/package_routing.rs via
+# `fastforge workflow run` (the top-level `fastforge package` command has no
+# way to pass Xcode's required `project`/`scheme` build-args yet).
+name: Xcode Builder macOS smoke package
+
+on:
+  workflow_dispatch:
+
+jobs:
+  zip:
+    name: macOS ZIP
+    steps:
+      - name: Package ZIP
+        uses: fastforge/package@v1
+        with:
+          platform: macos
+          target: zip
+          output: dist/
+          build-args: >-
+            {"project":"NativeMacOSFixture.xcodeproj","scheme":"NativeMacOSFixture",
+            "configuration":"Release","derived-data-path":"build"}

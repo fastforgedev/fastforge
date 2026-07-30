@@ -66,18 +66,22 @@ impl AppPackager for MacOSDmgPackager {
             json!({"x": 192, "y": 344, "type": "file", "path": format!("{escaped_name}.app")}),
         ];
 
-        // If a background.png exists in the packaging dir (from dmg_assets),
-        // include it in the spec so dmg_maker handles it automatically.
-        if pkg_dir.join("background.png").exists() {
+        // Only include a background if background.png actually exists in the
+        // packaging dir (from dmg_assets) — dmg_maker errors out trying to
+        // copy a background file that was declared but never provided.
+        let has_background = pkg_dir.join("background.png").exists();
+        if has_background {
             contents.push(json!({"x": 0, "y": 0, "type": "position"}));
         }
 
-        let spec = json!({
+        let mut spec = json!({
             "title": escaped_name,
-            "background": "background.png",
             "icon-size": 80,
             "contents": contents,
         });
+        if has_background {
+            spec["background"] = json!("background.png");
+        }
 
         // Delegate DMG creation to the native dmg_maker crate.
         create(CreateOptions {

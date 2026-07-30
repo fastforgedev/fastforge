@@ -328,9 +328,10 @@ pub fn package_native_macos_artifact(
         .map_err(|e| anyhow!("Xcode build failed: {}", e))?;
 
     // Read metadata from the built .app's Info.plist
-    let app_path = build.output_files.first().ok_or_else(|| {
-        anyhow!("No .app bundle produced by Xcode build")
-    })?;
+    let app_path = build
+        .output_files
+        .first()
+        .ok_or_else(|| anyhow!("No .app bundle produced by Xcode build"))?;
 
     // Read name, version, build number from Info.plist
     let (app_name, version, build_number) = read_native_macos_metadata(app_path)?;
@@ -413,17 +414,14 @@ pub fn package_native_macos_artifact(
 fn read_native_macos_metadata(app_path: &std::path::Path) -> Result<(String, String, String)> {
     let plist_path = app_path.join("Contents").join("Info.plist");
     if !plist_path.exists() {
-        return Err(anyhow!(
-            "Info.plist not found at {}",
-            plist_path.display()
-        ));
+        return Err(anyhow!("Info.plist not found at {}", plist_path.display()));
     }
 
     let name = plutil_read(&plist_path, "CFBundleName")?;
     let version = plutil_read(&plist_path, "CFBundleShortVersionString")
         .unwrap_or_else(|_| "0.1.0".to_string());
-    let build_number = plutil_read(&plist_path, "CFBundleVersion")
-        .unwrap_or_else(|_| "1".to_string());
+    let build_number =
+        plutil_read(&plist_path, "CFBundleVersion").unwrap_or_else(|_| "1".to_string());
 
     Ok((name, version, build_number))
 }
@@ -431,7 +429,14 @@ fn read_native_macos_metadata(app_path: &std::path::Path) -> Result<(String, Str
 /// Extract a value from a plist file using `plutil`.
 fn plutil_read(plist_path: &std::path::Path, key: &str) -> Result<String> {
     let out = std::process::Command::new("plutil")
-        .args(["-extract", key, "raw", "-o", "-", &plist_path.to_string_lossy()])
+        .args([
+            "-extract",
+            key,
+            "raw",
+            "-o",
+            "-",
+            &plist_path.to_string_lossy(),
+        ])
         .output()
         .map_err(|e| anyhow!("plutil: {}", e))?;
     if !out.status.success() {
@@ -482,23 +487,25 @@ pub fn package_native_ios_artifact(
     let (app_name, version, build_number) = 'meta: {
         // Try archive path first
         if let Some(archive_path_str) = build_args.get("archive-path").and_then(|v| v.as_str()) {
-            let app_dir = std::path::Path::new(archive_path_str).join("Products").join("Applications");
+            let app_dir = std::path::Path::new(archive_path_str)
+                .join("Products")
+                .join("Applications");
             if let Ok(entries) = std::fs::read_dir(&app_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.extension().map_or(false, |e| e == "app") {
-                        if let Ok(meta) = read_native_macos_metadata(&path) {
-                            break 'meta meta;
-                        }
+                    if path.extension().is_some_and(|e| e == "app")
+                        && let Ok(meta) = read_native_macos_metadata(&path)
+                    {
+                        break 'meta meta;
                     }
                 }
             }
         }
         // Fallback: read from the IPA
-        if let Some(ipa_path) = build.output_files.first() {
-            if let Ok(meta) = read_app_name_from_ipa(ipa_path) {
-                break 'meta meta;
-            }
+        if let Some(ipa_path) = build.output_files.first()
+            && let Ok(meta) = read_app_name_from_ipa(ipa_path)
+        {
+            break 'meta meta;
         }
         ("Runner".to_string(), "0.1.0".to_string(), "1".to_string())
     };
@@ -627,12 +634,11 @@ fn read_app_name_from_ipa(ipa_path: &std::path::Path) -> Result<(String, String,
         }
     };
 
-    let name = plutil_read(&plist_path, "CFBundleName")
-        .unwrap_or_else(|_| "Runner".to_string());
+    let name = plutil_read(&plist_path, "CFBundleName").unwrap_or_else(|_| "Runner".to_string());
     let version = plutil_read(&plist_path, "CFBundleShortVersionString")
         .unwrap_or_else(|_| "0.1.0".to_string());
-    let build_number = plutil_read(&plist_path, "CFBundleVersion")
-        .unwrap_or_else(|_| "1".to_string());
+    let build_number =
+        plutil_read(&plist_path, "CFBundleVersion").unwrap_or_else(|_| "1".to_string());
 
     // Clean up
     std::fs::remove_dir_all(&tmp_dir).ok();
@@ -677,8 +683,8 @@ pub fn package_native_android_artifact(
     let app_version = format!("{}+{}", version_info.1, version_info.2);
 
     let package_config = PackageConfig {
-        app_name: "ownCal".to_string(),
-        app_binary_name: "ownCal".to_string(),
+        app_name: version_info.0.clone(),
+        app_binary_name: version_info.0,
         app_version,
         build_mode: "release".to_string(),
         platform: Platform::Android,
@@ -735,25 +741,43 @@ pub fn package_native_android_artifact(
     );
 
     run_hooks(&pre_hooks, &hook_env)?;
-    let result = packager.package(&package_config).map_err(|e| anyhow!("{}", e))?;
+    let result = packager
+        .package(&package_config)
+        .map_err(|e| anyhow!("{}", e))?;
     run_hooks(&post_hooks, &hook_env)?;
 
     Ok(result.artifacts)
 }
 
-/// Read version info from `app/build.gradle.kts`.
+/// Read app name and version info from `app/build.gradle.kts`.
 fn read_android_metadata() -> Result<(String, String, String)> {
     let content = std::fs::read_to_string("app/build.gradle.kts")
         .context("Failed to read app/build.gradle.kts")?;
+
+    let application_id = content
+        .lines()
+        .find_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.starts_with("applicationId") {
+                trimmed
+                    .split('=')
+                    .nth(1)
+                    .map(|s| s.trim().trim_matches('"').to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "app".to_string());
 
     let version_name = content
         .lines()
         .find_map(|line| {
             let trimmed = line.trim();
             if trimmed.starts_with("versionName") {
-                trimmed.split('=').nth(1).map(|s| {
-                    s.trim().trim_matches('"').to_string()
-                })
+                trimmed
+                    .split('=')
+                    .nth(1)
+                    .map(|s| s.trim().trim_matches('"').to_string())
             } else {
                 None
             }
@@ -765,16 +789,14 @@ fn read_android_metadata() -> Result<(String, String, String)> {
         .find_map(|line| {
             let trimmed = line.trim();
             if trimmed.starts_with("versionCode") {
-                trimmed.split('=').nth(1).map(|s| {
-                    s.trim().to_string()
-                })
+                trimmed.split('=').nth(1).map(|s| s.trim().to_string())
             } else {
                 None
             }
         })
         .unwrap_or_else(|| "1".to_string());
 
-    Ok(("ownCal".to_string(), version_name, version_code))
+    Ok((application_id, version_name, version_code))
 }
 
 /// Check whether the current working directory contains a Flutter project
