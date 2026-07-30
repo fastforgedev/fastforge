@@ -19,12 +19,6 @@ dependencies:
   args: ^2.2.0
   charset: ^2.0.1
   dio: ^5.3.4
-<<<<<<< HEAD
-=======
-  flutter_app_builder: ^0.6.1
-  flutter_app_packager: ^0.6.10
-  flutter_app_publisher: ^0.6.9
->>>>>>> 6415c45c794da6fb27b8fd0cb8e46dc1acb2e062
   logging: ^1.0.2
   path: ^1.8.1
   pubspec_parse: ^1.1.0
