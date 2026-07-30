@@ -44,3 +44,6 @@ __pycache__/
 
 # Node.js / pnpm
 node_modules/
+
+# FVM Version Cache
+.fvm/

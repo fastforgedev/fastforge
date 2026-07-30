@@ -4,6 +4,7 @@ version: 0.6.10
 homepage: https://fastforge.dev
 repository: https://github.com/fastforgedev/fastforge/tree/main/packages/fastforge
 issue_tracker: https://github.com/fastforgedev/fastforge/issues
+publish_to: none
 
 platforms:
   linux:
@@ -14,7 +15,8 @@ environment:
   sdk: ">=2.16.0 <4.0.0"
 
 dependencies:
-  unified_distributor: ^0.2.10
+  unified_distributor:
+    path: ../unified_distributor
 
 dev_dependencies:
   dependency_validator: ^3.0.0
