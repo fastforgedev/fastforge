@@ -18,7 +18,7 @@ dependencies:
   unified_distributor:
     git:
       url: https://github.com/duskygloom/flutter_distributor
-      ref: master
+      ref: hans
       path: packages/unified_distributor
     # path: ../unified_distributor
 

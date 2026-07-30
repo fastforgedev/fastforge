@@ -29,21 +29,21 @@ dependencies:
   flutter_app_builder:
     git:
       url: https://github.com/duskygloom/flutter_distributor
-      ref: master
+      ref: hans
       path: packages/flutter_app_builder
     # path: ../flutter_app_builder
     
   flutter_app_packager:
     git:
       url: https://github.com/duskygloom/flutter_distributor
-      ref: master
+      ref: hans
       path: packages/flutter_app_packager
     # path: ../flutter_app_packager
 
   flutter_app_publisher:
     git:
       url: https://github.com/duskygloom/flutter_distributor
-      ref: master
+      ref: hans
       path: packages/flutter_app_publisher
     # path: ../flutter_app_publisher
 
