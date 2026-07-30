@@ -17,7 +17,7 @@ environment:
 dependencies:
   unified_distributor:
     git:
-      path: https://github.com/duskygloom/flutter_distributor
+      url: https://github.com/duskygloom/flutter_distributor
       ref: master
       path: packages/unified_distributor
     # path: ../unified_distributor
