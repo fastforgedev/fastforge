@@ -1,5 +1,6 @@
 ## 0.6.11
 
+* feat(appimage): add optional `startup_wm_class` / StartupWMClass support (mirrors MakeDebConfig #290)
 * feat(rpm): add support for custom `package_name` to rename package artifacts (#355)
 * fix(rpm): remove system modification command from `%install` section
 * fix(rpm): enable post-install scripts and fix post-uninstall logic
