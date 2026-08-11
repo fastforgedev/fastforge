@@ -11,6 +11,8 @@
 
 将 `make_config.yaml` 添加到你的项目 `windows/packaging/exe` 目录。
 
+你也可以将 `make_config.yaml` 添加到你的项目 `windows/packaging` 目录，以继承公共配置。
+
 ```yaml
 # AppId 的值唯一标识此应用。
 # 不要在其他应用的安装程序中使用相同的 AppId 值。

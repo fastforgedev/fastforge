@@ -29,6 +29,8 @@
 
 将 `make_config.yaml` 添加到您的项目 `linux/packaging/appimage` 目录。
 
+你也可以将 `make_config.yaml` 添加到你的项目 `linux/packaging` 目录，以继承公共配置。
+
 ```yaml
 display_name: Hello World
 

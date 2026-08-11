@@ -8,6 +8,8 @@ Build your Flutter app as a macOS PKG installer package. The PKG format is Apple
 
 Add `make_config.yaml` to your project `macos/packaging/pkg` directory.
 
+You can also add `make_config.yaml` to your project `macos/packaging` directory to inherit common configuration.
+
 ```yaml
 # Required: Installation path prefix for the app bundle.
 # The app will be installed as <install-path>/<AppName>.app.
