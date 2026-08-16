@@ -44,6 +44,7 @@ pub struct AppImageMakeConfig {
     #[serde(default)]
     pub actions: Vec<AppImageAction>,
     pub startup_notify: Option<bool>,
+    pub startup_wm_class: Option<String>,
     pub generic_name: Option<String>,
     pub supported_mime_type: Option<Vec<String>>,
 }
@@ -84,6 +85,13 @@ impl AppImageMakeConfig {
                 self.startup_notify.unwrap_or(false).to_string(),
             ),
         ];
+        if let Some(wm) = self
+            .startup_wm_class
+            .as_ref()
+            .filter(|s| !s.is_empty())
+        {
+            fields.push(("StartupWMClass", wm.clone()));
+        }
         if let Some(mime) = self
             .supported_mime_type
             .as_ref()
@@ -400,6 +408,7 @@ keywords:
   - Hello
 supported_mime_type:
   - audio/mpeg
+startup_wm_class: com.example.hola_amigos
 actions:
   - label: Gallery
     name: Open Gallery
@@ -412,6 +421,7 @@ actions:
         assert!(desktop.contains("Name=Hola Amigos"));
         assert!(desktop.contains("GenericName=A Flutter Application"));
         assert!(desktop.contains("Exec=LD_LIBRARY_PATH=usr/lib hola_amigos %u"));
+        assert!(desktop.contains("StartupWMClass=com.example.hola_amigos"));
         assert!(desktop.contains("MimeType=audio/mpeg;"));
         assert!(desktop.contains("Categories=Music;Media"));
         assert!(desktop.contains("Keywords=Hello"));
@@ -419,6 +429,20 @@ actions:
         assert!(desktop.contains("[Desktop Action Gallery]"));
         assert!(desktop.contains("Name=Open Gallery"));
         assert!(desktop.contains("Exec=LD_LIBRARY_PATH=usr/lib hola_amigos --gallery %u"));
+    }
+
+    #[test]
+    fn desktop_file_omits_empty_startup_wm_class() {
+        let mc: AppImageMakeConfig = serde_yaml::from_str(
+            r#"
+display_name: Hola Amigos
+icon: assets/logo.png
+startup_wm_class: ""
+"#,
+        )
+        .unwrap();
+        let desktop = mc.desktop_file(&test_config());
+        assert!(!desktop.contains("StartupWMClass"));
     }
 
     #[test]

@@ -58,6 +58,8 @@ categories:
   - Music
 
 startup_notify: true
+# 将窗口映射到该桌面入口（例如 GTK application-id），便于 GNOME/KDE 正确关联应用图标。
+# startup_wm_class: com.example.hello_world
 
 # 您可以指定要与您的应用捆绑的共享库
 #

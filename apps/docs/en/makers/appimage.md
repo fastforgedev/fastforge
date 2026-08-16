@@ -58,6 +58,8 @@ categories:
   - Music
 
 startup_notify: true
+# Maps windows to this desktop entry (e.g. GTK application-id) so GNOME/KDE group the app icon correctly.
+# startup_wm_class: com.example.hello_world
 
 # You can specify the shared libraries that you want to bundle with your app
 #
