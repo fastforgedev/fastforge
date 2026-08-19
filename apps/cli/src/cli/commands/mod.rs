@@ -1,6 +1,7 @@
 pub mod analyze;
 pub mod build;
 pub mod package;
+pub mod platform_infer;
 pub mod publish;
 pub mod release;
 pub mod store;

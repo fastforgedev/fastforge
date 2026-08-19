@@ -17,7 +17,7 @@ fastforge <COMMAND>
 
 | 命令            | 说明                          |
 | --------------- | ----------------------------- |
-| `analyze`       | 分析应用包或 bundle           |
+| `analyze`       | 分析应用包，或整个目录        |
 | `build`         | 使用 Flutter Builder 构建项目 |
 | `package`       | 构建并打包项目                |
 | `publish`       | 发布现有产物                  |
@@ -25,6 +25,7 @@ fastforge <COMMAND>
 | `store`         | 管理聚合商店配置与 catalog    |
 | `workflow`      | 运行本地工作流                |
 | `appstore`      | 操作 App Store Connect        |
+| `appgallery`    | 操作华为 AppGallery Connect   |
 | `googleplay`    | 操作 Google Play Console      |
 | `upgrade`       | 预留的升级命令                |
 | `version-check` | 输出当前版本                  |
@@ -32,17 +33,19 @@ fastforge <COMMAND>
 ## `analyze`
 
 ```text
-fastforge analyze [OPTIONS] <PATH>
+fastforge analyze [OPTIONS] <PATH>...
 ```
 
-| 参数                    | 必填 | 说明                                          |
-| ----------------------- | :--: | --------------------------------------------- |
-| `<PATH>`                |  是  | `.apk`、`.aab`、`.ipa`、`.dmg` 或 `.app` 路径 |
-| `-o, --output <OUTPUT>` |  否  | 把 JSON 写入文件；省略时输出到 stdout         |
+| 参数                    | 必填 | 说明                                                              |
+| ----------------------- | :--: | ----------------------------------------------------------------- |
+| `<PATH>...`             |  是  | 一个或多个 `.apk`、`.aab`、`.ipa`、`.dmg`、`.app` 路径，或待扫描的目录 |
+| `-o, --output <OUTPUT>` |  否  | 把报告写入文件；省略时输出到 stdout                               |
+| `--format <FORMAT>`     |  否  | `json` 或 `html`；默认取 `--output` 隐含的格式，否则为 `json`     |
 
 ```bash
 fastforge analyze dist/app.apk
 fastforge analyze dist/app.ipa --output app-info.json
+fastforge analyze dist --output report.html
 ```
 
 格式依赖和输出说明见[应用包分析](tools/analyze.md)。
@@ -177,6 +180,21 @@ fastforge appstore [GLOBAL OPTIONS] <COMMAND>
 - `--debug`
 - `--no-color`
 
+## `appgallery`
+
+```text
+fastforge appgallery [GLOBAL OPTIONS] <COMMAND>
+```
+
+| 命令组    | 子命令                                  |
+| --------- | --------------------------------------- |
+| `app`     | `resolve`、`view`                       |
+| `package` | `list`、`status`                        |
+| `release` | 提交应用审核                            |
+| `api`     | `get`、`post`、`put`、`patch`、`delete` |
+
+认证和示例见 [AppGallery Connect](stores/appgallery.md)。
+
 ## `googleplay`
 
 ```text
@@ -205,6 +223,7 @@ fastforge googleplay [GLOBAL OPTIONS] <COMMAND>
 ```bash
 fastforge appstore build upload --help
 fastforge appstore submission create --help
+fastforge appgallery app resolve --help
 fastforge googleplay bundle upload --help
 fastforge googleplay track update --help
 ```

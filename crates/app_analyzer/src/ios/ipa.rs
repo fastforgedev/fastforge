@@ -1,9 +1,9 @@
+use crate::archive::Archive;
+use crate::ios::bundle;
+use crate::{archive as archive_util, checksum, json_util, plist_util};
 use fastforge_core::{AnalyzeConfig, AnalyzeError, AnalyzeResult, AppAnalyzer};
-use plist::Value;
-use serde_json::json;
-use std::fs::File;
-use std::io::{Cursor, Read};
-use zip::ZipArchive;
+use serde_json::{Map, Value, json};
+use std::path::Path;
 
 pub struct IOSIpaAnalyzer;
 
@@ -21,69 +21,116 @@ impl AppAnalyzer for IOSIpaAnalyzer {
     }
 
     fn perform_analyze(&self, config: &AnalyzeConfig) -> Result<AnalyzeResult, AnalyzeError> {
-        let file = File::open(&config.path).map_err(AnalyzeError::Io)?;
-        let mut archive = ZipArchive::new(file)
-            .map_err(|e| AnalyzeError::Parse(format!("Invalid ipa zip archive: {}", e)))?;
-
-        let mut plist_bytes: Option<Vec<u8>> = None;
-        for index in 0..archive.len() {
-            let mut entry = archive
-                .by_index(index)
-                .map_err(|e| AnalyzeError::Parse(format!("Failed to read ipa entry: {}", e)))?;
-
-            if !entry.is_file() || !entry.name().ends_with(".app/Info.plist") {
-                continue;
-            }
-
-            let mut buf = Vec::new();
-            entry.read_to_end(&mut buf).map_err(AnalyzeError::Io)?;
-            plist_bytes = Some(buf);
-            break;
+        let ipa_path = Path::new(&config.path);
+        if !ipa_path.is_file() {
+            return Err(AnalyzeError::NotFound(format!(
+                "IPA not found: {}",
+                config.path
+            )));
         }
 
-        let plist_bytes =
-            plist_bytes.ok_or_else(|| AnalyzeError::Parse("Can't parse .ipa file.".to_string()))?;
-        let plist_value = Value::from_reader(Cursor::new(plist_bytes))
-            .map_err(|e| AnalyzeError::Parse(format!("Failed to parse Info.plist: {}", e)))?;
+        let mut archive = Archive::open(ipa_path)?;
+        let app = bundle::find(&mut archive)?;
 
-        let plist_dict = plist_value.as_dictionary().ok_or_else(|| {
-            AnalyzeError::Parse("Info.plist root is not a dictionary".to_string())
-        })?;
-
-        let identifier = read_required_plist_string(plist_dict, "CFBundleIdentifier")?;
-        let name = read_optional_plist_string(plist_dict, "CFBundleDisplayName")
-            .or_else(|| read_optional_plist_string(plist_dict, "CFBundleName"))
+        let identifier = plist_util::require_text(&app.info, "CFBundleIdentifier")?;
+        let name = plist_util::text(&app.info, "CFBundleDisplayName")
+            .or_else(|| plist_util::text(&app.info, "CFBundleName"))
             .ok_or_else(|| {
                 AnalyzeError::Parse(
                     "Missing CFBundleDisplayName/CFBundleName in Info.plist".to_string(),
                 )
             })?;
-        let version = read_required_plist_string(plist_dict, "CFBundleShortVersionString")?;
-        let build_number_raw = read_required_plist_string(plist_dict, "CFBundleVersion")?;
-        let build_number = build_number_raw.parse::<i32>().map_err(|_| {
-            AnalyzeError::Parse("Failed to parse CFBundleVersion as integer".to_string())
-        })?;
+        let version = plist_util::require_text(&app.info, "CFBundleShortVersionString")?;
+        let build_number = plist_util::require_text(&app.info, "CFBundleVersion")?;
 
-        let data = json!({
-            "platform": "ios",
-            "identifier": identifier,
-            "name": name,
-            "version": version,
-            "buildNumber": build_number
-        });
+        let executable = bundle::read_executable(&mut archive, &app);
+
+        let mut data = Map::new();
+        data.insert("platform".to_string(), Value::String("ios".to_string()));
+        data.insert("format".to_string(), Value::String("ipa".to_string()));
+        data.insert("identifier".to_string(), Value::String(identifier));
+        data.insert("name".to_string(), Value::String(name));
+        data.insert("version".to_string(), Value::String(version));
+        data.insert("buildNumber".to_string(), Value::String(build_number));
+
+        json_util::insert_text(
+            &mut data,
+            "path",
+            Some(
+                std::fs::canonicalize(ipa_path)
+                    .unwrap_or_else(|_| ipa_path.to_path_buf())
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        );
+        json_util::insert_text(
+            &mut data,
+            "fileName",
+            ipa_path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned()),
+        );
+        data.insert(
+            "sizeBytes".to_string(),
+            json!(
+                std::fs::metadata(ipa_path)
+                    .map(|meta| meta.len())
+                    .unwrap_or(0)
+            ),
+        );
+        json_util::insert_text(&mut data, "sha256", checksum::sha256_of(ipa_path));
+        json_util::insert_text(
+            &mut data,
+            "bundlePath",
+            Some(app.prefix.trim_end_matches('/').to_string()),
+        );
+
+        data.append(&mut bundle::declared_metadata(&app.info));
+        if let Some(executable) = executable.as_ref() {
+            json_util::insert_text_array(
+                &mut data,
+                "architectures",
+                Some(executable.architectures.clone()),
+            );
+        }
+
+        json_util::insert_object(&mut data, "buildInfo", bundle::build_info(&app.info));
+        json_util::insert_object(
+            &mut data,
+            "techStack",
+            bundle::tech_stack(&mut archive, &app, executable.as_ref()),
+        );
+        json_util::insert_object(
+            &mut data,
+            "components",
+            bundle::components(&mut archive, &app),
+        );
+        json_util::insert_object(&mut data, "capabilities", bundle::capabilities(&app.info));
+        json_util::insert_object(
+            &mut data,
+            "contents",
+            archive_util::contents_summary(archive.entries(), &app.prefix),
+        );
+        json_util::insert_value(
+            &mut data,
+            "provisioningProfile",
+            bundle::provisioning_profile(&mut archive, &app),
+        );
+        json_util::insert_object(&mut data, "codeSignature", code_signature(&archive, &app));
 
         log::info!("IPA analysis completed for {}", config.path);
-        Ok(AnalyzeResult::new(true, data))
+        Ok(AnalyzeResult::new(true, Value::Object(data)))
     }
 }
 
-fn read_required_plist_string(dict: &plist::Dictionary, key: &str) -> Result<String, AnalyzeError> {
-    read_optional_plist_string(dict, key)
-        .ok_or_else(|| AnalyzeError::Parse(format!("Missing {} in Info.plist", key)))
-}
-
-fn read_optional_plist_string(dict: &plist::Dictionary, key: &str) -> Option<String> {
-    dict.get(key)
-        .and_then(|value| value.as_string())
-        .map(|value| value.to_string())
+/// An IPA carries a sealed resource directory when it is signed. Verifying that
+/// signature would mean unpacking the whole payload, so only its presence and
+/// the profile it was signed with are reported.
+fn code_signature(archive: &Archive, app: &bundle::AppBundle) -> Map<String, Value> {
+    let mut signature = Map::new();
+    signature.insert(
+        "signed".to_string(),
+        Value::Bool(archive.contains_prefix(&format!("{}_CodeSignature/", app.prefix))),
+    );
+    signature
 }

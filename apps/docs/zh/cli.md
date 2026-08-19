@@ -26,7 +26,7 @@ dart pub global activate fastforge
 
 | Flag | Value | Required |
 |------|-------|:--------:|
-| `--platform` | 平台, 如 `android` | ✅ |
+| `--platform` | 平台, 如 `android`（省略时根据 targets 与项目结构自动推导） | ❌ |
 | `--targets` | 以逗号分隔的 maker 名称列表 | ✅ |
 | `--skip-clean` | 跳过构建前的清理 | ❌ |
 | `--hook-pre` | 打包前执行的 shell 命令 | ❌ |
@@ -37,8 +37,13 @@ dart pub global activate fastforge
 ```shell
 fastforge package --platform=android --targets=aab,apk
 
+# 平台可省略：`aab`/`apk` 只属于 android，会自动推导
+fastforge package --targets=aab,apk
+
 fastforge package --platform=macos --target=zip --hook-pre 'echo "before"' --hook-post 'echo "after"'
 ```
+
+> `--platform` 可省略。大多数 target 能唯一确定平台（如 `dmg` → macos、`apk` → android）；`zip`、`direct`、`custom` 等有歧义的 target 会结合项目中的平台目录与当前系统推导，无法唯一确定时才需要显式指定。
 
 ### Publish
 

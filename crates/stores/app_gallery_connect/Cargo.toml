@@ -1,0 +1,26 @@
+[package]
+name = "fastforge_app_gallery_connect"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Huawei AppGallery Connect API client"
+license.workspace = true
+
+[dependencies]
+anyhow = "1.0.100"
+bytes = "1.9"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+clap = { version = "4.5.48", features = ["derive"] }
+futures-core = "0.3"
+jsonwebtoken = "9"
+progenitor-client = "0.14.0"
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "stream", "rustls", "form"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_urlencoded = "0.7"
+tokio = { version = "1.47.1", features = ["rt", "rt-multi-thread", "macros", "fs"] }
+unicode-width = "0.2"
+
+[[bin]]
+name = "fastforge_app_gallery_connect"
+path = "src/main.rs"

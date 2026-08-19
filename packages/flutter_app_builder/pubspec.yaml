@@ -1,6 +1,6 @@
 name: flutter_app_builder
 description: Build your Flutter app via Dart.
-version: 0.6.1
+version: 0.6.2
 homepage: https://fastforge.dev
 repository: https://github.com/fastforgedev/fastforge/tree/main/packages/flutter_app_builder
 

@@ -85,6 +85,9 @@ pub async fn execute(args: &ReleaseArgs) -> Result<()> {
         ));
     }
 
+    // Clean at most once across all jobs (mirrors Dart's release flow).
+    let mut clean_before_build = !args.skip_clean;
+
     for release in &matching {
         let filtered_jobs = release.filter_jobs(&job_names, &skip_job_names);
 
@@ -173,10 +176,12 @@ pub async fn execute(args: &ReleaseArgs) -> Result<()> {
                     _vars.clone(),
                     &opts.output,
                     opts.artifact_name.clone(),
-                    !args.skip_clean,
+                    job.package.channel.clone(),
+                    clean_before_build,
                     job.package.hooks.as_ref(),
                 )?
             };
+            clean_before_build = false;
 
             for artifact in &artifacts {
                 println!(

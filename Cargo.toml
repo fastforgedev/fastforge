@@ -8,6 +8,7 @@ members = [
   "crates/app_publisher",
   "crates/dmg_maker",
   "crates/stores/app_store_connect",
+  "crates/stores/app_gallery_connect",
   "crates/stores/google_play_console",
   "apps/cli",
 ]

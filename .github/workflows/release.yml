@@ -108,7 +108,7 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: |
-          cargo build --release --target ${{ matrix.target }} -p fastforge
+          cargo build --release --target ${{ matrix.target }} -p fastforge_cli --bin fastforge
 
       - name: Prepare archive (Unix)
         if: matrix.archive_ext == 'tar.gz'

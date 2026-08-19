@@ -1,0 +1,437 @@
+openapi: 3.0.3
+info:
+  title: AppGallery Connect Publishing API
+  version: "2025-09-30"
+  description: >-
+    OpenAPI description normalized from the official Huawei AppGallery Connect
+    Publishing API reference. Huawei publishes the endpoints as HTML reference
+    pages rather than as a downloadable OpenAPI document.
+servers:
+  - url: https://connect-api.cloud.huawei.com
+security:
+  - bearerAuth: []
+paths:
+  /api/publish/v2/appid-list:
+    get:
+      operationId: getAppIds
+      summary: Query app IDs by package name
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - name: packageName
+          in: query
+          required: true
+          schema: { type: string }
+        - name: packageTypes
+          in: query
+          schema: { type: string }
+        - name: pcVersionName
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: App ID lookup result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppIdsResponse' }
+  /api/publish/v2/app-info:
+    get:
+      operationId: getAppInfo
+      summary: Query app information
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/AppId'
+        - name: lang
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/ReleaseType'
+      responses:
+        '200':
+          description: App information
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppInfoResponse' }
+    put:
+      operationId: updateAppInfo
+      summary: Update app basic information
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/ReleaseType'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppInfoUpdate' }
+      responses:
+        '200':
+          description: Update result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultResponse' }
+  /api/publish/v2/app-language-info:
+    put:
+      operationId: updateAppLanguageInfo
+      summary: Create or update app localization information
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/ReleaseType'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LanguageInfoUpdate' }
+      responses:
+        '200':
+          description: Update result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultResponse' }
+    delete:
+      operationId: deleteAppLanguageInfo
+      summary: Delete app localization information
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/AppId'
+        - name: lang
+          in: query
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/ReleaseType'
+      responses:
+        '200':
+          description: Delete result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultResponse' }
+  /api/publish/v2/package-list:
+    get:
+      operationId: getPackageList
+      summary: Query app package list
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/AppId'
+        - name: fromRecCount
+          in: query
+          schema: { type: integer, format: int32, default: 0 }
+        - name: maxReqCount
+          in: query
+          schema: { type: integer, format: int32, default: 10, maximum: 100 }
+      responses:
+        '200':
+          description: Package list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PackageListResponse' }
+  /api/publish/v2/package/compile/status:
+    get:
+      operationId: getPackageCompileStatus
+      summary: Query AAB compilation status
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/AppId'
+        - name: pkgIds
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Compilation status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompileStatusResponse' }
+  /api/publish/v2/upload-url/for-obs:
+    get:
+      operationId: getUploadUrl
+      summary: Obtain a file upload URL
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/AppId'
+        - name: fileName
+          in: query
+          required: true
+          schema: { type: string }
+        - name: contentLength
+          in: query
+          required: true
+          schema: { type: integer, format: int64, minimum: 0 }
+      responses:
+        '200':
+          description: Upload URL
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UploadUrlResponse' }
+  /api/publish/v3/app-package-info:
+    put:
+      operationId: applyUploadedPackage
+      summary: Submit uploaded package information
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/ReleaseType'
+        - name: releasePhase
+          in: query
+          schema: { type: integer, format: int32, default: 0 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UploadedPackage' }
+      responses:
+        '200':
+          description: Apply result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultResponse' }
+  /api/publish/v2/app-submit:
+    post:
+      operationId: submitApp
+      summary: Submit an app for review
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/ReleaseType'
+        - name: releaseTime
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Submission result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultResponse' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ClientId:
+      name: client_id
+      in: header
+      required: false
+      description: Required for legacy API client authentication; omit for service accounts.
+      schema: { type: string }
+    AppId:
+      name: appId
+      in: query
+      required: true
+      schema: { type: string }
+    ReleaseType:
+      name: releaseType
+      in: query
+      required: false
+      schema: { type: integer, format: int32, default: 1 }
+  schemas:
+    Result:
+      type: object
+      required: [code, msg]
+      properties:
+        code: { type: integer, format: int64 }
+        msg: { type: string }
+    ResultResponse:
+      type: object
+      required: [ret]
+      properties:
+        ret: { $ref: '#/components/schemas/Result' }
+    KeyValue:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: string }
+    AppIdsResponse:
+      allOf:
+        - $ref: '#/components/schemas/ResultResponse'
+        - type: object
+          properties:
+            appids:
+              type: array
+              items: { $ref: '#/components/schemas/KeyValue' }
+    DeviceTypeInfo:
+      type: object
+      required: [deviceType]
+      properties:
+        deviceType: { type: integer, format: int32 }
+        appAdapters: { type: string }
+    DeviceMaterial:
+      type: object
+      required: [deviceType]
+      properties:
+        deviceType: { type: integer, format: int32 }
+        appIcon: { type: string }
+        screenShots:
+          oneOf:
+            - { type: string }
+            - type: array
+              items: { type: string }
+        banner: { type: string }
+        showType: { type: integer, format: int32 }
+        videoShowType: { type: integer, format: int32 }
+        promoGraphics:
+          oneOf:
+            - { type: string }
+            - type: array
+              items: { type: string }
+    LanguageInfo:
+      type: object
+      properties:
+        lang: { type: string }
+        appName: { type: string }
+        appDesc: { type: string }
+        briefInfo: { type: string }
+        newFeatures: { type: string }
+        icon: { type: string }
+        showType: { type: integer, format: int32 }
+        videoShowType: { type: integer, format: int32 }
+        introPic: { type: string }
+        introVideo: { type: string }
+        rcmdPic: { type: string }
+        rcmdVideo: { type: string }
+        deviceMaterials:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceMaterial' }
+    AppInfo:
+      type: object
+      properties:
+        releaseState: { type: integer, format: int32 }
+        defaultLang: { type: string }
+        parentType: { type: integer, format: int32 }
+        childType: { type: integer, format: int32 }
+        grandChildType: { type: integer, format: int32 }
+        privacyPolicy: { type: string }
+        appNetType: { type: integer, format: int32 }
+        isFree: { type: integer, format: int32 }
+        price: { type: string }
+        priceDetail: { type: string }
+        publishCountry: { type: string }
+        contentRate: { type: string }
+        versionNumber: { type: string }
+        versionCode: { type: integer, format: int64 }
+        versionId: { type: string }
+        onShelfVersionNumber: { type: string }
+        onShelfVersionCode: { type: integer, format: int64 }
+        onShelfVersionId: { type: string }
+        shareLink: { type: string }
+        deviceTypes:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceTypeInfo' }
+    AuditInfo:
+      type: object
+      properties:
+        auditOpinion: { type: string }
+        copyRightAuditResult: { type: integer, format: int32 }
+        copyRightAuditOpinion: { type: string }
+        recordAuditResult: { type: integer, format: int32 }
+        recordAuditOpinion: { type: string }
+    PhasedReleaseInfo:
+      type: object
+      properties:
+        state: { type: string }
+        phasedReleaseStartTime: { type: string }
+        phasedReleaseEndTime: { type: string }
+        phasedReleasePercent: { type: string }
+        phasedReleaseDescription: { type: string }
+    AppInfoResponse:
+      allOf:
+        - $ref: '#/components/schemas/ResultResponse'
+        - type: object
+          properties:
+            appInfo: { $ref: '#/components/schemas/AppInfo' }
+            auditInfo: { $ref: '#/components/schemas/AuditInfo' }
+            languages:
+              type: array
+              items: { $ref: '#/components/schemas/LanguageInfo' }
+            phasedReleaseInfo: { $ref: '#/components/schemas/PhasedReleaseInfo' }
+    AppInfoUpdate:
+      type: object
+      additionalProperties: true
+      properties:
+        defaultLang: { type: string }
+        parentType: { type: integer, format: int32 }
+        childType: { type: integer, format: int32 }
+        grandChildType: { type: integer, format: int32 }
+        privacyPolicy: { type: string }
+        isFree: { type: integer, format: int32 }
+        publishCountry: { type: string }
+    LanguageInfoUpdate:
+      type: object
+      additionalProperties: true
+      required: [lang]
+      properties:
+        lang: { type: string }
+        appName: { type: string }
+        appDesc: { type: string }
+        briefInfo: { type: string }
+        newFeatures: { type: string }
+        icon: { type: string }
+        introPic: { type: string }
+    PackageInfo:
+      type: object
+      additionalProperties: true
+      required: [pkgVersion, fileName, versionCode, packageSize, uploadTime, packageType]
+      properties:
+        pkgVersion: { type: string }
+        fileName: { type: string }
+        versionName: { type: string }
+        versionCode: { type: integer, format: int64 }
+        packageSize: { type: integer, format: int64 }
+        uploadTime: { type: integer, format: int64 }
+        shaCode: { type: string }
+        packageType: { type: integer, format: int32 }
+    PackageListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ResultResponse'
+        - type: object
+          properties:
+            retCount: { type: integer, format: int32 }
+            totalCount: { type: integer, format: int32 }
+            pkgList:
+              type: array
+              items: { $ref: '#/components/schemas/PackageInfo' }
+            packagePath: { type: string }
+            abisType: { type: integer, format: int32 }
+    PackageState:
+      type: object
+      required: [pkgId, successStatus]
+      properties:
+        pkgId: { type: string }
+        aabCompileStatus: { type: integer, format: int32, deprecated: true }
+        failReason: { type: integer, format: int32, deprecated: true }
+        successStatus: { type: integer, format: int32 }
+    CompileStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/ResultResponse'
+        - type: object
+          additionalProperties: true
+          properties:
+            pkgStateList:
+              type: array
+              items: { $ref: '#/components/schemas/PackageState' }
+    UploadHeader:
+      type: object
+      required: [name, value]
+      properties:
+        name: { type: string }
+        value: { type: string }
+    UploadUrlInfo:
+      type: object
+      required: [url, objectId, headers]
+      properties:
+        url: { type: string, format: uri }
+        objectId: { type: string }
+        headers:
+          type: array
+          items: { $ref: '#/components/schemas/UploadHeader' }
+    UploadUrlResponse:
+      allOf:
+        - $ref: '#/components/schemas/ResultResponse'
+        - type: object
+          properties:
+            urlInfo: { $ref: '#/components/schemas/UploadUrlInfo' }
+    UploadedPackage:
+      type: object
+      required: [fileName, objectId]
+      properties:
+        fileName: { type: string }
+        objectId: { type: string }

@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App Package Analysis</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface:        #fcfcfb;
+  --panel:          #ffffff;
+  --border:         #e4e3df;
+  --border-strong:  #d3d2cd;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #86857f;
+  --series-1:       #2a78d6;
+  --mark-muted:     #d8d7d2;
+  --hover:          #f4f3f0;
+  --focus:          #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface:        #1a1a19;
+    --panel:          #222221;
+    --border:         #34343200;
+    --border:         #343432;
+    --border-strong:  #45453f;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #8d8c84;
+    --series-1:       #3987e5;
+    --mark-muted:     #3a3a37;
+    --hover:          #2a2a28;
+    --focus:          #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface:        #1a1a19;
+  --panel:          #222221;
+  --border:         #343432;
+  --border-strong:  #45453f;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #8d8c84;
+  --series-1:       #3987e5;
+  --mark-muted:     #3a3a37;
+  --hover:          #2a2a28;
+  --focus:          #3987e5;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  padding: 2rem 1.5rem 5rem;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+main { max-width: 76rem; margin: 0 auto; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+header { margin-bottom: 1.75rem; }
+h1 { font-size: 1.5rem; margin: 0 0 .3rem; letter-spacing: -.01em; }
+.subtitle { color: var(--text-secondary); margin: 0; font-size: .9rem; }
+.subtitle code { color: var(--text-primary); }
+
+/* ── Stat tiles ─────────────────────────────────────────────────────────── */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: .85rem 1rem; }
+.tile .label { font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+.tile .value { font-size: 1.65rem; line-height: 1.2; margin-top: .15rem; }
+.tile .value .unit { font-size: .95rem; color: var(--text-secondary); margin-left: .15rem; }
+
+/* ── Charts ─────────────────────────────────────────────────────────────── */
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: .75rem; margin-bottom: 1.25rem; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem 1.1rem; }
+.card h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin: 0 0 .1rem; font-weight: 600; }
+.card .hint { font-size: .75rem; color: var(--text-muted); margin: 0 0 .8rem; }
+
+.bars { display: flex; flex-direction: column; gap: .45rem; }
+.bar {
+  display: grid; grid-template-columns: minmax(6rem, 11rem) 1fr auto; gap: .6rem;
+  align-items: center; width: 100%; padding: .18rem .25rem; margin: -.18rem -.25rem;
+  background: none; border: 0; border-radius: 6px; cursor: pointer; text-align: left;
+  font: inherit; font-size: .84rem; color: var(--text-secondary);
+}
+.bar:hover { background: var(--hover); }
+.bar .track { height: 14px; }
+.bar .fill {
+  display: block; height: 100%; background: var(--series-1);
+  border-radius: 0 4px 4px 0;                   /* rounded data-end, square baseline */
+  min-width: 2px; transition: width .18s ease, background-color .12s ease;
+}
+/* Emphasis: once a value is picked, the rest recede to gray. */
+.bars[data-filtered="true"] .bar:not([aria-pressed="true"]) .fill { background: var(--mark-muted); }
+.bar:hover .fill { background: var(--series-1); }
+.bar[aria-pressed="true"] .name { color: var(--text-primary); font-weight: 600; }
+.bar .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar .value { font-variant-numeric: tabular-nums; color: var(--text-primary); min-width: 2.4rem; text-align: right; }
+
+/* ── Filter row ─────────────────────────────────────────────────────────── */
+.filters {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+  padding: .6rem .75rem; margin-bottom: .75rem;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+}
+.filters input[type="search"] {
+  flex: 1 1 12rem; min-width: 8rem; padding: .35rem .6rem; font: inherit; font-size: .88rem;
+  color: var(--text-primary); background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: 6px;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .5rem .2rem .6rem;
+  font-size: .8rem; background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: 999px; cursor: pointer;
+  font-family: inherit;
+}
+.chip:hover { background: var(--hover); }
+.chip .x { color: var(--text-muted); font-size: .95rem; line-height: 1; }
+.count { margin-left: auto; font-size: .82rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* ── Table ──────────────────────────────────────────────────────────────── */
+.table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--panel);
+  text-align: left; font-size: .74rem; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-muted); font-weight: 600; white-space: nowrap;
+  border-bottom: 1px solid var(--border-strong);
+}
+thead th button {
+  display: flex; align-items: center; gap: .3rem; width: 100%;
+  padding: .6rem .7rem; background: none; border: 0; cursor: pointer;
+  font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit;
+}
+thead th button:hover { color: var(--text-primary); background: var(--hover); }
+thead th .arrow { opacity: 0; font-size: .7rem; }
+thead th[aria-sort] .arrow { opacity: 1; }
+thead th[aria-sort] button { color: var(--text-primary); }
+th.num button, td.num { text-align: right; justify-content: flex-end; }
+td { padding: .5rem .7rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.row { cursor: pointer; }
+tr.row:hover td { background: var(--hover); }
+tr.row.open td { background: var(--hover); }
+tr.row:last-of-type td { border-bottom: 0; }
+.chev {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem; margin: -.25rem 0; padding: 0; flex: none;
+  background: none; border: 0; border-radius: 5px; cursor: pointer;
+  color: var(--text-muted); font: inherit; font-size: .7rem;
+}
+.chev svg { transition: transform .15s ease; }
+.chev:hover { color: var(--text-primary); background: var(--border); }
+tr.row.open .chev { color: var(--text-primary); }
+tr.row.open .chev svg { transform: rotate(90deg); }
+.name-cell { display: flex; align-items: center; gap: .5rem; }
+.name-cell .file { color: var(--text-muted); font-size: .8rem; }
+.tag {
+  display: inline-block; padding: .05rem .45rem; border-radius: 5px; font-size: .78rem;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary);
+}
+
+/* ── Expanded detail ────────────────────────────────────────────────────── */
+tr.detail > td { padding: 0; background: var(--surface); border-bottom: 1px solid var(--border); }
+.detail-body { padding: 1.1rem 1.25rem 1.35rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1.5rem 2rem; }
+.detail-body h3 { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin: 0 0 .55rem; font-weight: 600; }
+dl.fields { display: grid; grid-template-columns: minmax(6rem, max-content) 1fr; gap: .3rem .9rem; margin: 0; font-size: .85rem; }
+dl.fields dt { color: var(--text-muted); }
+dl.fields dd { margin: 0; word-break: break-word; }
+.tags { display: flex; flex-wrap: wrap; gap: .3rem; }
+.mini-bars { display: flex; flex-direction: column; gap: .35rem; }
+.mini { display: grid; grid-template-columns: minmax(5rem, 8rem) 1fr auto; gap: .55rem; align-items: center; font-size: .8rem; color: var(--text-secondary); }
+.mini .track { height: 10px; }
+.mini .fill { display: block; height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; }
+.mini .value { font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.detail-full { grid-column: 1 / -1; }
+details summary { cursor: pointer; color: var(--text-muted); font-size: .82rem; }
+pre {
+  margin: .6rem 0 0; padding: .9rem; max-height: 26rem; overflow: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: .78rem;
+}
+.empty { padding: 2.5rem; text-align: center; color: var(--text-muted); }
+.notice {
+  padding: 1rem 1.25rem; margin-bottom: .75rem; font-size: .88rem;
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 10px;
+  color: var(--text-secondary);
+}
+
+/* ── Failures ───────────────────────────────────────────────────────────── */
+.failures { margin-top: 1.25rem; }
+.failures h2 { color: var(--text-primary); text-transform: none; font-size: 1rem; letter-spacing: 0; }
+.failures td { font-size: .84rem; }
+.failures .path { color: var(--text-primary); }
+.failures .why { color: var(--text-secondary); }
+
+@media (max-width: 40rem) {
+  body { padding: 1.25rem .75rem 3rem; }
+  .hide-sm { display: none; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>App Package Analysis</h1>
+    <p class="subtitle" id="subtitle"></p>
+  </header>
+
+  <section class="tiles" id="tiles" aria-label="Summary"></section>
+
+  <section class="charts" aria-label="Distributions">
+    <div class="card">
+      <h2>Runtime</h2>
+      <p class="hint">Artifacts per runtime — click to filter</p>
+      <div class="bars" id="chart-runtime"></div>
+    </div>
+    <div class="card">
+      <h2>Signing</h2>
+      <p class="hint">Artifacts per signing state — click to filter</p>
+      <div class="bars" id="chart-signing"></div>
+    </div>
+    <div class="card">
+      <h2>Largest artifacts</h2>
+      <p class="hint">Top 8 by size — click to open</p>
+      <div class="bars" id="chart-size"></div>
+    </div>
+  </section>
+
+  <div class="filters">
+    <input type="search" id="search" placeholder="Filter by name, identifier or path…" aria-label="Filter artifacts">
+    <span id="chips"></span>
+    <span class="count" id="count"></span>
+  </div>
+
+  <noscript>
+    <div class="notice">This report needs JavaScript for sorting, filtering and the
+    expandable rows. Open it in a browser to use it.</div>
+  </noscript>
+
+  <div class="table-wrap">
+    <table id="table">
+      <thead>
+        <tr id="head"></tr>
+      </thead>
+      <tbody id="body"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>No artifact matches the current filter.</div>
+  </div>
+
+  <section class="card failures" id="failures" hidden>
+    <h2>Failures</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Error</th></tr></thead>
+      <tbody id="failures-body"></tbody>
+    </table>
+  </section>
+</main>
+
+<script type="application/json" id="report-data">__FASTFORGE_ANALYSIS_DATA__</script>
+<script>
+"use strict";
+
+function readReport() {
+  const raw = document.getElementById("report-data").textContent;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    // The template ships with a placeholder where the analysis gets spliced in.
+    // Without it there is nothing to render, and a blank page reads as a bug.
+    document.querySelector("main").prepend(Object.assign(document.createElement("div"), {
+      className: "notice",
+      textContent: raw.trim().startsWith("{")
+        ? `The embedded analysis data could not be read: ${error.message}`
+        : "This is the report template — no analysis data has been embedded in it yet.",
+    }));
+    return { artifacts: [] };
+  }
+}
+
+const REPORT = readReport();
+const ARTIFACTS = REPORT.artifacts || [];
+const FAILURES = REPORT.failures || [];
+
+/* ── Reading the analysis payload ───────────────────────────────────────── */
+
+// A DMG describes the disk image at the top level and the bundle it ships
+// under `app`; every other format keeps its detail at the top level.
+const detailOf = (a) => a.app || a;
+
+const fmtBytes = (bytes) => {
+  if (bytes == null) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = bytes, unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit++; }
+  return unit === 0 ? `${bytes} B` : `${size.toFixed(1)} ${units[unit]}`;
+};
+
+const signingOf = (a) => {
+  const sig = detailOf(a).codeSignature || a.codeSignature;
+  if (sig) {
+    if (sig.signingType) {
+      return sig.notarization && sig.notarization.stapled
+        ? `${sig.signingType}, notarized` : sig.signingType;
+    }
+    if (typeof sig.signed === "boolean") return sig.signed ? "signed" : "unsigned";
+  }
+  const android = a.signature;
+  if (android) {
+    if (typeof android.verified === "boolean") return android.verified ? "verified" : "not verified";
+    if (typeof android.jarSigned === "boolean") return android.jarSigned ? "JAR-signed" : "unsigned";
+  }
+  return "unknown";
+};
+
+const ROW = {
+  name:    (a) => a.name || a.fileName || "Unnamed",
+  file:    (a) => a.fileName || "",
+  format:  (a) => `${a.platform || ""} ${a.format || ""}`.trim(),
+  version: (a) => a.version ? (a.buildNumber ? `${a.version} (${a.buildNumber})` : a.version) : "—",
+  size:    (a) => a.sizeBytes ?? 0,
+  runtime: (a) => (detailOf(a).techStack || {}).runtime || "unknown",
+  signing: signingOf,
+  minOS:   (a) => detailOf(a).minOSVersion || (a.manifest && a.manifest.minSdkVersion != null ? `API ${a.manifest.minSdkVersion}` : "—"),
+};
+
+const COLUMNS = [
+  { key: "name",    label: "Artifact", sort: (a) => ROW.name(a).toLowerCase() },
+  { key: "format",  label: "Format",   sort: (a) => ROW.format(a), cls: "hide-sm" },
+  { key: "version", label: "Version",  sort: (a) => ROW.version(a), cls: "hide-sm" },
+  { key: "size",    label: "Size",     sort: ROW.size, num: true },
+  { key: "runtime", label: "Runtime",  sort: (a) => ROW.runtime(a) },
+  { key: "signing", label: "Signing",  sort: (a) => ROW.signing(a) },
+];
+
+/* ── State ──────────────────────────────────────────────────────────────── */
+
+const state = {
+  sort: { key: "size", dir: "desc" },
+  filters: { runtime: null, signing: null },
+  query: "",
+  open: new Set(),
+};
+
+const matchesQuery = (a) => {
+  if (!state.query) return true;
+  const q = state.query.toLowerCase();
+  return [ROW.name(a), a.identifier, a.fileName, a.path]
+    .some((value) => (value || "").toLowerCase().includes(q));
+};
+
+// Every chart re-renders against the shared slice, but a chart keeps its own
+// dimension unfiltered so it stays usable as a control.
+const sliceExcept = (dimension) => ARTIFACTS.filter((a) =>
+  matchesQuery(a) &&
+  (dimension === "runtime" || !state.filters.runtime || ROW.runtime(a) === state.filters.runtime) &&
+  (dimension === "signing" || !state.filters.signing || ROW.signing(a) === state.filters.signing));
+
+const visible = () => sliceExcept(null);
+
+/* ── Small DOM helpers ──────────────────────────────────────────────────── */
+
+const el = (tag, props = {}, children = []) => {
+  const node = Object.assign(document.createElement(tag), props);
+  for (const child of [].concat(children)) {
+    if (child != null) node.append(child.nodeType ? child : document.createTextNode(child));
+  }
+  return node;
+};
+const clear = (node) => { while (node.firstChild) node.removeChild(node.firstChild); return node; };
+
+/* ── Header & tiles ─────────────────────────────────────────────────────── */
+
+function renderHeader() {
+  const parts = [`${ARTIFACTS.length} artifact${ARTIFACTS.length === 1 ? "" : "s"}`];
+  if (FAILURES.length) parts.push(`${FAILURES.length} failure${FAILURES.length === 1 ? "" : "s"}`);
+  if (REPORT.generatedAt) {
+    const when = new Date(REPORT.generatedAt);
+    parts.push(`generated ${isNaN(when) ? REPORT.generatedAt : when.toLocaleString()}`);
+  }
+  document.getElementById("subtitle").textContent = parts.join(" · ");
+}
+
+function renderTiles() {
+  const rows = visible();
+  const total = rows.reduce((sum, a) => sum + ROW.size(a), 0);
+  const runtimes = new Set(rows.map(ROW.runtime)).size;
+  const unsigned = rows.filter((a) => /unsigned|not verified|adhoc|unknown/.test(ROW.signing(a))).length;
+
+  const tile = (label, value, unit) => el("div", { className: "tile" }, [
+    el("div", { className: "label" }, label),
+    el("div", { className: "value" }, [String(value), unit ? el("span", { className: "unit" }, unit) : null]),
+  ]);
+
+  const size = fmtBytes(total).split(" ");
+  clear(document.getElementById("tiles")).append(
+    tile("Artifacts", rows.length),
+    tile("Total size", size[0], size[1]),
+    tile("Runtimes", runtimes),
+    tile("Unsigned / ad-hoc", unsigned),
+  );
+}
+
+/* ── Charts ─────────────────────────────────────────────────────────────── */
+
+function tally(rows, accessor) {
+  const counts = new Map();
+  for (const row of rows) {
+    const key = accessor(row);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+function barButton({ name, value, label, ratio, active, onClick }) {
+  const fill = el("span", { className: "fill" });
+  fill.style.width = `${Math.max(ratio * 100, 1.5)}%`;
+  const button = el("button", {
+    className: "bar", type: "button", title: `${name} — ${label}`,
+    onclick: onClick,
+  }, [
+    el("span", { className: "name" }, name),
+    el("span", { className: "track" }, fill),
+    el("span", { className: "value" }, label),
+  ]);
+  if (active != null) button.setAttribute("aria-pressed", String(active));
+  return button;
+}
+
+function renderCategoryChart(id, dimension) {
+  const entries = tally(sliceExcept(dimension), ROW[dimension]);
+  const max = Math.max(...entries.map(([, count]) => count), 1);
+  const host = clear(document.getElementById(id));
+  host.dataset.filtered = String(Boolean(state.filters[dimension]));
+
+  for (const [name, count] of entries) {
+    host.append(barButton({
+      name, value: count, label: String(count), ratio: count / max,
+      active: state.filters[dimension] === name,
+      onClick: () => {
+        state.filters[dimension] = state.filters[dimension] === name ? null : name;
+        render();
+      },
+    }));
+  }
+  if (!entries.length) host.append(el("p", { className: "hint" }, "Nothing to show."));
+}
+
+function renderSizeChart() {
+  const rows = [...visible()].sort((a, b) => ROW.size(b) - ROW.size(a)).slice(0, 8);
+  const max = Math.max(...rows.map(ROW.size), 1);
+  const host = clear(document.getElementById("chart-size"));
+
+  for (const artifact of rows) {
+    host.append(barButton({
+      name: ROW.name(artifact), value: ROW.size(artifact), label: fmtBytes(ROW.size(artifact)),
+      ratio: ROW.size(artifact) / max, active: null,
+      onClick: () => {
+        toggleRow(artifact.__id);
+        document.getElementById(`row-${artifact.__id}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      },
+    }));
+  }
+  if (!rows.length) host.append(el("p", { className: "hint" }, "Nothing to show."));
+}
+
+/* ── Filter row ─────────────────────────────────────────────────────────── */
+
+function renderFilters() {
+  const host = clear(document.getElementById("chips"));
+  for (const dimension of ["runtime", "signing"]) {
+    const value = state.filters[dimension];
+    if (!value) continue;
+    host.append(el("button", {
+      className: "chip", type: "button",
+      onclick: () => { state.filters[dimension] = null; render(); },
+      title: `Clear ${dimension} filter`,
+    }, [`${dimension}: ${value}`, el("span", { className: "x" }, "×")]));
+  }
+  const shown = visible().length;
+  document.getElementById("count").textContent =
+    shown === ARTIFACTS.length ? `${shown} artifacts` : `${shown} of ${ARTIFACTS.length} artifacts`;
+}
+
+/* ── Table ──────────────────────────────────────────────────────────────── */
+
+function renderHead() {
+  const head = clear(document.getElementById("head"));
+  for (const column of COLUMNS) {
+    const active = state.sort.key === column.key;
+    const th = el("th", { className: [column.num ? "num" : "", column.cls || ""].join(" ").trim() });
+    if (active) th.setAttribute("aria-sort", state.sort.dir === "asc" ? "ascending" : "descending");
+    th.append(el("button", {
+      type: "button",
+      onclick: () => {
+        state.sort = active
+          ? { key: column.key, dir: state.sort.dir === "asc" ? "desc" : "asc" }
+          : { key: column.key, dir: column.num ? "desc" : "asc" };
+        render();
+      },
+    }, [column.label, el("span", { className: "arrow" }, active ? (state.sort.dir === "asc" ? "▲" : "▼") : "▲")]));
+    head.append(th);
+  }
+}
+
+function sortRows(rows) {
+  const column = COLUMNS.find((c) => c.key === state.sort.key) || COLUMNS[0];
+  const direction = state.sort.dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const left = column.sort(a), right = column.sort(b);
+    if (left < right) return -1 * direction;
+    if (left > right) return 1 * direction;
+    return ROW.name(a).localeCompare(ROW.name(b));
+  });
+}
+
+function toggleRow(id) {
+  state.open.has(id) ? state.open.delete(id) : state.open.add(id);
+  render();
+}
+
+function renderBody() {
+  const rows = sortRows(visible());
+  const body = clear(document.getElementById("body"));
+  document.getElementById("empty").hidden = rows.length > 0;
+
+  for (const artifact of rows) {
+    const open = state.open.has(artifact.__id);
+    const tr = el("tr", { className: `row${open ? " open" : ""}`, id: `row-${artifact.__id}` });
+    tr.onclick = () => toggleRow(artifact.__id);
+
+    const chevron = el("button", {
+      className: "chev", type: "button",
+      title: `${open ? "Hide" : "Show"} details for ${ROW.name(artifact)}`,
+    });
+    chevron.setAttribute("aria-expanded", String(open));
+    chevron.setAttribute("aria-label", `Details for ${ROW.name(artifact)}`);
+    chevron.innerHTML = '<svg width="7" height="10" viewBox="0 0 7 10" aria-hidden="true">'
+      + '<path d="M1 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    tr.append(
+      el("td", {}, el("span", { className: "name-cell" }, [
+        chevron,
+        el("strong", {}, ROW.name(artifact)),
+        ROW.file(artifact) && ROW.file(artifact) !== ROW.name(artifact)
+          ? el("span", { className: "file hide-sm" }, ROW.file(artifact)) : null,
+      ])),
+      el("td", { className: "hide-sm" }, el("span", { className: "tag" }, ROW.format(artifact))),
+      el("td", { className: "hide-sm" }, ROW.version(artifact)),
+      el("td", { className: "num" }, fmtBytes(ROW.size(artifact))),
+      el("td", {}, ROW.runtime(artifact)),
+      el("td", {}, ROW.signing(artifact)),
+    );
+    body.append(tr);
+
+    if (open) {
+      const cell = el("td", { colSpan: COLUMNS.length });
+      cell.append(renderDetail(artifact));
+      body.append(el("tr", { className: "detail" }, cell));
+    }
+  }
+}
+
+/* ── Expanded detail ────────────────────────────────────────────────────── */
+
+const fields = (rows) => {
+  const dl = el("dl", { className: "fields" });
+  for (const [label, value] of rows) {
+    if (value == null || value === "" || (Array.isArray(value) && !value.length)) continue;
+    dl.append(el("dt", {}, label));
+    dl.append(el("dd", {}, Array.isArray(value)
+      ? el("span", { className: "tags" }, value.map((v) => el("span", { className: "tag" }, String(v))))
+      : String(value)));
+  }
+  return dl;
+};
+
+const section = (title, node) => el("section", {}, [el("h3", {}, title), node]);
+
+function inlineObject(value) {
+  if (!value || typeof value !== "object") return String(value ?? "");
+  return Object.entries(value)
+    .filter(([, v]) => v == null || typeof v !== "object")
+    .map(([k, v]) => `${k} ${v}`)
+    .join(" · ");
+}
+
+function renderDetail(artifact) {
+  const info = detailOf(artifact);
+  const stack = info.techStack || {};
+  const body = el("div", { className: "detail-body" });
+
+  body.append(section("Identity", fields([
+    ["Identifier", artifact.identifier],
+    ["Version", ROW.version(artifact)],
+    ["Size", fmtBytes(ROW.size(artifact))],
+    [info.minOSVersion ? "Min OS" : "Min SDK", ROW.minOS(artifact)],
+    ["Architectures", info.architectures || artifact.abis],
+    ["Devices", artifact.deviceFamilies],
+    ["SHA-256", artifact.sha256],
+    ["Path", artifact.path],
+  ])));
+
+  const sdks = (stack.thirdPartySdks || []).map((s) => `${s.name} (${s.category})`);
+  const libraries = (stack.dependencies || stack.libraries || []).map((l) => `${l.name} ${l.version}`);
+  body.append(section("Tech stack", fields([
+    ["Runtime", stack.runtime],
+    ["Details", inlineObject(stack[stack.runtime])],
+    ["Languages", stack.languages],
+    ["UI toolkits", stack.uiToolkits],
+    ["Toolchain", inlineObject(stack.toolchain || stack.buildTools)],
+    ["Third-party SDKs", sdks],
+    ["Frameworks", stack.embeddedFrameworks],
+    ["Native libraries", stack.nativeLibraries],
+    ["Dependencies", libraries],
+  ])));
+
+  const breakdown = info.sizeBreakdown || (info.contents && info.contents.sizeBreakdown);
+  if (breakdown) {
+    const entries = Object.entries(breakdown).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const max = Math.max(...entries.map(([, size]) => size), 1);
+    const bars = el("div", { className: "mini-bars" });
+    for (const [name, size] of entries) {
+      const fill = el("span", { className: "fill" });
+      fill.style.width = `${Math.max((size / max) * 100, 1.5)}%`;
+      bars.append(el("div", { className: "mini" }, [
+        el("span", {}, name),
+        el("span", { className: "track" }, fill),
+        el("span", { className: "value" }, fmtBytes(size)),
+      ]));
+    }
+    body.append(section("Size composition", bars));
+  }
+
+  const signature = info.codeSignature || artifact.codeSignature;
+  const profile = artifact.provisioningProfile;
+  const android = artifact.signature;
+  body.append(section("Signing", fields([
+    ["State", ROW.signing(artifact)],
+    ["Team", signature && signature.teamIdentifier],
+    ["Authority", signature && signature.authorities && signature.authorities[0]],
+    ["Notarized", signature && signature.notarization
+      ? (signature.notarization.stapled ? "stapled" : "not stapled") : null],
+    ["Gatekeeper", signature && signature.gatekeeper
+      ? (signature.gatekeeper.accepted ? "accepted" : "rejected") : null],
+    ["Schemes", android && android.schemes],
+    ["Certificate", android && android.signers && android.signers[0] && android.signers[0].subject],
+    ["Distribution", profile && profile.distributionType],
+    ["Profile expires", profile && profile.expirationDate],
+  ])));
+
+  const json = el("details", { className: "detail-full" }, [
+    el("summary", {}, "Full analysis"),
+    el("pre", {}, JSON.stringify(artifact, null, 2)),
+  ]);
+  body.append(json);
+  return body;
+}
+
+/* ── Failures ───────────────────────────────────────────────────────────── */
+
+function renderFailures() {
+  if (!FAILURES.length) return;
+  document.getElementById("failures").hidden = false;
+  const body = clear(document.getElementById("failures-body"));
+  for (const failure of FAILURES) {
+    body.append(el("tr", {}, [
+      el("td", { className: "path" }, failure.path),
+      el("td", { className: "why" }, failure.error),
+    ]));
+  }
+}
+
+/* ── Boot ───────────────────────────────────────────────────────────────── */
+
+function render() {
+  renderTiles();
+  renderCategoryChart("chart-runtime", "runtime");
+  renderCategoryChart("chart-signing", "signing");
+  renderSizeChart();
+  renderFilters();
+  renderHead();
+  renderBody();
+}
+
+ARTIFACTS.forEach((artifact, index) => { artifact.__id = index; });
+document.getElementById("search").addEventListener("input", (event) => {
+  state.query = event.target.value.trim();
+  render();
+});
+renderHeader();
+renderFailures();
+render();
+</script>
+</body>
+</html>

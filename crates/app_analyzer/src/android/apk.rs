@@ -1,10 +1,12 @@
+use crate::android::techstack::Layout;
+use crate::android::{badging, sdk, signature, techstack};
+use crate::archive;
+use crate::archive::Archive;
+use crate::command;
+use crate::json_util;
 use fastforge_core::{AnalyzeConfig, AnalyzeError, AnalyzeResult, AppAnalyzer};
-use regex::Regex;
-use serde_json::json;
-use std::env;
-use std::fs;
+use serde_json::{Map, Value};
 use std::path::Path;
-use std::process::Command;
 
 pub struct AndroidApkAnalyzer;
 
@@ -22,122 +24,66 @@ impl AppAnalyzer for AndroidApkAnalyzer {
     }
 
     fn perform_analyze(&self, config: &AnalyzeConfig) -> Result<AnalyzeResult, AnalyzeError> {
-        // Check for ANDROID_HOME environment variable
-        let android_home = env::var("ANDROID_HOME")
-            .map_err(|_| AnalyzeError::MissingEnv("ANDROID_HOME".to_string()))?;
-
-        if android_home.is_empty() {
-            return Err(AnalyzeError::MissingEnv("ANDROID_HOME".to_string()));
+        let apk_path = Path::new(&config.path);
+        if !apk_path.is_file() {
+            return Err(AnalyzeError::NotFound(format!(
+                "APK not found: {}",
+                config.path
+            )));
         }
 
-        // Find aapt tool in Android SDK build-tools directory
-        let build_tools_dir = Path::new(&android_home).join("build-tools");
+        let badging = read_badging(&config.path)?;
+        let mut archive = Archive::open(apk_path)?;
+        let layout = Layout::apk();
 
-        if !build_tools_dir.exists() {
-            return Err(AnalyzeError::NotFound(
-                "build-tools directory in ANDROID_HOME".to_string(),
-            ));
+        let mut data = Map::new();
+        data.insert("platform".to_string(), Value::String("android".to_string()));
+        data.insert("format".to_string(), Value::String("apk".to_string()));
+        data.append(&mut badging::identity_fields(&badging.identity));
+        data.append(&mut super::artifact_fields(apk_path));
+
+        // aapt2 reports the ABIs the manifest advertises; the `lib/` layout
+        // shows what the APK actually carries. They agree for a normal build
+        // and diverge for split or stripped APKs.
+        let mut abis = badging.abis.clone();
+        if abis.is_empty() {
+            abis = techstack::native_abis(&archive, &layout);
         }
+        json_util::insert_text_array(&mut data, "abis", Some(abis));
 
-        let entries = fs::read_dir(&build_tools_dir).map_err(AnalyzeError::Io)?;
-
-        // Find the first build-tools version directory (excluding .DS_Store)
-        let mut aapt2_path = None;
-        for entry in entries {
-            let entry = entry.map_err(AnalyzeError::Io)?;
-
-            let path = entry.path();
-            if path.is_dir()
-                && !path
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .contains(".DS_Store")
-            {
-                let aapt_tool_path = path.join("aapt2");
-                if aapt_tool_path.exists() {
-                    aapt2_path = Some(aapt_tool_path.to_string_lossy().to_string());
-                    break;
-                }
-            }
-        }
-
-        let aapt2_path = aapt2_path
-            .ok_or_else(|| AnalyzeError::NotFound("aapt2 in Android build-tools".to_string()))?;
-
-        // Execute aapt command to extract APK information
-        let output = Command::new(&aapt2_path)
-            .args(["dump", "badging", &config.path])
-            .output()
-            .map_err(AnalyzeError::Io)?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AnalyzeError::CommandFailed {
-                command: "aapt2".to_string(),
-                stderr: stderr.to_string(),
-            });
-        }
-
-        let aapt_output = String::from_utf8_lossy(&output.stdout);
-
-        // Parse aapt output using regex
-        let name_regex = Regex::new(r"name='([^']+)'").unwrap();
-        let label_regex = Regex::new(r"application-label:'([^']+)'").unwrap();
-        let version_name_regex = Regex::new(r"versionName='([^']+)").unwrap();
-        let version_code_regex = Regex::new(r"versionCode='(\d+)'").unwrap();
-
-        // Extract package name
-        let package_name = name_regex
-            .captures(&aapt_output)
-            .and_then(|cap| cap.get(1))
-            .map(|m| m.as_str().to_string())
-            .ok_or_else(|| {
-                AnalyzeError::Parse("Failed to extract package name from aapt output".to_string())
-            })?;
-
-        // Extract application label
-        let app_name = label_regex
-            .captures(&aapt_output)
-            .and_then(|cap| cap.get(1))
-            .map(|m| m.as_str().to_string())
-            .ok_or_else(|| {
-                AnalyzeError::Parse(
-                    "Failed to extract application label from aapt output".to_string(),
-                )
-            })?;
-
-        // Extract version name
-        let version_name = version_name_regex
-            .captures(&aapt_output)
-            .and_then(|cap| cap.get(1))
-            .map(|m| m.as_str().to_string())
-            .ok_or_else(|| {
-                AnalyzeError::Parse("Failed to extract version name from aapt output".to_string())
-            })?;
-
-        // Extract version code
-        let version_code_str = version_code_regex
-            .captures(&aapt_output)
-            .and_then(|cap| cap.get(1))
-            .map(|m| m.as_str().to_string())
-            .ok_or_else(|| {
-                AnalyzeError::Parse("Failed to extract version code from aapt output".to_string())
-            })?;
-
-        let version_code = version_code_str.parse::<i32>().map_err(|_| {
-            AnalyzeError::Parse("Failed to parse version code as integer".to_string())
-        })?;
-
-        let data = json!({
-            "platform": "android",
-            "identifier": package_name,
-            "name": app_name,
-            "version": version_name,
-            "buildNumber": version_code
-        });
+        json_util::insert_object(&mut data, "manifest", badging.manifest);
+        json_util::insert_object(
+            &mut data,
+            "techStack",
+            techstack::collect(&mut archive, &layout),
+        );
+        json_util::insert_object(
+            &mut data,
+            "contents",
+            archive::contents_summary(archive.entries(), ""),
+        );
+        json_util::insert_value(&mut data, "signature", signature::inspect(&config.path));
 
         log::info!("APK analysis completed for {}", config.path);
-        Ok(AnalyzeResult::new(true, data))
+        Ok(AnalyzeResult::new(true, Value::Object(data)))
     }
+}
+
+fn read_badging(path: &str) -> Result<badging::Badging, AnalyzeError> {
+    let aapt2 = sdk::build_tool("aapt2").ok_or_else(|| {
+        AnalyzeError::NotFound(
+            "aapt2 in Android build-tools (set ANDROID_HOME to your SDK)".to_string(),
+        )
+    })?;
+
+    let output = command::run(&aapt2.to_string_lossy(), &["dump", "badging", path])
+        .ok_or_else(|| AnalyzeError::General("Failed to run aapt2".to_string()))?;
+    if !output.success {
+        return Err(AnalyzeError::CommandFailed {
+            command: "aapt2".to_string(),
+            stderr: output.stderr_text(),
+        });
+    }
+
+    badging::parse(&output.stdout_text())
 }

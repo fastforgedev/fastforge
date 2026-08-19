@@ -1,6 +1,6 @@
 name: flutter_app_packager
 description: Package your Flutter app into OS-specific bundles (.dmg, .exe, etc.) via Dart or the command line.
-version: 0.6.10
+version: 0.6.11
 homepage: https://github.com/fastforgedev/fastforge
 
 environment:

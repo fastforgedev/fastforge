@@ -1,10 +1,8 @@
-//! Locks in a documented current limitation of `fastforge package`: in a
-//! Flutter project, the packager is currently resolved unconditionally via
-//! `macos_packager(target)` (see `apps/cli/src/cli/commands/package.rs`), so
-//! `--platform android`/`--platform ios` complete the build successfully but
-//! then fail at the packaging step with a specific error. This must fail
-//! loudly and predictably rather than silently changing behavior later
-//! without anyone noticing.
+//! Locks in the error behavior of `fastforge package` for genuinely
+//! unsupported `(platform, target)` pairs: the packager registry
+//! (`resolve_packager` in `apps/cli/src/cli/commands/package.rs`) must reject
+//! mismatched combinations loudly and predictably instead of silently
+//! producing the wrong artifact.
 
 mod support;
 
@@ -12,21 +10,19 @@ use std::fs;
 use support::{fixture_dir, run_fastforge};
 
 #[test]
-fn flutter_app_android_apk_package_is_unsupported() {
+fn flutter_app_macos_apk_package_is_unsupported() {
     let dir = fixture_dir("flutter_app");
     let dist = dir.join("dist");
     let _ = fs::remove_dir_all(&dist);
 
-    let run = run_fastforge(
-        &dir,
-        &["package", "--platform", "android", "--target", "apk"],
-    );
+    // `apk` is an Android format; requesting it for macOS must fail at
+    // packager resolution with the documented error message.
+    let run = run_fastforge(&dir, &["package", "--platform", "macos", "--target", "apk"]);
 
     assert!(
         !run.success,
-        "expected `fastforge package --platform android` to fail in a Flutter \
-         project (packager selection is currently hardcoded to macOS formats); \
-         stdout: {}\nstderr: {}",
+        "expected `fastforge package --platform macos --target apk` to fail \
+         (apk is not a macOS package format); stdout: {}\nstderr: {}",
         run.stdout, run.stderr
     );
     assert!(
@@ -36,4 +32,22 @@ fn flutter_app_android_apk_package_is_unsupported() {
     );
 
     let _ = fs::remove_dir_all(&dist);
+}
+
+#[test]
+fn package_requires_at_least_one_target() {
+    let dir = fixture_dir("flutter_app");
+
+    let run = run_fastforge(&dir, &["package", "--platform", "macos"]);
+
+    assert!(
+        !run.success,
+        "expected `fastforge package` without --targets to fail; stdout: {}\nstderr: {}",
+        run.stdout, run.stderr
+    );
+    assert!(
+        run.stderr.contains("At least one 'target' must be specified"),
+        "expected the missing-target error, got:\n{}",
+        run.stderr
+    );
 }

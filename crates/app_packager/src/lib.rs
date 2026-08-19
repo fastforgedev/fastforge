@@ -1,4 +1,5 @@
 pub mod android;
+pub mod custom;
 pub mod ios;
 pub mod linux;
 pub mod macos;
@@ -11,6 +12,7 @@ pub use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult
 // Re-export all packagers for convenient access.
 pub use android::aab::AndroidAabPackager;
 pub use android::apk::AndroidApkPackager;
+pub use custom::CustomPackager;
 pub use ios::ipa::IOSIpaPackager;
 pub use linux::appimage::LinuxAppImagePackager;
 pub use linux::deb::LinuxDebPackager;

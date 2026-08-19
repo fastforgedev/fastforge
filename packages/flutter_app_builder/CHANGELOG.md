@@ -1,3 +1,7 @@
+## 0.6.2
+
+* chore: bump version for coordinated release
+
 ## 0.6.1
 
 * fix: Pass the app version with Flutter's `--build-name` and

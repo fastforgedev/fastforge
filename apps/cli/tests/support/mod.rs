@@ -1,3 +1,7 @@
+//! Each test binary compiles this module separately and uses the part it needs,
+//! so some helpers are unused in any given one.
+#![allow(dead_code)]
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 

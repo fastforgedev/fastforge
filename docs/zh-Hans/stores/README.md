@@ -9,6 +9,7 @@
 | 入口                   | 用途                              | 文档                             |
 | ---------------------- | --------------------------------- | -------------------------------- |
 | `fastforge appstore`   | App Store Connect API、构建与审核 | [App Store Connect](appstore.md) |
+| `fastforge appgallery` | 华为应用、软件包与提交审核        | [AppGallery Connect](appgallery.md) |
 | `fastforge googleplay` | Google Play edit、AAB 与 track    | [Google Play](googleplay.md)     |
 | `fastforge store`      | 批量处理配置中的多个商店应用      | [统一 Catalog](catalog.md)       |
 
@@ -22,6 +23,10 @@ stores:
     apps:
       - bundle_id: com.example.myapp
         app_id: "1234567890"
+  appgallery:
+    apps:
+      - app_id: "987654321"
+        package_name: com.example.myapp
   googleplay:
     apps:
       - package_name: com.example.myapp
@@ -36,7 +41,7 @@ fastforge store list
 
 ## 输出选项
 
-`appstore` 与 `googleplay` 命令支持：
+`appstore`、`appgallery` 与 `googleplay` 命令支持：
 
 - `--json <FIELDS>`
 - `--limit <LIMIT>`

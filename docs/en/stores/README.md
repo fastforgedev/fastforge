@@ -9,6 +9,7 @@ Store commands have a different responsibility from the general `publish` comman
 | Entry point            | Purpose                                   | Documentation                    |
 | ---------------------- | ----------------------------------------- | -------------------------------- |
 | `fastforge appstore`   | App Store Connect API, builds, and review | [App Store Connect](appstore.md) |
+| `fastforge appgallery` | Huawei apps, packages, and releases       | [AppGallery Connect](appgallery.md) |
 | `fastforge googleplay` | Google Play edits, AABs, and tracks       | [Google Play](googleplay.md)     |
 | `fastforge store`      | Process multiple configured store apps    | [Unified Catalog](catalog.md)    |
 
@@ -22,6 +23,10 @@ stores:
     apps:
       - bundle_id: com.example.myapp
         app_id: "1234567890"
+  appgallery:
+    apps:
+      - app_id: "987654321"
+        package_name: com.example.myapp
   googleplay:
     apps:
       - package_name: com.example.myapp
@@ -36,7 +41,7 @@ Provide authentication credentials through process environment variables. See [S
 
 ## Output Options
 
-The `appstore` and `googleplay` commands support:
+The `appstore`, `appgallery`, and `googleplay` commands support:
 
 - `--json <FIELDS>`
 - `--limit <LIMIT>`

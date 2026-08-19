@@ -37,6 +37,10 @@ const ENV_AWS_REGION: &str = "AWS_REGION";
 const ENV_AWS_ACCESS_KEY_ID: &str = "AWS_ACCESS_KEY_ID";
 const ENV_AWS_SECRET_ACCESS_KEY: &str = "AWS_SECRET_ACCESS_KEY";
 const ENV_AWS_SESSION_TOKEN: &str = "AWS_SESSION_TOKEN";
+// MinIO aliases (mirror Dart's `AppPackagePublisherMinio` configuration)
+const ENV_MINIO_ENDPOINT: &str = "MINIO_ENDPOINT";
+const ENV_MINIO_ACCESS_KEY: &str = "MINIO_ACCESS_KEY";
+const ENV_MINIO_SECRET_KEY: &str = "MINIO_SECRET_KEY";
 const DEFAULT_REGION: &str = "us-east-1";
 
 type HmacSha256 = Hmac<Sha256>;
@@ -169,37 +173,37 @@ impl S3PublishOptions {
     fn from_config(config: &PublishConfig) -> Result<Self, PublishError> {
         let endpoint = required_value(
             config,
-            &["endpoint", "s3-endpoint"],
-            &[ENV_S3_ENDPOINT],
+            &["endpoint", "s3-endpoint", "minio-endpoint"],
+            &[ENV_S3_ENDPOINT, ENV_MINIO_ENDPOINT],
             "S3 endpoint",
         )?;
         let region = optional_value(
             config,
-            &["region", "s3-region"],
+            &["region", "s3-region", "minio-region"],
             &[ENV_S3_REGION, ENV_AWS_REGION],
         )
         .unwrap_or_else(|| DEFAULT_REGION.to_string());
         let access_key = required_value(
             config,
-            &["access-key", "s3-access-key"],
-            &[ENV_S3_ACCESS_KEY, ENV_AWS_ACCESS_KEY_ID],
+            &["access-key", "s3-access-key", "minio-access-key"],
+            &[ENV_S3_ACCESS_KEY, ENV_AWS_ACCESS_KEY_ID, ENV_MINIO_ACCESS_KEY],
             "S3 access key",
         )?;
         let secret_key = required_value(
             config,
-            &["secret-key", "s3-secret-key"],
-            &[ENV_S3_SECRET_KEY, ENV_AWS_SECRET_ACCESS_KEY],
+            &["secret-key", "s3-secret-key", "minio-secret-key"],
+            &[ENV_S3_SECRET_KEY, ENV_AWS_SECRET_ACCESS_KEY, ENV_MINIO_SECRET_KEY],
             "S3 secret key",
         )?;
         let bucket = required_value(
             config,
-            &["bucket", "s3-bucket"],
+            &["bucket", "s3-bucket", "minio-bucket"],
             &[ENV_S3_BUCKET],
             "S3 bucket",
         )?;
         let key_prefix = optional_value(
             config,
-            &["savekey-prefix", "key-prefix", "s3-key-prefix"],
+            &["savekey-prefix", "key-prefix", "s3-key-prefix", "minio-savekey-prefix"],
             &[ENV_S3_KEY_PREFIX],
         );
         let public_base_url = optional_value(

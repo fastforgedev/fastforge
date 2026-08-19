@@ -26,7 +26,7 @@ Will package your application into a platform specific format and put the result
 
 | Flag | Value | Required |
 |------|-------|:--------:|
-| `--platform` | Platform, e.g. `android` | ✅ |
+| `--platform` | Platform, e.g. `android` (auto-detected from the targets and project layout when omitted) | ❌ |
 | `--targets` | Comma separated list of maker names | ✅ |
 | `--skip-clean` | Skip clean once before build | ❌ |
 | `--hook-pre` | Shell command to run before packaging | ❌ |
@@ -37,8 +37,13 @@ Example:
 ```shell
 fastforge package --platform=android --targets=aab,apk
 
+# The platform can be omitted: `aab`/`apk` only belong to android
+fastforge package --targets=aab,apk
+
 fastforge package --platform=macos --target=zip --hook-pre 'echo "before"' --hook-post 'echo "after"'
 ```
+
+> `--platform` is optional. Most targets map to exactly one platform (e.g. `dmg` → macos, `apk` → android); ambiguous targets such as `zip`, `direct` and `custom` are resolved from the platform directories in your project and the host OS. You only need to specify it when no unambiguous platform can be determined.
 
 ### Publish
 

@@ -1,3 +1,8 @@
+## 0.6.12
+
+* bump `unified_distributor` to ^0.2.12
+* bump `flutter_app_packager` to ^0.6.11
+
 ## 0.6.11
 
 * fix(flutter): use supported build version flags (#354)

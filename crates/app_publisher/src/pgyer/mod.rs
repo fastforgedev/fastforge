@@ -81,7 +81,7 @@ impl AppPublisher for PgyerPublisher {
         })?;
 
         let client = Client::new();
-        let token_data = self.get_cos_token(&client, &api_key, build_type)?;
+        let token_data = self.get_cos_token(&client, &api_key, build_type, config)?;
         let upload_key = self.upload_app(&client, artifact_path, &token_data, on_progress)?;
         let build_info = self.get_build_info_with_retry(&client, &api_key, &upload_key)?;
         let build_key = build_info.build_key;
@@ -99,10 +99,36 @@ impl PgyerPublisher {
         client: &Client,
         api_key: &str,
         build_type: &str,
+        config: &PublishConfig,
     ) -> Result<CosTokenData, PublishError> {
-        let form = Form::new()
+        let mut form = Form::new()
             .text("_api_key", api_key.to_string())
             .text("buildType", build_type.to_string());
+
+        // Optional pgyer API parameters, mirroring Dart's `PublishPgyerConfig`.
+        // See https://www.pgyer.com/doc/view/api#fastUploadApp
+        let optional_params = [
+            ("oversea", "oversea"),
+            ("install-type", "buildInstallType"),
+            ("password", "buildPassword"),
+            ("description", "buildDescription"),
+            ("update-description", "buildUpdateDescription"),
+            ("install-date", "buildInstallDate"),
+            ("install-start-date", "buildInstallStartDate"),
+            ("install-end-date", "buildInstallEndDate"),
+            ("channel-shortcut", "buildChannelShortcut"),
+        ];
+        if let Some(arguments) = config.publish_arguments.as_ref() {
+            for (arg_key, form_key) in optional_params {
+                if let Some(value) = arguments
+                    .get(arg_key)
+                    .or_else(|| arguments.get(&format!("pgyer-{arg_key}")))
+                    .filter(|v| !v.is_empty())
+                {
+                    form = form.text(form_key, value.clone());
+                }
+            }
+        }
         let response = client
             .post(GET_COS_TOKEN_URL)
             .multipart(form)

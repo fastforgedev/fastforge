@@ -17,7 +17,7 @@ Top-level commands:
 
 | Command         | Description                                        |
 | --------------- | -------------------------------------------------- |
-| `analyze`       | Analyze an app package or bundle                   |
+| `analyze`       | Analyze app packages, or a directory of them       |
 | `build`         | Build a project with Flutter Builder               |
 | `package`       | Build and package a project                        |
 | `publish`       | Publish an existing artifact                       |
@@ -25,6 +25,7 @@ Top-level commands:
 | `store`         | Manage aggregated store configuration and catalogs |
 | `workflow`      | Run local workflows                                |
 | `appstore`      | Operate App Store Connect                          |
+| `appgallery`    | Operate Huawei AppGallery Connect                  |
 | `googleplay`    | Operate Google Play Console                        |
 | `upgrade`       | Reserved upgrade command                           |
 | `version-check` | Print the current version                          |
@@ -32,17 +33,19 @@ Top-level commands:
 ## `analyze`
 
 ```text
-fastforge analyze [OPTIONS] <PATH>
+fastforge analyze [OPTIONS] <PATH>...
 ```
 
-| Option                  | Required | Description                                          |
-| ----------------------- | :------: | ---------------------------------------------------- |
-| `<PATH>`                |   Yes    | Path to an `.apk`, `.aab`, `.ipa`, `.dmg`, or `.app` |
-| `-o, --output <OUTPUT>` |    No    | Write JSON to a file; otherwise write to stdout      |
+| Option                  | Required | Description                                                                    |
+| ----------------------- | :------: | ------------------------------------------------------------------------------ |
+| `<PATH>...`             |   Yes    | One or more `.apk`, `.aab`, `.ipa`, `.dmg` or `.app` paths, or directories to scan |
+| `-o, --output <OUTPUT>` |    No    | Write the report to a file; otherwise write to stdout                          |
+| `--format <FORMAT>`     |    No    | `json` or `html`. Defaults to the format implied by `--output`, else `json`    |
 
 ```bash
 fastforge analyze dist/app.apk
 fastforge analyze dist/app.ipa --output app-info.json
+fastforge analyze dist --output report.html
 ```
 
 See [App Package Analysis](tools/analyze.md) for format dependencies and output details.
@@ -177,6 +180,21 @@ Global options:
 - `--debug`
 - `--no-color`
 
+## `appgallery`
+
+```text
+fastforge appgallery [GLOBAL OPTIONS] <COMMAND>
+```
+
+| Command group | Subcommands                             |
+| ------------- | --------------------------------------- |
+| `app`         | `resolve`, `view`                       |
+| `package`     | `list`, `status`                        |
+| `release`     | submit an app for review                |
+| `api`         | `get`, `post`, `put`, `patch`, `delete` |
+
+See [AppGallery Connect](stores/appgallery.md) for authentication and examples.
+
 ## `googleplay`
 
 ```text
@@ -205,6 +223,7 @@ Store subcommands have many options. Use help at each command level to inspect t
 ```bash
 fastforge appstore build upload --help
 fastforge appstore submission create --help
+fastforge appgallery app resolve --help
 fastforge googleplay bundle upload --help
 fastforge googleplay track update --help
 ```

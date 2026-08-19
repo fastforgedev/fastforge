@@ -66,6 +66,19 @@ fn list_stores() -> Result<()> {
         }
     }
 
+    if let Some(appgallery) = &config.stores.appgallery {
+        println!("appgallery ({})", appgallery.auth.auth_type());
+        if appgallery.apps.is_empty() {
+            println!("  apps: none");
+        } else {
+            for app in &appgallery.apps {
+                let identifier = app.identifier().unwrap_or("<unknown>");
+                let label = app.name.as_deref().unwrap_or(identifier);
+                println!("  - {} [android] {}", label, identifier);
+            }
+        }
+    }
+
     if let Some(googleplay) = &config.stores.googleplay {
         println!("googleplay ({})", googleplay.auth.auth_type());
         if googleplay.apps.is_empty() {

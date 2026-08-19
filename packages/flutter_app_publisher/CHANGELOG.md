@@ -1,3 +1,7 @@
+## 0.6.10
+
+* chore: bump version for coordinated release
+
 ## 0.6.9
 
 * refactor: remove appcenter publisher

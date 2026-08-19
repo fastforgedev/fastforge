@@ -584,6 +584,7 @@ impl Action for FastforgePackageAction {
                 environment,
                 &output,
                 artifact_name,
+                ctx.inputs.get("channel").cloned(),
                 !skip_clean,
                 hooks.as_ref(),
             )

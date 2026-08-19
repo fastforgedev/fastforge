@@ -4,8 +4,11 @@ use fastforge_app_builder::{
     FlutterAppBuilder, GradleAppBuilder, IOSXcodeAppBuilder, MacOSXcodeAppBuilder, Platform,
 };
 use fastforge_app_packager::{
-    AndroidAabPackager, AndroidApkPackager, AppPackager, IOSIpaPackager, MacOSDmgPackager,
-    MacOSPkgPackager, MacOSZipPackager, PackageConfig,
+    AndroidAabPackager, AndroidApkPackager, AppPackager, CustomPackager, IOSIpaPackager,
+    LinuxAppImagePackager, LinuxDebPackager, LinuxDirectPackager, LinuxPacmanPackager,
+    LinuxRpmPackager, LinuxZipPackager, MacOSDmgPackager, MacOSPkgPackager, MacOSZipPackager,
+    OHOSAppPackager, OHOSHapPackager, PackageConfig, WebDirectPackager, WebZipPackager,
+    WindowsDirectPackager, WindowsExePackager, WindowsMsixPackager, WindowsZipPackager,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -17,14 +20,42 @@ use std::str::FromStr;
 
 #[derive(Args)]
 pub struct PackageArgs {
+    /// Target platform (auto-detected from the targets and project layout
+    /// when omitted).
     #[arg(short, long = "platform")]
     pub platform: Option<String>,
-    #[arg(short, long = "target")]
-    pub target: Option<String>,
+    /// Comma-separated list of bundle types to build (e.g. `apk`, `dmg,zip`).
+    #[arg(short, long = "targets", alias = "target", value_name = "TARGET,...")]
+    pub targets: Option<String>,
+    /// Release channel included in the artifact name.
+    #[arg(long = "channel")]
+    pub channel: Option<String>,
+    /// Artifact name template (mustache syntax, e.g. `{{name}}-{{build_name}}.{{ext}}`).
+    #[arg(long = "artifact-name")]
+    pub artifact_name: Option<String>,
     #[arg(long = "skip-clean", default_value_t = false)]
     pub skip_clean: bool,
+
+    /// Comma-separated arguments passed directly to `flutter build`
+    /// (e.g. `verbose,obfuscate` or `split-debug-info=./symbols`).
+    #[arg(long = "flutter-build-args", value_name = "ARG,...")]
+    pub flutter_build_args: Option<String>,
+    /// The --target argument passed to `flutter build`.
     #[arg(long = "build-target")]
     pub build_target: Option<String>,
+    /// The --flavor argument passed to `flutter build`.
+    #[arg(long = "build-flavor")]
+    pub build_flavor: Option<String>,
+    /// The --target-platform argument passed to `flutter build`.
+    #[arg(long = "build-target-platform")]
+    pub build_target_platform: Option<String>,
+    /// The --export-options-plist argument passed to `flutter build`.
+    #[arg(long = "build-export-options-plist")]
+    pub build_export_options_plist: Option<String>,
+    /// The --dart-define argument(s) passed to `flutter build`.
+    /// May be repeated: `--build-dart-define foo=bar --build-dart-define a=b`.
+    #[arg(long = "build-dart-define", value_name = "KEY=VALUE")]
+    pub build_dart_define: Vec<String>,
 
     /// Shell command to run before packaging.
     #[arg(long = "hook-pre")]
@@ -35,21 +66,78 @@ pub struct PackageArgs {
     pub hook_post: Option<String>,
 }
 
+impl PackageArgs {
+    /// Builds the `flutter build` argument map, mirroring Dart's
+    /// `CommandPackage._generateBuildArgs`.
+    fn build_arguments(&self) -> Map<String, Value> {
+        let mut build_args = Map::new();
+        if let Some(value) = &self.build_target {
+            build_args.insert("target".to_string(), Value::String(value.clone()));
+        }
+        if let Some(value) = &self.build_flavor {
+            build_args.insert("flavor".to_string(), Value::String(value.clone()));
+        }
+        if let Some(value) = &self.build_target_platform {
+            build_args.insert("target-platform".to_string(), Value::String(value.clone()));
+        }
+        if let Some(value) = &self.build_export_options_plist {
+            build_args.insert(
+                "export-options-plist".to_string(),
+                Value::String(value.clone()),
+            );
+        }
+        if !self.build_dart_define.is_empty() {
+            let mut defines = Map::new();
+            for item in &self.build_dart_define {
+                if let Some((key, value)) = item.split_once('=') {
+                    defines.insert(key.to_string(), Value::String(value.to_string()));
+                }
+            }
+            build_args.insert("dart-define".to_string(), Value::Object(defines));
+        }
+        for arg in self
+            .flutter_build_args
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            match arg.split_once('=') {
+                Some((key, value)) => {
+                    build_args
+                        .entry(key.to_string())
+                        .or_insert(Value::String(value.to_string()));
+                }
+                None => {
+                    build_args.entry(arg.to_string()).or_insert(Value::Bool(true));
+                }
+            }
+        }
+        build_args
+    }
+}
+
 pub async fn execute(args: &PackageArgs) -> Result<()> {
     log::info!("Executing package command");
-    let platform = args
-        .platform
+    let targets: Vec<&str> = args
+        .targets
         .as_deref()
-        .ok_or_else(|| anyhow!("The 'platform' option is mandatory!"))?;
-    let target = args
-        .target
-        .as_deref()
-        .ok_or_else(|| anyhow!("The 'target' option is mandatory!"))?;
-
-    let mut build_args = Map::new();
-    if let Some(value) = &args.build_target {
-        build_args.insert("target".to_string(), Value::String(value.clone()));
+        .unwrap_or("")
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if targets.is_empty() {
+        return Err(anyhow!("At least one 'target' must be specified!"));
     }
+    let platform = match args.platform.as_deref() {
+        Some(platform) => platform.to_string(),
+        None => super::platform_infer::infer_platform(&targets)?
+            .as_str()
+            .to_string(),
+    };
+    let platform = platform.as_str();
 
     // Build hooks map from CLI args
     let hooks: Option<HashMap<String, serde_yaml::Value>> = {
@@ -64,49 +152,104 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
     };
 
     let is_native = !is_flutter_project();
+    let mut clean_before_build = !args.skip_clean;
+    let mut artifacts = Vec::new();
 
-    let artifacts = if is_native && platform == "macos" {
-        log::info!("Detected native macOS Xcode project (no pubspec.yaml)");
-        package_native_macos_artifact(
-            target,
-            build_args,
-            std::env::vars().collect(),
-            "dist/",
-            None,
-            hooks.as_ref(),
-        )?
-    } else if is_native && platform == "ios" {
-        log::info!("Detected native iOS Xcode project (no pubspec.yaml)");
-        package_native_ios_artifact(
-            target,
-            build_args,
-            std::env::vars().collect(),
-            "dist/",
-            None,
-            hooks.as_ref(),
-        )?
-    } else if is_native && platform == "android" {
-        log::info!("Detected native Android project (no pubspec.yaml)");
-        package_native_android_artifact(
-            target,
-            build_args,
-            std::env::vars().collect(),
-            "dist/",
-            None,
-            hooks.as_ref(),
-        )?
-    } else {
-        package_flutter_artifact(
-            platform,
-            target,
-            build_args,
-            std::env::vars().collect(),
-            "dist/",
-            None,
-            !args.skip_clean,
-            hooks.as_ref(),
-        )?
-    };
+    // Non-android flutter platforms build once and reuse the output for
+    // subsequent targets (mirrors Dart's `isBuildOnlyOnce`); android rebuilds
+    // per target because apk/aab need different `flutter build` subcommands.
+    let mut cached_build: Option<fastforge_app_builder::BuildResult> = None;
+
+    for target in targets {
+        let build_args = args.build_arguments();
+        let target_artifacts = if is_native && platform == "macos" {
+            log::info!("Detected native macOS Xcode project (no pubspec.yaml)");
+            package_native_macos_artifact(
+                target,
+                build_args,
+                std::env::vars().collect(),
+                "dist/",
+                args.artifact_name.clone(),
+                hooks.as_ref(),
+            )?
+        } else if is_native && platform == "ios" {
+            log::info!("Detected native iOS Xcode project (no pubspec.yaml)");
+            package_native_ios_artifact(
+                target,
+                build_args,
+                std::env::vars().collect(),
+                "dist/",
+                args.artifact_name.clone(),
+                hooks.as_ref(),
+            )?
+        } else if is_native && platform == "android" {
+            log::info!("Detected native Android project (no pubspec.yaml)");
+            package_native_android_artifact(
+                target,
+                build_args,
+                std::env::vars().collect(),
+                "dist/",
+                args.artifact_name.clone(),
+                hooks.as_ref(),
+            )?
+        } else {
+            let flutter_platform = Platform::from_str(platform)
+                .map_err(|e| anyhow!("Invalid platform '{}': {}", platform, e))?;
+
+            // Fail fast on unsupported (platform, target) pairs before building.
+            let packager = resolve_packager(flutter_platform, target)?;
+            if !packager.is_supported_on_current_platform() {
+                return Err(anyhow!(
+                    "Packager '{}' is not supported on the current platform",
+                    target
+                ));
+            }
+            drop(packager);
+
+            let environment: HashMap<String, String> = std::env::vars().collect();
+            let build = match (&cached_build, flutter_platform) {
+                (Some(build), p) if p != Platform::Android => build,
+                _ => {
+                    let build = build_flutter_target(
+                        &flutter_platform,
+                        target,
+                        build_args,
+                        &environment,
+                        clean_before_build,
+                    )?;
+                    cached_build = Some(build);
+                    cached_build.as_ref().unwrap()
+                }
+            };
+
+            package_flutter_build(
+                &flutter_platform,
+                target,
+                build,
+                environment,
+                "dist/",
+                args.artifact_name.clone(),
+                args.channel.clone(),
+                hooks.as_ref(),
+            )?
+        };
+        // Clean at most once per invocation (mirrors Dart).
+        clean_before_build = false;
+
+        // Print a JSON summary per packaged target (mirrors Dart's
+        // MakeResult JSON output).
+        let summary = serde_json::json!({
+            "platform": platform,
+            "target": target,
+            "artifacts": target_artifacts
+                .iter()
+                .map(|p| p.to_string_lossy())
+                .collect::<Vec<_>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&summary)?);
+
+        artifacts.extend(target_artifacts);
+    }
 
     for artifact in artifacts {
         println!("{}", artifact.display());
@@ -122,53 +265,106 @@ pub fn package_flutter_artifact(
     environment: HashMap<String, String>,
     output: &str,
     artifact_name: Option<String>,
+    channel: Option<String>,
     clean_before_build: bool,
     hooks: Option<&HashMap<String, serde_yaml::Value>>,
 ) -> Result<Vec<PathBuf>> {
     let platform = Platform::from_str(platform_str)
         .map_err(|e| anyhow!("Invalid platform '{}': {}", platform_str, e))?;
 
-    let builder = FlutterAppBuilder::default();
-    if clean_before_build {
-        builder
-            .clean(Some(&environment))
-            .map_err(|e| anyhow!("{}", e))?;
-    }
-
-    // Clone environment before it's moved into build()
-    let hook_env_base = environment.clone();
-
-    let build = builder
-        .build(&platform, Some(target), build_args, Some(environment))
-        .map_err(|e| anyhow!("{}", e))?;
-
-    let pubspec = ProjectPubspec::load()?;
-    let package_config = PackageConfig {
-        app_name: pubspec.name.clone(),
-        app_binary_name: pubspec.name,
-        app_version: pubspec.version,
-        build_mode: build.config.mode().as_str().to_string(),
-        platform,
-        flavor: build.config.flavor().map(ToOwned::to_owned),
-        channel: None,
-        artifact_name,
-        package_format: target.to_string(),
-        is_installer: matches!(
-            target,
-            "pkg" | "dmg" | "deb" | "rpm" | "pacman" | "exe" | "msix"
-        ),
-        build_output_dir: build.output_directory,
-        build_output_files: build.output_files,
-        output_dir: PathBuf::from(output),
-    };
-
-    let packager = macos_packager(target)?;
+    // Resolve the packager up-front so unsupported (platform, target) pairs
+    // fail fast, before any expensive build step runs.
+    let packager = resolve_packager(platform, target)?;
     if !packager.is_supported_on_current_platform() {
         return Err(anyhow!(
             "Packager '{}' is not supported on the current platform",
             target
         ));
     }
+    drop(packager);
+
+    let build = build_flutter_target(&platform, target, build_args, &environment, clean_before_build)?;
+    package_flutter_build(
+        &platform,
+        target,
+        &build,
+        environment,
+        output,
+        artifact_name,
+        channel,
+        hooks,
+    )
+}
+
+/// Runs `flutter build` for a `(platform, target)` pair, optionally cleaning
+/// first. Split from packaging so multi-target invocations can build once and
+/// reuse the output (mirrors Dart's `isBuildOnlyOnce` behavior).
+pub fn build_flutter_target(
+    platform: &Platform,
+    target: &str,
+    build_args: Map<String, Value>,
+    environment: &HashMap<String, String>,
+    clean_before_build: bool,
+) -> Result<fastforge_app_builder::BuildResult> {
+    let builder = FlutterAppBuilder::default();
+    if clean_before_build {
+        builder
+            .clean(Some(environment))
+            .map_err(|e| anyhow!("{}", e))?;
+    }
+    builder
+        .build(platform, Some(target), build_args, Some(environment.clone()))
+        .map_err(|e| anyhow!("{}", e))
+}
+
+/// Packages an existing flutter build output as `target`.
+#[allow(clippy::too_many_arguments)]
+pub fn package_flutter_build(
+    platform: &Platform,
+    target: &str,
+    build: &fastforge_app_builder::BuildResult,
+    environment: HashMap<String, String>,
+    output: &str,
+    artifact_name: Option<String>,
+    channel: Option<String>,
+    hooks: Option<&HashMap<String, serde_yaml::Value>>,
+) -> Result<Vec<PathBuf>> {
+    let platform = *platform;
+    let packager = resolve_packager(platform, target)?;
+    if !packager.is_supported_on_current_platform() {
+        return Err(anyhow!(
+            "Packager '{}' is not supported on the current platform",
+            target
+        ));
+    }
+
+    let hook_env_base = environment;
+
+    let pubspec = ProjectPubspec::load()?;
+    let app_binary_name = if platform == Platform::Linux {
+        linux_binary_name().unwrap_or_else(|| pubspec.name.clone())
+    } else {
+        pubspec.name.clone()
+    };
+    let package_config = PackageConfig {
+        app_name: pubspec.name.clone(),
+        app_binary_name,
+        app_version: pubspec.version,
+        build_mode: build.config.mode().as_str().to_string(),
+        platform,
+        flavor: build.config.flavor().map(ToOwned::to_owned),
+        channel,
+        artifact_name,
+        package_format: if target == "direct" {
+            String::new()
+        } else {
+            target.to_string()
+        },
+        is_installer: is_installer_target(target),
+        build_output_dir: build.output_directory.clone(),
+        build_output_files: build.output_files.clone(),
+        output_dir: PathBuf::from(output),
+    };
 
     // Resolve hooks: YAML allows both a single string and a list of strings
     let pre_hooks = resolve_hooks(hooks, "pre");
@@ -264,18 +460,70 @@ fn run_hooks(hooks: &[String], env: &HashMap<String, String>) -> Result<()> {
     Ok(())
 }
 
-fn macos_packager(target: &str) -> Result<Box<dyn AppPackager + Send + Sync>> {
-    match target {
-        "pkg" => Ok(Box::new(MacOSPkgPackager::from_yaml_file(
+/// Resolves the packager for a `(platform, target)` pair, covering the same
+/// matrix as Dart's `FlutterAppPackager` maker registry.
+pub fn resolve_packager(
+    platform: Platform,
+    target: &str,
+) -> Result<Box<dyn AppPackager + Send + Sync>> {
+    if target == "custom" {
+        return Ok(Box::new(CustomPackager::load(platform)?));
+    }
+    match (platform, target) {
+        (Platform::Android, "aab") => Ok(Box::new(AndroidAabPackager)),
+        (Platform::Android, "apk") => Ok(Box::new(AndroidApkPackager)),
+        (Platform::IOS, "ipa") => Ok(Box::new(IOSIpaPackager)),
+        (Platform::Linux, "appimage") => Ok(Box::new(LinuxAppImagePackager)),
+        (Platform::Linux, "deb") => Ok(Box::new(LinuxDebPackager)),
+        (Platform::Linux, "pacman") => Ok(Box::new(LinuxPacmanPackager)),
+        (Platform::Linux, "rpm") => Ok(Box::new(LinuxRpmPackager)),
+        (Platform::Linux, "zip") => Ok(Box::new(LinuxZipPackager)),
+        (Platform::Linux, "direct") => Ok(Box::new(LinuxDirectPackager)),
+        (Platform::MacOS, "pkg") => Ok(Box::new(MacOSPkgPackager::from_yaml_file(
             std::path::Path::new("macos/packaging/pkg/make_config.yaml"),
         )?)),
-        "dmg" => Ok(Box::new(MacOSDmgPackager)),
-        "zip" => Ok(Box::new(MacOSZipPackager)),
-        other => Err(anyhow!(
-            "Unsupported package target: `{}`. Currently supported for CLI packaging: pkg, dmg, zip",
-            other
+        (Platform::MacOS, "dmg") => Ok(Box::new(MacOSDmgPackager)),
+        (Platform::MacOS, "zip") => Ok(Box::new(MacOSZipPackager)),
+        (Platform::Ohos, "app") => Ok(Box::new(OHOSAppPackager)),
+        (Platform::Ohos, "hap") => Ok(Box::new(OHOSHapPackager)),
+        (Platform::Web, "zip") => Ok(Box::new(WebZipPackager)),
+        (Platform::Web, "direct") => Ok(Box::new(WebDirectPackager)),
+        (Platform::Windows, "exe") => Ok(Box::new(WindowsExePackager)),
+        (Platform::Windows, "msix") => Ok(Box::new(WindowsMsixPackager::default())),
+        (Platform::Windows, "zip") => Ok(Box::new(WindowsZipPackager)),
+        (Platform::Windows, "direct") => Ok(Box::new(WindowsDirectPackager)),
+        (platform, other) => Err(anyhow!(
+            "Unsupported package target `{}` for platform `{}`.",
+            other,
+            platform.as_str(),
         )),
     }
+}
+
+/// Whether packaging as `target` produces an installer artifact.
+/// Mirrors Dart, where only the `exe` maker sets `isInstaller = true`
+/// (reflected in the `-setup` suffix of the default artifact name).
+fn is_installer_target(target: &str) -> bool {
+    target == "exe"
+}
+
+/// Reads `BINARY_NAME` from `linux/CMakeLists.txt`, mirroring Dart's
+/// `MakeLinuxPackageConfig.appBinaryName`.
+fn linux_binary_name() -> Option<String> {
+    let content = std::fs::read_to_string("linux/CMakeLists.txt").ok()?;
+    let start = content.find("set(BINARY_NAME \"")? + "set(BINARY_NAME \"".len();
+    let rest = &content[start..];
+    let end = rest.find('"')?;
+    let name = &rest[..end];
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
+fn macos_packager(target: &str) -> Result<Box<dyn AppPackager + Send + Sync>> {
+    resolve_packager(Platform::MacOS, target)
 }
 
 fn ios_packager(target: &str) -> Result<Box<dyn AppPackager + Send + Sync>> {
@@ -347,7 +595,7 @@ pub fn package_native_macos_artifact(
         channel: None,
         artifact_name,
         package_format: target.to_string(),
-        is_installer: matches!(target, "pkg" | "dmg"),
+        is_installer: is_installer_target(target),
         build_output_dir: build.output_directory,
         build_output_files: build.output_files,
         output_dir: PathBuf::from(output),
@@ -822,4 +1070,60 @@ impl ProjectPubspec {
 
 fn default_version() -> String {
     "0.1.0+1".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The full (platform, target) matrix registered by Dart's
+    /// `FlutterAppPackager` (minus `custom`, which needs a config file).
+    #[test]
+    fn resolve_packager_covers_dart_maker_matrix() {
+        let matrix: &[(&str, &[&str])] = &[
+            ("android", &["aab", "apk"]),
+            ("ios", &["ipa"]),
+            ("linux", &["appimage", "deb", "pacman", "rpm", "zip", "direct"]),
+            ("macos", &["dmg", "pkg", "zip"]),
+            ("ohos", &["app", "hap"]),
+            ("web", &["zip", "direct"]),
+            ("windows", &["exe", "msix", "zip", "direct"]),
+        ];
+        for (platform_str, targets) in matrix {
+            let platform = Platform::from_str(platform_str).unwrap();
+            for target in *targets {
+                let packager = resolve_packager(platform, target).unwrap_or_else(|e| {
+                    panic!("resolve_packager({platform_str}, {target}) failed: {e}")
+                });
+                assert_eq!(packager.name(), *target);
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_packager_rejects_mismatched_pairs() {
+        for (platform_str, target) in [
+            ("macos", "apk"),
+            ("android", "dmg"),
+            ("linux", "msix"),
+            ("web", "deb"),
+        ] {
+            let platform = Platform::from_str(platform_str).unwrap();
+            match resolve_packager(platform, target) {
+                Ok(_) => panic!("({platform_str}, {target}) must be rejected"),
+                Err(err) => assert!(
+                    err.to_string().contains("Unsupported package target"),
+                    "unexpected error for ({platform_str}, {target}): {err}"
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn only_exe_is_an_installer_target() {
+        assert!(is_installer_target("exe"));
+        for target in ["dmg", "pkg", "deb", "rpm", "pacman", "msix", "apk", "zip"] {
+            assert!(!is_installer_target(target), "{target} must not be an installer");
+        }
+    }
 }

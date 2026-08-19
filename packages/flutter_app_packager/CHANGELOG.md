@@ -1,3 +1,10 @@
+## 0.6.11
+
+* feat(rpm): add support for custom `package_name` to rename package artifacts (#355)
+* fix(rpm): remove system modification command from `%install` section
+* fix(rpm): enable post-install scripts and fix post-uninstall logic
+* fix(rpm): generalize RPATH sanitization to support non-home build directories
+
 ## 0.6.10
 
 * fix(rpm): enforce usage of `appBinaryName` for assets and fix symlink logic (#313)

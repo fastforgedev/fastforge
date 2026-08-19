@@ -2,7 +2,7 @@
 
 English | [简体中文](../../zh-Hans/stores/configuration.md)
 
-`.fastforge/config.yaml` registers App Store and Google Play apps for the aggregated `fastforge store` commands.
+`.fastforge/config.yaml` registers App Store, AppGallery, and Google Play apps for the aggregated `fastforge store` commands.
 
 ```yaml
 stores:
@@ -16,6 +16,13 @@ stores:
         app_id: "1234567890"
         sku: MYAPP
         name: My App
+
+  appgallery:
+    auth:
+      service_account_key: /secure/appgallery-private.json
+    apps:
+      - app_id: "987654321"
+        package_name: com.example.myapp
 
   googleplay:
     auth:
@@ -45,6 +52,18 @@ stores:
 | `auth.service_account_json` | Service-account JSON content          |
 | `apps[].package_name`       | Google Play package name              |
 | `apps[].track`              | Optional default track                |
+
+## AppGallery Fields
+
+| Field                       | Description                                      |
+| --------------------------- | ------------------------------------------------ |
+| `auth.service_account_key`  | Path to the AppGallery service-account JSON file |
+| `auth.service_account_json` | Service-account JSON content                     |
+| `auth.client_id`            | Legacy API client ID                             |
+| `auth.client_secret`        | Legacy API client secret                         |
+| `apps[].app_id`             | AppGallery application ID                        |
+| `apps[].package_name`       | Android package name                             |
+| `apps[].name`               | Optional display name                            |
 
 `auth` fields support complete `${ENV_NAME}` references and also read default environment variables. The current store API and catalog executors still establish authentication from process environment variables, so export credentials before running commands.
 

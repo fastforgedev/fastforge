@@ -58,30 +58,14 @@ impl AppPackager for MacOSDmgPackager {
 
         let output_file = config.output_file();
 
-        // Build the DMG spec programmatically.
-        // Paths in the spec are relative to the packaging directory (basepath).
-        let escaped_name = config.app_name.replace('\\', "\\\\").replace('"', "\\\"");
-        let mut contents = vec![
-            json!({"x": 448, "y": 344, "type": "link", "path": "/Applications"}),
-            json!({"x": 192, "y": 344, "type": "file", "path": format!("{escaped_name}.app")}),
-        ];
-
-        // Only include a background if background.png actually exists in the
-        // packaging dir (from dmg_assets) — dmg_maker errors out trying to
-        // copy a background file that was declared but never provided.
-        let has_background = pkg_dir.join("background.png").exists();
-        if has_background {
-            contents.push(json!({"x": 0, "y": 0, "type": "position"}));
-        }
-
-        let mut spec = json!({
-            "title": escaped_name,
-            "icon-size": 80,
-            "contents": contents,
-        });
-        if has_background {
-            spec["background"] = json!("background.png");
-        }
+        // Prefer the project's `macos/packaging/dmg/make_config.yaml` (same
+        // appdmg-format schema as Dart's `MakeDmgConfig`: title, icon,
+        // background, background-color, icon-size, format, window, code-sign,
+        // contents). Fall back to a default spec when it's absent.
+        let spec = match load_dmg_make_config(Path::new("macos/packaging/dmg/make_config.yaml"))? {
+            Some(spec) => spec,
+            None => default_spec(&config.app_name, &pkg_dir),
+        };
 
         // Delegate DMG creation to the native dmg_maker crate.
         create(CreateOptions {
@@ -99,6 +83,50 @@ impl AppPackager for MacOSDmgPackager {
             artifacts: vec![output_file],
         })
     }
+}
+
+/// Loads `macos/packaging/dmg/make_config.yaml` as an appdmg-style JSON spec.
+/// Returns `Ok(None)` when the file does not exist.
+fn load_dmg_make_config(path: &Path) -> Result<Option<serde_json::Value>, PackageError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| PackageError::General(format!("Failed to read {}: {}", path.display(), e)))?;
+    let yaml: serde_yaml::Value = serde_yaml::from_str(&content)
+        .map_err(|e| PackageError::General(format!("Failed to parse {}: {}", path.display(), e)))?;
+    let spec = serde_json::to_value(yaml).map_err(|e| {
+        PackageError::General(format!("Failed to convert {} to JSON: {}", path.display(), e))
+    })?;
+    Ok(Some(spec))
+}
+
+/// The default spec used when no `make_config.yaml` is provided.
+/// Paths in the spec are relative to the packaging directory (basepath).
+fn default_spec(app_name: &str, pkg_dir: &Path) -> serde_json::Value {
+    let escaped_name = app_name.replace('\\', "\\\\").replace('"', "\\\"");
+    let mut contents = vec![
+        json!({"x": 448, "y": 344, "type": "link", "path": "/Applications"}),
+        json!({"x": 192, "y": 344, "type": "file", "path": format!("{escaped_name}.app")}),
+    ];
+
+    // Only include a background if background.png actually exists in the
+    // packaging dir (from dmg_assets) — dmg_maker errors out trying to
+    // copy a background file that was declared but never provided.
+    let has_background = pkg_dir.join("background.png").exists();
+    if has_background {
+        contents.push(json!({"x": 0, "y": 0, "type": "position"}));
+    }
+
+    let mut spec = json!({
+        "title": escaped_name,
+        "icon-size": 80,
+        "contents": contents,
+    });
+    if has_background {
+        spec["background"] = json!("background.png");
+    }
+    spec
 }
 
 /// Copy a file or directory recursively.
@@ -166,5 +194,72 @@ fn map_dmg_error(err: DmgMakerError) -> PackageError {
         DmgMakerError::Io(e) => PackageError::Io(e),
         DmgMakerError::Json(e) => PackageError::General(format!("JSON error: {e}")),
         DmgMakerError::General(msg) => PackageError::General(msg),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn make_config_yaml_converts_to_appdmg_spec() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("make_config.yaml");
+        std::fs::write(
+            &path,
+            r#"
+title: Hola Amigos
+icon: AppIcon.icns
+background: background.png
+icon-size: 100
+window:
+  position:
+    x: 100
+    y: 100
+  size:
+    width: 600
+    height: 400
+code-sign:
+  signing-identity: "Developer ID Application: Foo"
+contents:
+  - x: 448
+    y: 344
+    type: link
+    path: /Applications
+  - x: 192
+    y: 344
+    type: file
+    path: Hola Amigos.app
+"#,
+        )
+        .unwrap();
+        let spec = load_dmg_make_config(&path).unwrap().unwrap();
+        assert_eq!(spec["title"], "Hola Amigos");
+        assert_eq!(spec["icon-size"], 100);
+        assert_eq!(spec["window"]["size"]["width"], 600);
+        assert_eq!(
+            spec["code-sign"]["signing-identity"],
+            "Developer ID Application: Foo"
+        );
+        assert_eq!(spec["contents"][1]["type"], "file");
+    }
+
+    #[test]
+    fn missing_make_config_returns_none() {
+        assert!(
+            load_dmg_make_config(std::path::Path::new("/nonexistent/make_config.yaml"))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn default_spec_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = default_spec("Demo", dir.path());
+        assert_eq!(spec["title"], "Demo");
+        assert_eq!(spec["icon-size"], 80);
+        assert_eq!(spec["contents"].as_array().unwrap().len(), 2);
+        assert!(spec.get("background").is_none());
     }
 }

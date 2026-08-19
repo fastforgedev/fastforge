@@ -42,6 +42,9 @@ impl Config {
         if let Some(appstore) = self.stores.appstore.as_mut() {
             appstore.resolve_env_refs();
         }
+        if let Some(appgallery) = self.stores.appgallery.as_mut() {
+            appgallery.resolve_env_refs();
+        }
         if let Some(googleplay) = self.stores.googleplay.as_mut() {
             googleplay.resolve_env_refs();
         }
@@ -54,12 +57,14 @@ pub struct StoresConfig {
     #[serde(default)]
     pub appstore: Option<AppStoreConfig>,
     #[serde(default)]
+    pub appgallery: Option<AppGalleryConfig>,
+    #[serde(default)]
     pub googleplay: Option<GooglePlayConfig>,
 }
 
 impl StoresConfig {
     pub fn is_empty(&self) -> bool {
-        self.appstore.is_none() && self.googleplay.is_none()
+        self.appstore.is_none() && self.appgallery.is_none() && self.googleplay.is_none()
     }
 }
 
@@ -144,6 +149,84 @@ pub struct AppStoreApp {
 impl AppStoreApp {
     pub fn identifier(&self) -> Option<&str> {
         self.bundle_id.as_deref()
+    }
+}
+
+/// Huawei AppGallery Connect store configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppGalleryConfig {
+    #[serde(default)]
+    pub auth: AppGalleryAuthConfig,
+    #[serde(default)]
+    pub apps: Vec<AppGalleryApp>,
+}
+
+impl AppGalleryConfig {
+    fn resolve_env_refs(&mut self) {
+        self.auth.resolve_env_refs();
+        self.auth.apply_env_defaults();
+    }
+}
+
+/// AppGallery Connect authentication configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AppGalleryAuthConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_account_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_account_json: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
+}
+
+impl AppGalleryAuthConfig {
+    pub fn auth_type(&self) -> &'static str {
+        if self.service_account_key.is_some() || self.service_account_json.is_some() {
+            "service_account"
+        } else if self.client_id.is_some() || self.client_secret.is_some() {
+            "api_client"
+        } else {
+            "unknown"
+        }
+    }
+
+    fn resolve_env_refs(&mut self) {
+        resolve_optional_env_ref(&mut self.service_account_key);
+        resolve_optional_env_ref(&mut self.service_account_json);
+        resolve_optional_env_ref(&mut self.client_id);
+        resolve_optional_env_ref(&mut self.client_secret);
+    }
+
+    fn apply_env_defaults(&mut self) {
+        set_from_env_if_empty(
+            &mut self.service_account_key,
+            &["APP_GALLERY_SERVICE_ACCOUNT_KEY"],
+        );
+        set_from_env_if_empty(
+            &mut self.service_account_json,
+            &["APP_GALLERY_SERVICE_ACCOUNT_JSON"],
+        );
+        set_from_env_if_empty(&mut self.client_id, &["APP_GALLERY_CLIENT_ID"]);
+        set_from_env_if_empty(&mut self.client_secret, &["APP_GALLERY_CLIENT_SECRET"]);
+    }
+}
+
+/// App metadata recorded under AppGallery Connect.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AppGalleryApp {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl AppGalleryApp {
+    pub fn identifier(&self) -> Option<&str> {
+        self.app_id.as_deref().or(self.package_name.as_deref())
     }
 }
 
@@ -260,6 +343,13 @@ stores:
         app_id: "1234567890"
         sku: MYAPP001
         name: My App
+  appgallery:
+    auth:
+      service_account_key: ./appgallery-private.json
+    apps:
+      - app_id: "123456789"
+        package_name: com.example.myapp
+        name: My App
   googleplay:
     auth:
       service_account_key: ./service-account.json
@@ -283,6 +373,10 @@ stores:
         assert_eq!(appstore.auth.auth_type(), "api_key");
         assert_eq!(appstore.auth.issuer_id.as_deref(), Some("issuer"));
         assert_eq!(appstore.apps[0].identifier(), Some("com.example.myapp"));
+
+        let appgallery = config.stores.appgallery.as_ref().unwrap();
+        assert_eq!(appgallery.auth.auth_type(), "service_account");
+        assert_eq!(appgallery.apps[0].identifier(), Some("123456789"));
 
         let googleplay = config.stores.googleplay.as_ref().unwrap();
         assert_eq!(googleplay.auth.auth_type(), "service_account");
@@ -321,6 +415,9 @@ stores:
   appstore:
     apps:
       - bundle_id: com.example.myapp
+  appgallery:
+    apps:
+      - app_id: "123456789"
   googleplay:
     apps:
       - package_name: com.example.myapp
@@ -330,6 +427,10 @@ stores:
         assert_eq!(
             config.stores.appstore.as_ref().unwrap().apps[0].identifier(),
             Some("com.example.myapp")
+        );
+        assert_eq!(
+            config.stores.appgallery.as_ref().unwrap().apps[0].identifier(),
+            Some("123456789")
         );
         assert_eq!(
             config.stores.googleplay.as_ref().unwrap().apps[0].identifier(),

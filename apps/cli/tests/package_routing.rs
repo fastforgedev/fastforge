@@ -237,6 +237,54 @@ fn flutter_app_macos_pkg() {
 
 #[test]
 #[serial]
+fn flutter_app_android_apk() {
+    let dir = fixture_dir("flutter_app");
+    let dist = dir.join("dist");
+    let _ = fs::remove_dir_all(&dist);
+
+    let run = run_fastforge(
+        &dir,
+        &["package", "--platform", "android", "--target", "apk"],
+    );
+    assert!(
+        run.success,
+        "fastforge package failed:\nstdout: {}\nstderr: {}",
+        run.stdout, run.stderr
+    );
+
+    let apks = find_files_with_ext(&dist, "apk");
+    assert!(!apks.is_empty(), "expected an .apk under {}", dist.display());
+
+    let _ = fs::remove_dir_all(&dist);
+}
+
+#[test]
+#[serial]
+fn flutter_app_macos_multiple_targets() {
+    let dir = fixture_dir("flutter_app");
+    let dist = dir.join("dist");
+    let _ = fs::remove_dir_all(&dist);
+
+    let run = run_fastforge(
+        &dir,
+        &["package", "--platform", "macos", "--targets", "dmg,zip"],
+    );
+    assert!(
+        run.success,
+        "fastforge package failed:\nstdout: {}\nstderr: {}",
+        run.stdout, run.stderr
+    );
+
+    let dmgs = find_files_with_ext(&dist, "dmg");
+    let zips = find_files_with_ext(&dist, "zip");
+    assert!(!dmgs.is_empty(), "expected a .dmg under {}", dist.display());
+    assert!(!zips.is_empty(), "expected a .zip under {}", dist.display());
+
+    let _ = fs::remove_dir_all(&dist);
+}
+
+#[test]
+#[serial]
 fn flutter_app_macos_zip() {
     let dir = fixture_dir("flutter_app");
     let dist = dir.join("dist");

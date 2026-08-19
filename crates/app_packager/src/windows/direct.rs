@@ -39,7 +39,9 @@ impl AppPackager for WindowsDirectPackager {
     }
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
-        let dst = config.version_output_dir().join(&config.app_name);
+        // Mirrors Dart: the destination directory uses the rendered artifact
+        // name (no extension for direct output).
+        let dst = config.output_file();
         copy_dir(&config.build_output_dir, &dst)?;
         Ok(PackageResult {
             artifacts: vec![dst],
