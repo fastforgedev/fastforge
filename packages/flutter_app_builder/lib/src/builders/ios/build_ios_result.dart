@@ -9,7 +9,8 @@ class BuildIosResultResolver extends BuildResultResolver {
   @override
   BuildResult resolve(BuildConfig config, {Duration? duration}) {
     final r = BuildIosResult(config);
-    final String pattern = '${r.outputDirectory.path}/**.ipa';
+    final suffix = config.arguments.containsKey('no-codesign') ? 'app' : 'ipa';
+    final String pattern = '${r.outputDirectory.path}/**.$suffix';
     List<FileSystemEntity> entities = Glob(pattern).listSync();
     List<File> pkgFiles = (entities.map((e) => File(e.path)).toList())
       ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
@@ -23,7 +24,9 @@ class BuildIosResult extends BuildResult {
 
   @override
   Directory get outputDirectory {
-    String path = 'build/ios/ipa';
+    String path = config.arguments.containsKey('no-codesign')
+        ? 'build/ios/iphoneos'
+        : 'build/ios/ipa';
     return Directory(path);
   }
 }

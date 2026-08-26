@@ -15,19 +15,26 @@ class AppBuilderIos extends AppBuilder {
   @override
   BuildResultResolver get resultResolver => BuildIosResultResolver();
 
+  String _buildSubcommand = 'ipa';
+
   @override
-  String get buildSubcommand => 'ipa';
+  String get buildSubcommand => _buildSubcommand;
 
   @override
   Future<BuildResult> build({
     required Map<String, dynamic> arguments,
     Map<String, String>? environment,
   }) {
-    if (!arguments.containsKey('export-options-plist') &&
-        !arguments.containsKey('export-method')) {
-      throw BuildError(
-        'Missing `export-options-plist` or `export-method` build argument.',
-      );
+    if (arguments.containsKey('no-codesign')) {
+      _buildSubcommand = 'ios';
+    } else {
+      _buildSubcommand = 'ipa';
+      if (!arguments.containsKey('export-options-plist') &&
+          !arguments.containsKey('export-method')) {
+        throw BuildError(
+          'Missing `export-options-plist` or `export-method` build argument.',
+        );
+      }
     }
     return super.build(
       arguments: arguments,
