@@ -194,11 +194,14 @@ class UnifiedDistributor {
         if (buildResult != null) {
           String buildMode =
               buildArguments.containsKey('profile') ? 'profile' : 'release';
+          bool splitPerAbi =
+              target == 'apk' && buildArguments.containsKey('split-per-abi');
           Map<String, dynamic>? arguments = {
             'build_mode': buildMode,
             'flavor': buildArguments['flavor'],
             'channel': channel,
             'artifact_name': artifactName,
+            'split_per_abi': splitPerAbi,
           };
           if (hooks != null) {
             arguments['hooks'] = hooks;
@@ -214,10 +217,17 @@ class UnifiedDistributor {
           print(
             const JsonEncoder.withIndent('  ').convert(makeResult.toJson()),
           );
-          FileSystemEntity artifact = makeResult.artifacts.first;
-          logger.info(
-            'Successfully packaged ${artifact.path}'.brightGreen(),
-          );
+          if (splitPerAbi) {
+            final artifactPaths = makeResult.artifacts.map((f) => f.path);
+            logger.info(
+              'Successfully packaged ${artifactPaths.join(' ')}'.brightGreen(),
+            );
+          } else {
+            FileSystemEntity artifact = makeResult.artifacts.first;
+            logger.info(
+              'Successfully packaged ${artifact.path}'.brightGreen(),
+            );
+          }
           makeResultList.add(makeResult);
         }
       }

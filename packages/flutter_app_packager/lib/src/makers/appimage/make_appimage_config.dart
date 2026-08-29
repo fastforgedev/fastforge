@@ -31,39 +31,44 @@ class AppImageAction {
 }
 
 class MakeAppImageConfig extends MakeConfig {
-  MakeAppImageConfig({
-    required this.displayName,
-    required this.icon,
-    this.keywords = const [],
-    this.categories = const [],
-    this.actions = const [],
-    this.include = const [],
-    this.startupNotify = true,
-    this.genericName = 'A Flutter Application',
-    this.supportedMimeType,
-    this.metainfo,
-  });
+  MakeAppImageConfig(
+      {required this.displayName,
+      required this.icon,
+      this.keywords = const [],
+      this.categories = const [],
+      this.actions = const [],
+      this.include = const [],
+      this.startupNotify = true,
+      this.genericName = 'A Flutter Application',
+      this.supportedMimeType,
+      this.metainfo,
+      this.runtimeFile,
+      this.excludeUsrLibs});
   factory MakeAppImageConfig.fromJson(Map<String, dynamic> map) {
     return MakeAppImageConfig(
-      displayName: map['display_name'] as String,
-      icon: map['icon'] as String,
-      metainfo: map['metainfo'] as String?,
-      include: (map['include'] as List<dynamic>? ?? []).cast<String>(),
-      keywords: (map['keywords'] as List<dynamic>? ?? []).cast<String>(),
-      categories: (map['categories'] as List<dynamic>? ?? []).cast<String>(),
-      startupNotify: map['startup_notify'] as bool? ?? false,
-      genericName: map['generic_name'] as String? ?? 'A Flutter Application',
-      actions: (map['actions'] as List? ?? [])
-          .map(
-            (e) => AppImageAction.fromJson(
-              (Map.castFrom<dynamic, dynamic, String, dynamic>(e)),
-            ),
-          )
-          .toList(),
-      supportedMimeType: map['supported_mime_type'] != null
-          ? List.castFrom<dynamic, String>(map['supported_mime_type'])
-          : null,
-    );
+        displayName: map['display_name'] as String,
+        icon: map['icon'] as String,
+        metainfo: map['metainfo'] as String?,
+        include: (map['include'] as List<dynamic>? ?? []).cast<String>(),
+        keywords: (map['keywords'] as List<dynamic>? ?? []).cast<String>(),
+        categories: (map['categories'] as List<dynamic>? ?? []).cast<String>(),
+        startupNotify: map['startup_notify'] as bool? ?? false,
+        genericName: map['generic_name'] as String? ?? 'A Flutter Application',
+        actions: (map['actions'] as List? ?? [])
+            .map(
+              (e) => AppImageAction.fromJson(
+                (Map.castFrom<dynamic, dynamic, String, dynamic>(e)),
+              ),
+            )
+            .toList(),
+        supportedMimeType: map['supported_mime_type'] != null
+            ? List.castFrom<dynamic, String>(map['supported_mime_type'])
+            : null,
+        runtimeFile:
+            map['runtime_file'] != null ? map['runtime_file'] as String : null,
+        excludeUsrLibs: map['exclude_usr_libs'] != null
+            ? List.castFrom<dynamic, String>(map['exclude_usr_libs'])
+            : null);
   }
 
   final String icon;
@@ -76,6 +81,8 @@ class MakeAppImageConfig extends MakeConfig {
   final String displayName;
   final List<String> include;
   List<String>? supportedMimeType;
+  final String? runtimeFile;
+  final List<String>? excludeUsrLibs;
 
   String get desktopFileContent {
     final fields = {

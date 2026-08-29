@@ -4,6 +4,7 @@ version: 0.6.12
 homepage: https://fastforge.dev
 repository: https://github.com/fastforgedev/fastforge/tree/main/packages/fastforge
 issue_tracker: https://github.com/fastforgedev/fastforge/issues
+publish_to: none
 
 platforms:
   linux:

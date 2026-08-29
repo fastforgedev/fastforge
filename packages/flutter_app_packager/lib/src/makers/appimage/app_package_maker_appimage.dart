@@ -259,29 +259,38 @@ class AppPackageMakerAppImage extends AppPackageMaker {
             return File(paths.first.trim());
           });
 
-          await file.copy(
-            path.join(
-              makeConfig.packagingDirectory.path,
-              '${makeConfig.appName}.AppDir/usr/lib/',
-              path.basename(file.path),
-            ),
-          );
+          if (makeConfig.excludeUsrLibs == null ||
+              makeConfig.excludeUsrLibs!.contains(path.basename(file.path))) {
+            await file.copy(
+              path.join(
+                makeConfig.packagingDirectory.path,
+                '${makeConfig.appName}.AppDir/usr/lib/',
+                path.basename(file.path),
+              ),
+            );
+          }
         }),
       );
 
       var outputMakeConfig = MakeConfig().copyWith(makeConfig)
         ..packageFormat = 'AppImage';
 
+      final List<String> args = [];
+      if (makeConfig.runtimeFile != null) {
+        args.addAll(['--runtime-file', makeConfig.runtimeFile!]);
+      }
+      args.addAll([
+        '--no-appstream',
+        path.join(
+          makeConfig.packagingDirectory.path,
+          '${makeConfig.appName}.AppDir',
+        ),
+        outputMakeConfig.outputFile.path,
+      ]);
+
       await $(
         'appimagetool',
-        [
-          '--no-appstream',
-          path.join(
-            makeConfig.packagingDirectory.path,
-            '${makeConfig.appName}.AppDir',
-          ),
-          outputMakeConfig.outputFile.path,
-        ],
+        args,
         environment: {
           'ARCH': 'x86_64',
         },

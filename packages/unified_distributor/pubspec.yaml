@@ -4,6 +4,7 @@ version: 0.2.12
 homepage: https://fastforge.dev
 repository: https://github.com/fastforgedev/fastforge/tree/main/packages/unified_distributor
 issue_tracker: https://github.com/fastforgedev/fastforge/issues
+publish_to: none
 
 platforms:
   linux:
@@ -27,6 +28,27 @@ dependencies:
   shell_executor: ^0.3.0
   shell_uikit: ^0.3.0
   yaml: ^3.1.0
+
+  flutter_app_builder:
+    git:
+      url: https://github.com/duskygloom/flutter_distributor
+      ref: hans
+      path: packages/flutter_app_builder
+    # path: ../flutter_app_builder
+    
+  flutter_app_packager:
+    git:
+      url: https://github.com/duskygloom/flutter_distributor
+      ref: hans
+      path: packages/flutter_app_packager
+    # path: ../flutter_app_packager
+
+  flutter_app_publisher:
+    git:
+      url: https://github.com/duskygloom/flutter_distributor
+      ref: hans
+      path: packages/flutter_app_publisher
+    # path: ../flutter_app_publisher
 
 dev_dependencies:
   dependency_validator: ^3.0.0
