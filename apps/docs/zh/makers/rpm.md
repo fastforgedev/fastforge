@@ -18,6 +18,8 @@
 
 将 `make_config.yaml` 添加到您的项目 `linux/packaging/rpm` 目录。
 
+你也可以将 `make_config.yaml` 添加到你的项目 `linux/packaging` 目录，以继承公共配置。
+
 ```yaml
 icon: assets/logo.png
 summary: A really cool application

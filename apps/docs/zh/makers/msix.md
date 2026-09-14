@@ -11,6 +11,8 @@
 
 将 `make_config.yaml` 添加到你的项目 `windows/packaging/msix` 目录。
 
+你也可以将 `make_config.yaml` 添加到你的项目 `windows/packaging` 目录，以继承公共配置。
+
 ```yaml
 display_name: HelloWorld
 msix_version: 1.0.0.0
