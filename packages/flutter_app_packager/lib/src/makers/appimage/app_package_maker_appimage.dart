@@ -280,6 +280,7 @@ class AppPackageMakerAppImage extends AppPackageMaker {
             makeConfig.packagingDirectory.path,
             '${makeConfig.appName}.AppDir',
           ),
+          if (makeConfig.update != null) ...['-u', makeConfig.update!],
           outputMakeConfig.outputFile.path,
         ],
         environment: {
