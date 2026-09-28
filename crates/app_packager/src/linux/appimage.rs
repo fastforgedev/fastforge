@@ -60,6 +60,7 @@ impl AppImageMakeConfig {
     /// (including `[Desktop Action]` sections).
     fn desktop_file(&self, config: &PackageConfig) -> String {
         let app_name = &config.app_name;
+        let binary_name = &config.app_binary_name;
         let mut fields: Vec<(&str, String)> = vec![
             (
                 "Name",
@@ -73,7 +74,10 @@ impl AppImageMakeConfig {
                     .clone()
                     .unwrap_or_else(|| "A Flutter Application".to_string()),
             ),
-            ("Exec", format!("LD_LIBRARY_PATH=usr/lib {} %u", app_name)),
+            (
+                "Exec",
+                format!("LD_LIBRARY_PATH=usr/lib {} %u", binary_name),
+            ),
             ("Icon", app_name.clone()),
             ("Type", "Application".to_string()),
             (
@@ -115,7 +119,7 @@ impl AppImageMakeConfig {
                     "[Desktop Action {}]\nName={}\nExec=LD_LIBRARY_PATH=usr/lib {} {} %u",
                     action.label,
                     action.name,
-                    app_name,
+                    binary_name,
                     action.arguments.join(" "),
                 )
             })
@@ -129,7 +133,7 @@ impl AppImageMakeConfig {
     fn app_run(&self, config: &PackageConfig) -> String {
         format!(
             "#!/bin/bash\n\ncd \"$(dirname \"$0\")\"\nexport LD_LIBRARY_PATH=usr/lib\nexec ./{}\n",
-            config.app_name
+            config.app_binary_name
         )
     }
 }
@@ -276,8 +280,7 @@ impl AppPackager for LinuxAppImagePackager {
             };
             let metainfo_dir = app_dir.join("usr/share/metainfo");
             std::fs::create_dir_all(&metainfo_dir)?;
-            // Dart's AppImage config extends `MakeConfig` (not the Linux
-            // variant), so its `appBinaryName` is the pubspec name.
+            // Named after the pubspec to match the `.desktop` file, as in Dart.
             std::fs::copy(
                 metainfo_path,
                 metainfo_dir.join(format!("{}{}", config.app_name, ext)),
@@ -421,6 +424,30 @@ actions:
         assert!(script.starts_with("#!/bin/bash"));
         assert!(script.contains("export LD_LIBRARY_PATH=usr/lib"));
         assert!(script.contains("exec ./hola_amigos"));
+    }
+
+    #[test]
+    fn launches_binary_name_when_it_differs_from_app_name() {
+        let config = PackageConfig {
+            app_binary_name: "hola".into(),
+            ..test_config()
+        };
+        let mc: AppImageMakeConfig = serde_yaml::from_str(
+            r#"
+actions:
+  - label: Gallery
+    name: Open Gallery
+    arguments:
+      - --gallery
+"#,
+        )
+        .unwrap();
+
+        assert!(mc.app_run(&config).contains("exec ./hola\n"));
+        let desktop = mc.desktop_file(&config);
+        assert!(desktop.contains("Exec=LD_LIBRARY_PATH=usr/lib hola %u"));
+        assert!(desktop.contains("Exec=LD_LIBRARY_PATH=usr/lib hola --gallery %u"));
+        assert!(desktop.contains("Icon=hola_amigos"));
     }
 
     #[test]

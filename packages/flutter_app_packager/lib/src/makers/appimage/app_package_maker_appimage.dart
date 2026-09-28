@@ -171,7 +171,7 @@ class AppPackageMakerAppImage extends AppPackageMaker {
         await metainfoFile.copy(
           path.join(
             metainfoDir,
-            makeConfig.appBinaryName + path.extension(makeConfig.metainfo!, 2),
+            makeConfig.appName + path.extension(makeConfig.metainfo!, 2),
           ),
         );
       }

@@ -30,7 +30,7 @@ class AppImageAction {
   }
 }
 
-class MakeAppImageConfig extends MakeConfig {
+class MakeAppImageConfig extends MakeLinuxPackageConfig {
   MakeAppImageConfig({
     required this.displayName,
     required this.icon,
@@ -81,7 +81,7 @@ class MakeAppImageConfig extends MakeConfig {
     final fields = {
       'Name': displayName,
       'GenericName': genericName,
-      'Exec': 'LD_LIBRARY_PATH=usr/lib $appName %u',
+      'Exec': 'LD_LIBRARY_PATH=usr/lib $appBinaryName %u',
       'Icon': appName,
       'Type': 'Application',
       'StartupNotify': startupNotify ? 'true' : 'false',
@@ -97,7 +97,7 @@ class MakeAppImageConfig extends MakeConfig {
       final fields = {
         'Name': action.name,
         'Exec':
-            'LD_LIBRARY_PATH=usr/lib $appName ${action.arguments.join(' ')} %u',
+            'LD_LIBRARY_PATH=usr/lib $appBinaryName ${action.arguments.join(' ')} %u',
       };
       return '[Desktop Action ${action.label}]\n${fields.entries.map((e) => '${e.key}=${e.value}').join('\n')}';
     }).join('\n\n');
@@ -111,7 +111,7 @@ class MakeAppImageConfig extends MakeConfig {
 
 cd "\$(dirname "\$0")"
 export LD_LIBRARY_PATH=usr/lib
-exec ./$appName
+exec ./$appBinaryName
 ''';
   }
 }
