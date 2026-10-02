@@ -7,6 +7,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "crates/**"
+      - "apps/cli/**"
       - "apps/studio-*/**"
       - ".github/workflows/ci.yml"
   pull_request:
@@ -15,6 +16,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "crates/**"
+      - "apps/cli/**"
       - "apps/studio-*/**"
       - ".github/workflows/ci.yml"
 
@@ -43,6 +45,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build workspace
         run: cargo build --workspace --exclude studio-api --all-targets
+
+  # The release workflow ships prebuilt Windows binaries, and nothing else
+  # compiles this workspace for Windows, so platform-specific code can rot
+  # unnoticed until a release build fails. Checks the CLI binary that the
+  # release archives are cut from.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check the CLI for Windows
+        run: cargo check -p fastforge_cli --bin fastforge
 
   studio-worker:
     runs-on: ubuntu-latest
