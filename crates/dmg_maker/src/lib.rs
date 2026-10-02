@@ -10,6 +10,7 @@ use ds_store::DsStoreBuilder;
 use regex::Regex;
 use serde_json::Value;
 use std::fs::{self, File, OpenOptions};
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -58,6 +59,26 @@ pub fn create(options: CreateOptions) -> Result<(), DmgMakerError> {
 struct BuildState {
     temporary_image_path: Option<PathBuf>,
     temporary_mount_path: Option<PathBuf>,
+}
+
+/// `create` rejects every non-macOS platform up front, so the DMG body below
+/// is unreachable there. It still has to *compile*: `fastforge_app_packager`
+/// depends on this crate unconditionally, so the Windows targets of the CLI
+/// build it as well, and `std::os::unix` does not exist there. The Unix-only
+/// pieces are therefore cfg-gated and fall back to this error.
+#[cfg(not(unix))]
+fn unsupported_platform() -> DmgMakerError {
+    DmgMakerError::UnsupportedPlatform(std::env::consts::OS.to_string())
+}
+
+#[cfg(unix)]
+fn create_symlink(target: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<(), DmgMakerError> {
+    Ok(std::os::unix::fs::symlink(target, link)?)
+}
+
+#[cfg(not(unix))]
+fn create_symlink(_target: impl AsRef<Path>, _link: impl AsRef<Path>) -> Result<(), DmgMakerError> {
+    Err(unsupported_platform())
 }
 
 fn build_dmg(
@@ -191,7 +212,7 @@ fn build_dmg(
                     .clone()
                     .unwrap_or_else(|| basename(&entry.path).to_string());
                 let final_path = mount_path.join(name);
-                std::os::unix::fs::symlink(&entry.path, final_path)?;
+                create_symlink(&entry.path, &final_path)?;
             }
             ContentType::File => {
                 let src = resolve(resolve_base, &entry.path);
@@ -474,6 +495,12 @@ fn make_temp_image_path() -> PathBuf {
     std::env::temp_dir().join(format!("dmg_maker-{now}.dmg"))
 }
 
+#[cfg(not(unix))]
+fn make_alias_record(_path: &Path) -> Result<Vec<u8>, DmgMakerError> {
+    Err(unsupported_platform())
+}
+
+#[cfg(unix)]
 fn make_alias_record(path: &Path) -> Result<Vec<u8>, DmgMakerError> {
     let target_path = path.canonicalize()?;
     let target_meta = fs::metadata(&target_path)?;
@@ -565,6 +592,7 @@ fn make_alias_record(path: &Path) -> Result<Vec<u8>, DmgMakerError> {
     Ok(buf)
 }
 
+#[cfg(unix)]
 fn find_volume_root(
     start_path: &Path,
     start_meta: &fs::Metadata,
@@ -584,6 +612,7 @@ fn find_volume_root(
     }
 }
 
+#[cfg(unix)]
 fn utf16be_pascal(value: &str) -> Result<Vec<u8>, DmgMakerError> {
     let units: Vec<u16> = value.encode_utf16().collect();
     if units.len() > u16::MAX as usize {
@@ -599,6 +628,7 @@ fn utf16be_pascal(value: &str) -> Result<Vec<u8>, DmgMakerError> {
     Ok(out)
 }
 
+#[cfg(unix)]
 fn write_pascal_ascii(
     buf: &mut [u8],
     offset: usize,
@@ -620,6 +650,7 @@ fn write_pascal_ascii(
     Ok(())
 }
 
+#[cfg(unix)]
 fn apple_time_seconds(unix_seconds: i64) -> Result<u32, DmgMakerError> {
     let value = unix_seconds.checked_add(2_082_844_800).ok_or_else(|| {
         DmgMakerError::General("Timestamp overflow while building alias".to_string())
@@ -632,14 +663,17 @@ fn apple_time_seconds(unix_seconds: i64) -> Result<u32, DmgMakerError> {
     Ok(value as u32)
 }
 
+#[cfg(unix)]
 fn write_u16_be(buf: &mut [u8], offset: usize, value: u16) {
     buf[offset..offset + 2].copy_from_slice(&value.to_be_bytes());
 }
 
+#[cfg(unix)]
 fn write_i16_be(buf: &mut [u8], offset: usize, value: i16) {
     buf[offset..offset + 2].copy_from_slice(&value.to_be_bytes());
 }
 
+#[cfg(unix)]
 fn write_u32_be(buf: &mut [u8], offset: usize, value: u32) {
     buf[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
 }
