@@ -40,6 +40,7 @@ class MakeAppImageConfig extends MakeConfig {
     this.include = const [],
     this.startupNotify = true,
     this.genericName = 'A Flutter Application',
+    this.update,
     this.supportedMimeType,
     this.metainfo,
   });
@@ -53,6 +54,7 @@ class MakeAppImageConfig extends MakeConfig {
       categories: (map['categories'] as List<dynamic>? ?? []).cast<String>(),
       startupNotify: map['startup_notify'] as bool? ?? false,
       genericName: map['generic_name'] as String? ?? 'A Flutter Application',
+      update: map['update'] as String?,
       actions: (map['actions'] as List? ?? [])
           .map(
             (e) => AppImageAction.fromJson(
@@ -74,6 +76,7 @@ class MakeAppImageConfig extends MakeConfig {
   final bool startupNotify;
   final String genericName;
   final String displayName;
+  final String? update;
   final List<String> include;
   List<String>? supportedMimeType;
 
