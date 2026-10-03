@@ -105,6 +105,7 @@ fastforge package [OPTIONS]
 | `-t, --targets <TARGET,...>`          | 逗号分隔的打包 target（别名 `--target`）；必填                   |
 | `--channel <CHANNEL>`                 | 产物名中使用的渠道名                                             |
 | `--artifact-name <TEMPLATE>`          | mustache 产物名模板                                              |
+| `--output <DIR>`                      | 产物输出目录（默认取 `distribute_options.yaml` 的 `output`，否则 `dist/`） |
 | `--skip-clean`                        | 构建前跳过 `flutter clean`                                       |
 | `--flutter-build-args <ARG,...>`      | 传给 `flutter build` 的参数（`verbose,obfuscate`、`key=value`）  |
 | `--build-target <PATH>`               | 传给 `flutter build` 的 `--target`                               |

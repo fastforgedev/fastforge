@@ -83,6 +83,8 @@ Useful options:
 - `--channel <name>` — distribution channel; in the default artifact name it
   replaces the flavor segment, and `custom` scripts get it as `CHANNEL` (hooks
   do not). Ignored for native projects.
+- `--output <dir>` — directory the artifacts are written to; wins over the
+  `output` key of `distribute_options.yaml`, which defaults to `dist/`.
 - `--artifact-name <template>` — mustache template with `{{name}}`,
   `{{version}}`, `{{build_name}}`, `{{build_number}}`, `{{build_mode}}`,
   `{{platform}}`, `{{flavor}}`, `{{channel}}`, `{{ext}}`, booleans
@@ -96,8 +98,9 @@ Useful options:
 
 Each packaged target prints a JSON result summary. Artifacts land in
 `<output>/<version>/<artifact name>`, e.g.
-`dist/1.2.3+4/my_app-1.2.3+4-macos.dmg`. The CLI has no `--output` flag:
-`<output>` is `output` from `distribute_options.yaml` (default `dist/`).
+`dist/1.2.3+4/my_app-1.2.3+4-macos.dmg`, where `<output>` is `--output`, else
+`output` from `distribute_options.yaml`, else `dist/` — a workflow can drive it
+without a `distribute_options.yaml`.
 
 When to write a workflow instead of running the CLI: repeatable releases,
 flavor/target matrices, CI, native Xcode projects, or the user says they'll

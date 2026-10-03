@@ -45,6 +45,10 @@ pub struct PackageArgs {
     /// Artifact name template (mustache syntax, e.g. `{{name}}-{{build_name}}.{{ext}}`).
     #[arg(long = "artifact-name")]
     pub artifact_name: Option<String>,
+    /// Directory the packaged artifacts are written to. Defaults to the
+    /// `output` key of `distribute_options.yaml`, or `dist/`.
+    #[arg(long = "output")]
+    pub output: Option<String>,
     /// Whether or not to skip 'flutter clean' before packaging.
     #[arg(long = "skip-clean", overrides_with = "no_skip_clean")]
     pub skip_clean: bool,
@@ -167,8 +171,11 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
     };
 
     // Like Dart, `package` honours `distribute_options.yaml`: its `output`
-    // directory and its `variables` (layered over the environment).
+    // directory and its `variables` (layered over the environment). An explicit
+    // `--output` wins over the file, so a workflow can drive the output
+    // directory without one.
     let options = DistributeOptions::load()?;
+    let output = resolve_output(args.output.as_deref(), &options);
     package(PackageRequest {
         platform: &platform,
         targets: &targets,
@@ -178,9 +185,19 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
         build_arguments: args.build_arguments(),
         variables: global_variables(&options),
         hooks: hooks.as_ref(),
-        output: &options.output,
+        output: &output,
     })?;
     Ok(())
+}
+
+/// The directory the artifacts are written to: the `--output` argument when it
+/// is given, the `output` key of `distribute_options.yaml` otherwise (which
+/// itself defaults to `dist/` when the file does not exist).
+fn resolve_output(argument: Option<&str>, options: &DistributeOptions) -> String {
+    match argument.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => value.to_string(),
+        None => options.output.clone(),
+    }
 }
 
 /// Arguments of one packaging run (Dart's `UnifiedDistributor.package`).
@@ -1107,6 +1124,23 @@ fn default_version() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_argument_wins_over_distribute_options() {
+        let mut options = DistributeOptions::default();
+        options.output = "from-file/".to_string();
+
+        assert_eq!(resolve_output(Some("from-cli/"), &options), "from-cli/");
+        // An empty or blank argument falls back to the file (and to `dist/`
+        // when there is no file).
+        assert_eq!(resolve_output(Some(""), &options), "from-file/");
+        assert_eq!(resolve_output(Some("   "), &options), "from-file/");
+        assert_eq!(resolve_output(None, &options), "from-file/");
+        assert_eq!(
+            resolve_output(None, &DistributeOptions::default()),
+            "dist/"
+        );
+    }
 
     /// The full (platform, target) matrix registered by Dart's
     /// `FlutterAppPackager` (minus `custom`, which needs a config file).

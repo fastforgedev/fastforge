@@ -68,7 +68,7 @@ fastforge package --platform macos --targets dmg,zip
 
 ### 输出位置与产物名
 
-产物写入 `<output>/<version>/<产物名>`，例如 `dist/1.2.3+4/my_app-1.2.3+4-macos.dmg`。CLI 没有 `--output` 参数：`<output>` 取自 `distribute_options.yaml` 的 `output`，默认为 `dist/`。工作流 action 则使用其 `output` 输入。
+产物写入 `<output>/<version>/<产物名>`，例如 `dist/1.2.3+4/my_app-1.2.3+4-macos.dmg`。`<output>` 优先取 `--output` 参数，其次取 `distribute_options.yaml` 的 `output`，两者都没有时为 `dist/` —— 因此工作流无需 `distribute_options.yaml` 也能指定输出目录。
 
 默认产物名模板为：
 

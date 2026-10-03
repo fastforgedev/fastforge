@@ -105,6 +105,7 @@ fastforge package [OPTIONS]
 | `-t, --targets <TARGET,...>`          | Comma-separated package targets (alias `--target`); required                |
 | `--channel <CHANNEL>`                 | Channel name used in the artifact name                                      |
 | `--artifact-name <TEMPLATE>`          | Mustache artifact-name template                                             |
+| `--output <DIR>`                      | Directory the artifacts are written to (default: `output` of `distribute_options.yaml`, else `dist/`) |
 | `--skip-clean`                        | Skip `flutter clean` before the build                                       |
 | `--flutter-build-args <ARG,...>`      | Arguments passed to `flutter build` (`verbose,obfuscate`, `key=value`)      |
 | `--build-target <PATH>`               | `--target` passed to `flutter build`                                        |
