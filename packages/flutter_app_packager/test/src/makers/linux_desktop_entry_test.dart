@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter_app_packager/src/makers/appimage/make_appimage_config.dart';
 import 'package:flutter_app_packager/src/makers/deb/make_deb_config.dart';
 import 'package:flutter_app_packager/src/makers/pacman/make_pacman_config.dart';
 import 'package:flutter_app_packager/src/makers/rpm/make_rpm_config.dart';
@@ -121,6 +122,33 @@ void main() {
         config.toFilesString()['SPEC'],
         contains('echo legacy-postun'),
       );
+    });
+
+    test('appimage launches the CMake binary, not the pubspec name', () {
+      File('${tempDir.path}/linux/CMakeLists.txt')
+          .writeAsStringSync('set(BINARY_NAME "test_binary")\n');
+      final config = MakeAppImageConfig.fromJson({
+        'display_name': 'Test App',
+        'icon': 'icon.png',
+        'actions': [
+          {
+            'label': 'NewWindow',
+            'name': 'New Window',
+            'arguments': ['--new-window'],
+          },
+        ],
+      })..pubspec = _pubspec();
+
+      expect(config.appRunContent, contains('exec ./test_binary\n'));
+      expect(
+        config.desktopFileContent,
+        contains('Exec=LD_LIBRARY_PATH=usr/lib test_binary %u'),
+      );
+      expect(
+        config.desktopFileContent,
+        contains('Exec=LD_LIBRARY_PATH=usr/lib test_binary --new-window %u'),
+      );
+      expect(config.desktopFileContent, contains('Icon=test_app'));
     });
 
     test('pacman keeps package version out of the desktop entry', () {
