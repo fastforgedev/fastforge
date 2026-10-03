@@ -60,6 +60,14 @@ fn make_dmg(config: &PackageConfig, pkg_dir: &Path) -> Result<std::path::PathBuf
     // Copy the .app into the packaging directory
     run_cp_r(&app_bundle, pkg_dir)?;
 
+    // Xcode names the bundle after `PRODUCT_NAME`, which does not have to match
+    // the pubspec name, so the spec has to point at the bundle that was copied
+    // rather than at `<app name>.app`.
+    let bundle_file_name = app_bundle
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| format!("{}.app", config.app_name));
+
     // Copy the project's dmg packaging assets (background, icon, etc.)
     // These are expected at macos/packaging/dmg/ relative to the project root.
     let dmg_assets = Path::new("macos/packaging/dmg");
@@ -75,7 +83,7 @@ fn make_dmg(config: &PackageConfig, pkg_dir: &Path) -> Result<std::path::PathBuf
     // contents). Fall back to a default spec when it's absent.
     let spec = match load_dmg_make_config(Path::new("macos/packaging/dmg/make_config.yaml"))? {
         Some(spec) => spec,
-        None => default_spec(&config.app_name, pkg_dir),
+        None => default_spec(&config.app_name, &bundle_file_name, pkg_dir),
     };
 
     // Delegate DMG creation to the native dmg_maker crate.
@@ -112,11 +120,16 @@ fn load_dmg_make_config(path: &Path) -> Result<Option<serde_json::Value>, Packag
 
 /// The default spec used when no `make_config.yaml` is provided.
 /// Paths in the spec are relative to the packaging directory (basepath).
-fn default_spec(app_name: &str, pkg_dir: &Path) -> serde_json::Value {
+///
+/// `app_name` titles the disk image; `bundle_file_name` is the `.app` that was
+/// copied into the packaging directory, which Xcode names after `PRODUCT_NAME`
+/// and not after the pubspec.
+fn default_spec(app_name: &str, bundle_file_name: &str, pkg_dir: &Path) -> serde_json::Value {
     let escaped_name = app_name.replace('\\', "\\\\").replace('"', "\\\"");
+    let escaped_bundle = bundle_file_name.replace('\\', "\\\\").replace('"', "\\\"");
     let mut contents = vec![
         json!({"x": 448, "y": 344, "type": "link", "path": "/Applications"}),
-        json!({"x": 192, "y": 344, "type": "file", "path": format!("{escaped_name}.app")}),
+        json!({"x": 192, "y": 344, "type": "file", "path": escaped_bundle}),
     ];
 
     // Only include a background if background.png actually exists in the
@@ -265,10 +278,20 @@ contents:
     #[test]
     fn default_spec_shape() {
         let dir = tempfile::tempdir().unwrap();
-        let spec = default_spec("Demo", dir.path());
+        let spec = default_spec("Demo", "Demo.app", dir.path());
         assert_eq!(spec["title"], "Demo");
         assert_eq!(spec["icon-size"], 80);
         assert_eq!(spec["contents"].as_array().unwrap().len(), 2);
         assert!(spec.get("background").is_none());
+    }
+
+    #[test]
+    fn default_spec_points_at_the_copied_bundle() {
+        let dir = tempfile::tempdir().unwrap();
+        // Xcode's `PRODUCT_NAME` (`beyondtranslate`) need not match the pubspec
+        // name (`beyondtranslate_desktop`).
+        let spec = default_spec("beyondtranslate_desktop", "beyondtranslate.app", dir.path());
+        assert_eq!(spec["contents"][1]["path"], "beyondtranslate.app");
+        assert_eq!(spec["title"], "beyondtranslate_desktop");
     }
 }
