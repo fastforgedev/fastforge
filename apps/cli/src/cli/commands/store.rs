@@ -207,6 +207,10 @@ impl StoreCatalogCommand {
     }
 }
 
+// `async_trait` puts `#[must_use]` on a `Pin<Box<dyn Future>>`, which is
+// already `#[must_use]`; clippy 1.99 reports that as `double_must_use` and the
+// attribute cannot be removed because the macro generates it.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 trait CatalogExecutor {
     async fn execute(
