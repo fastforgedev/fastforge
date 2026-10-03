@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
-use progenitor_client::{encode_path, ClientHooks, OperationInfo, RequestBuilderExt};
-#[allow(unused_imports)]
 pub use progenitor_client::{ByteStream, ClientInfo, Error, ResponseValue};
+#[allow(unused_imports)]
+use progenitor_client::{ClientHooks, OperationInfo, RequestBuilderExt, encode_path};
 /// Types used as operation parameters and responses.
 #[allow(clippy::all)]
 pub mod types {
@@ -53036,8 +53036,7 @@ impl Client {
             .headers(header_map)
             .build()?;
         let info = OperationInfo {
-            operation_id:
-                "app_store_review_details_app_store_review_attachments_get_to_many_related",
+            operation_id: "app_store_review_details_app_store_review_attachments_get_to_many_related",
         };
         self.pre(&mut request, &info).await?;
         let result = self.exec(request, &info).await;

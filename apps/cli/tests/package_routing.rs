@@ -253,7 +253,11 @@ fn flutter_app_android_apk() {
     );
 
     let apks = find_files_with_ext(&dist, "apk");
-    assert!(!apks.is_empty(), "expected an .apk under {}", dist.display());
+    assert!(
+        !apks.is_empty(),
+        "expected an .apk under {}",
+        dist.display()
+    );
 
     let _ = fs::remove_dir_all(&dist);
 }

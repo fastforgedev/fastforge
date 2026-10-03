@@ -200,16 +200,14 @@ mod tests {
     #[test]
     fn ambiguous_zip_resolved_by_project_dir() {
         let dir = flutter_project(&["web"]);
-        let inferred =
-            infer_platform_in(&["zip"], dir.path(), Some(Platform::MacOS)).unwrap();
+        let inferred = infer_platform_in(&["zip"], dir.path(), Some(Platform::MacOS)).unwrap();
         assert_eq!(inferred, Platform::Web);
     }
 
     #[test]
     fn ambiguous_zip_prefers_host_platform() {
         let dir = flutter_project(&["macos", "web", "windows", "linux"]);
-        let inferred =
-            infer_platform_in(&["zip"], dir.path(), Some(Platform::MacOS)).unwrap();
+        let inferred = infer_platform_in(&["zip"], dir.path(), Some(Platform::MacOS)).unwrap();
         assert_eq!(inferred, Platform::MacOS);
     }
 
@@ -245,8 +243,7 @@ mod tests {
     fn native_xcode_project_zip_is_macos() {
         let dir = TempDir::new().unwrap();
         std::fs::create_dir(dir.path().join("MyApp.xcodeproj")).unwrap();
-        let inferred =
-            infer_platform_in(&["zip"], dir.path(), Some(Platform::MacOS)).unwrap();
+        let inferred = infer_platform_in(&["zip"], dir.path(), Some(Platform::MacOS)).unwrap();
         assert_eq!(inferred, Platform::MacOS);
     }
 

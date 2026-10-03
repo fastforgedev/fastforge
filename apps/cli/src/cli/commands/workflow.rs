@@ -163,7 +163,7 @@ async fn cmd_run(
 
 fn sorted_job_results(result: &EngineResult) -> Vec<(&String, &minact_core::engine::JobResult)> {
     let mut jobs: Vec<_> = result.job_results.iter().collect();
-    jobs.sort_by(|(left_id, _), (right_id, _)| left_id.cmp(right_id));
+    jobs.sort_by_key(|(job_id, _)| *job_id);
     jobs
 }
 

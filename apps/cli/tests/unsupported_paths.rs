@@ -46,7 +46,8 @@ fn package_requires_at_least_one_target() {
         run.stdout, run.stderr
     );
     assert!(
-        run.stderr.contains("At least one 'target' must be specified"),
+        run.stderr
+            .contains("At least one 'target' must be specified"),
         "expected the missing-target error, got:\n{}",
         run.stderr
     );

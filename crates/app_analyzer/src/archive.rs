@@ -195,7 +195,7 @@ fn size_breakdown(entries: &[&Entry], prefix: &str) -> Map<String, Value> {
 
 fn largest_entries(entries: &[&Entry], prefix: &str) -> Vec<Value> {
     let mut sorted: Vec<&&Entry> = entries.iter().collect();
-    sorted.sort_by(|left, right| right.size_bytes.cmp(&left.size_bytes));
+    sorted.sort_by_key(|entry| std::cmp::Reverse(entry.size_bytes));
     sorted
         .into_iter()
         .take(LARGEST_ENTRY_LIMIT)

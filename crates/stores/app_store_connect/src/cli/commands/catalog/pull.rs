@@ -679,7 +679,7 @@ async fn pull_into_directory(
                     }
                 }
                 screenshots::write_screenshot_manifest(
-                    &output_root,
+                    output_root,
                     &screenshots_dir,
                     &manifest_entries,
                 )?;

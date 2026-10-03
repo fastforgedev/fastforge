@@ -1127,8 +1127,10 @@ mod tests {
 
     #[test]
     fn output_argument_wins_over_distribute_options() {
-        let mut options = DistributeOptions::default();
-        options.output = "from-file/".to_string();
+        let options = DistributeOptions {
+            output: "from-file/".to_string(),
+            ..DistributeOptions::default()
+        };
 
         assert_eq!(resolve_output(Some("from-cli/"), &options), "from-cli/");
         // An empty or blank argument falls back to the file (and to `dist/`
@@ -1136,10 +1138,7 @@ mod tests {
         assert_eq!(resolve_output(Some(""), &options), "from-file/");
         assert_eq!(resolve_output(Some("   "), &options), "from-file/");
         assert_eq!(resolve_output(None, &options), "from-file/");
-        assert_eq!(
-            resolve_output(None, &DistributeOptions::default()),
-            "dist/"
-        );
+        assert_eq!(resolve_output(None, &DistributeOptions::default()), "dist/");
     }
 
     /// The full (platform, target) matrix registered by Dart's
