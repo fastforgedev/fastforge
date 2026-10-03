@@ -44,3 +44,18 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 thiserror = "2.0"
+
+# The CLI is shipped as a prebuilt binary (`install.sh` / `install.ps1`), so the
+# release size is user-visible. Without this profile the binary was 30 MB: 7.4 MB
+# of symbol table (rustc's v0 mangling makes names long) plus un-deduplicated
+# monomorphized generics. `lto` + `codegen-units = 1` remove most of the latter.
+#
+# Measured on aarch64-apple-darwin: 30.0 MB -> 16.8 MB. Two further knobs are
+# deliberately left off because they change behaviour rather than just size:
+# `panic = "abort"` (14.0 MB) turns a panicking tokio task into a whole-process
+# abort, and `opt-level = "z"` (8.7 MB, combined with abort) trades runtime speed
+# for size.
+[profile.release]
+strip = true
+lto = "fat"
+codegen-units = 1
