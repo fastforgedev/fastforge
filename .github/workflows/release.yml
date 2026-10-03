@@ -79,13 +79,17 @@ jobs:
             platform: darwin
             arch: x86_64
             archive_ext: tar.gz
+          # The Linux binaries are tooling that has to run on the machines that
+          # build apps, so they are built on the oldest runner GitHub still
+          # offers: a binary linked against 24.04's glibc 2.39 refuses to start
+          # on 22.04 with `version 'GLIBC_2.38' not found`.
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-22.04
             platform: linux
             arch: aarch64
             archive_ext: tar.gz
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-22.04
             platform: linux
             arch: x86_64
             archive_ext: tar.gz
