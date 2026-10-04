@@ -60,6 +60,9 @@ impl AppImageMakeConfig {
     /// (including `[Desktop Action]` sections).
     fn desktop_file(&self, config: &PackageConfig) -> String {
         let app_name = &config.app_name;
+        // The executable is `BINARY_NAME` from `linux/CMakeLists.txt`, which
+        // need not match the pubspec name that the AppDir files are named after.
+        let binary_name = &config.app_binary_name;
         let mut fields: Vec<(&str, String)> = vec![
             (
                 "Name",
@@ -73,7 +76,10 @@ impl AppImageMakeConfig {
                     .clone()
                     .unwrap_or_else(|| "A Flutter Application".to_string()),
             ),
-            ("Exec", format!("LD_LIBRARY_PATH=usr/lib {} %u", app_name)),
+            (
+                "Exec",
+                format!("LD_LIBRARY_PATH=usr/lib {} %u", binary_name),
+            ),
             ("Icon", app_name.clone()),
             ("Type", "Application".to_string()),
             (
@@ -115,7 +121,7 @@ impl AppImageMakeConfig {
                     "[Desktop Action {}]\nName={}\nExec=LD_LIBRARY_PATH=usr/lib {} {} %u",
                     action.label,
                     action.name,
-                    app_name,
+                    binary_name,
                     action.arguments.join(" "),
                 )
             })
@@ -129,7 +135,7 @@ impl AppImageMakeConfig {
     fn app_run(&self, config: &PackageConfig) -> String {
         format!(
             "#!/bin/bash\n\ncd \"$(dirname \"$0\")\"\nexport LD_LIBRARY_PATH=usr/lib\nexec ./{}\n",
-            config.app_name
+            config.app_binary_name
         )
     }
 }
@@ -421,6 +427,19 @@ actions:
         assert!(script.starts_with("#!/bin/bash"));
         assert!(script.contains("export LD_LIBRARY_PATH=usr/lib"));
         assert!(script.contains("exec ./hola_amigos"));
+    }
+
+    #[test]
+    fn executable_is_the_binary_name() {
+        let config = PackageConfig {
+            app_binary_name: "hola-amigos".into(),
+            ..test_config()
+        };
+        let mc = AppImageMakeConfig::default();
+        assert!(mc.app_run(&config).contains("exec ./hola-amigos\n"));
+        let desktop = mc.desktop_file(&config);
+        assert!(desktop.contains("Exec=LD_LIBRARY_PATH=usr/lib hola-amigos %u"));
+        assert!(desktop.contains("Icon=hola_amigos"));
     }
 
     #[test]
