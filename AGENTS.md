@@ -86,6 +86,7 @@ dart run melos run test
 
 - 沿用相邻代码的结构和风格；在对应核心 crate 或共享包实现可复用逻辑，CLI 层负责参数及命令编排。
 - 修改命令参数、配置解析或发布行为时，核对现有示例及两种语言的相关文档；涉及破坏性变更时明确说明兼容性影响。
+- `distribute_options.yaml`（含 `release` 命令）已废弃：只为兼容 Dart 版保留现有行为和缺陷修复，不新增字段或功能；新配置放到 `.fastforge/`（项目）或 `~/.fastforge/`（本机），新的自动化能力放到工作流。
 - Studio 的本地服务和 Worker 共享 `apps/studio-api/openapi.yaml` 契约。API 改动需核对两端实现、能力声明和客户端，保持行为一致。
 - 修改 OpenAPI 后，运行 `pnpm --filter studio-api-client codegen` 更新类型，再运行 `pnpm --filter studio-api-client codegen:check` 验证。不要直接手改生成的 `src/schema.d.ts`；其他生成代码也应优先修改生成来源。
 - Studio 可复用组件优先放入 `packages/studio-ui/`，前端通过 `studio-ui` workspace 包引用；组件变化同步检查相关 Storybook 展示。

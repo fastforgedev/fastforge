@@ -5,6 +5,11 @@ use std::collections::HashMap;
 use std::path::Path;
 
 /// Parsed contents of `distribute_options.yaml`.
+///
+/// Deprecated: kept only for compatibility with the Dart CLI (`release`, and
+/// the `output`/`variables` that `package`/`publish`/`build` read). Don't add
+/// fields or features here; new configuration belongs elsewhere (for example
+/// `.fastforge/` or `~/.fastforge/`), and new automation in workflows.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistributeOptions {
     /// Output directory for packaged artifacts (e.g. `dist/`).
