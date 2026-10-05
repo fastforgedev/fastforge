@@ -3,7 +3,7 @@ mod flutter;
 mod gradle;
 mod xcode;
 
-use crate::flutter::command::FlutterCommand;
+pub use crate::flutter::command::FlutterCommand;
 use crate::flutter::{
     AndroidAabBuilder, AndroidApkBuilder, IOSBuilder, LinuxBuilder, MacOSBuilder, OhosAppBuilder,
     OhosHapBuilder, WebBuilder, WindowsBuilder,

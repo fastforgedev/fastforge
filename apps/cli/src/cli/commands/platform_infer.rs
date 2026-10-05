@@ -38,7 +38,7 @@ fn target_candidates(target: &str) -> &'static [Platform] {
 
 /// Whether the host OS is able to build for `platform`. Desktop platforms are
 /// host-locked; android/web/ohos build anywhere; ios needs a macOS host.
-fn buildable_on_host(platform: Platform, host: Option<Platform>) -> bool {
+pub fn buildable_on_host(platform: Platform, host: Option<Platform>) -> bool {
     match platform {
         Platform::MacOS | Platform::IOS => host == Some(Platform::MacOS),
         Platform::Windows => host == Some(Platform::Windows),
@@ -89,6 +89,31 @@ pub fn infer_platform(targets: &[&str]) -> Result<Platform> {
         platform.as_str()
     );
     Ok(platform)
+}
+
+/// Like [`infer_platform`], but without assuming the platform is built on
+/// this machine: used to pick a remote host for `--host auto`.
+pub fn infer_platform_anywhere(targets: &[&str]) -> Result<Platform> {
+    infer_platform_anywhere_in(targets, Path::new("."))
+}
+
+fn infer_platform_anywhere_in(targets: &[&str], root: &Path) -> Result<Platform> {
+    let mut candidates: Vec<Platform> = Platform::all().to_vec();
+    for target in targets {
+        let allowed = target_candidates(target);
+        candidates.retain(|p| allowed.contains(p));
+    }
+    if candidates.len() > 1 {
+        let project = project_candidates(root);
+        candidates.retain(|p| project.contains(p));
+    }
+    match candidates[..] {
+        [platform] => Ok(platform),
+        _ => Err(anyhow!(
+            "Unable to detect the platform{} for a remote host. Please specify --platform explicitly.",
+            fmt_targets(targets),
+        )),
+    }
 }
 
 fn infer_platform_in(targets: &[&str], root: &Path, host: Option<Platform>) -> Result<Platform> {
@@ -156,6 +181,21 @@ mod tests {
             std::fs::create_dir(dir.path().join(platform)).unwrap();
         }
         dir
+    }
+
+    #[test]
+    fn anywhere_ignores_the_host() {
+        let dir = flutter_project(&["macos", "windows"]);
+        assert_eq!(
+            infer_platform_anywhere_in(&["dmg"], dir.path()).unwrap(),
+            Platform::MacOS
+        );
+        assert!(infer_platform_anywhere_in(&["zip"], dir.path()).is_err());
+        let dir = flutter_project(&["windows"]);
+        assert_eq!(
+            infer_platform_anywhere_in(&["zip"], dir.path()).unwrap(),
+            Platform::Windows
+        );
     }
 
     #[test]

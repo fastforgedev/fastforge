@@ -19,6 +19,7 @@
 - [打包](packaging.md)：打包流程、构建阶段和生命周期钩子
 - [发布](publishing.md)：发布目标、参数和凭证
 - [本地工作流](workflows.md)：发现、校验和运行 `.fastforge/workflows`
+- [远程主机](remote-hosts.md)：通过 SSH 在其他机器上打包和运行
 - [CLI 参考](cli.md)：顶层命令及参数速查
 
 ### 构建器

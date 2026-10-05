@@ -19,6 +19,7 @@ The legacy documentation remains in [`apps/docs`](../../apps/docs/). This direct
 - [Packaging](packaging.md): the packaging process, build stage, and lifecycle hooks
 - [Publishing](publishing.md): publishing targets, parameters, and credentials
 - [Local Workflows](workflows.md): discover, validate, and run `.fastforge/workflows`
+- [Remote Hosts](remote-hosts.md): package and run on another machine over SSH
 - [CLI Reference](cli.md): top-level commands and options
 
 ### Builders

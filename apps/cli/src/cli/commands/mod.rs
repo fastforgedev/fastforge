@@ -1,9 +1,14 @@
 pub mod analyze;
 pub mod build;
+pub mod host;
 pub mod package;
 pub mod platform_infer;
 pub mod publish;
 pub mod release;
+pub mod remote;
+pub mod remote_agent;
+pub mod run;
+pub mod run_desktop;
 pub mod store;
 pub mod upgrade;
 pub mod version_check;
@@ -11,9 +16,12 @@ pub mod workflow;
 
 pub use analyze::AnalyzeArgs;
 pub use build::BuildArgs;
+pub use host::HostArgs;
 pub use package::PackageArgs;
 pub use publish::PublishArgs;
 pub use release::ReleaseArgs;
+pub use remote_agent::RemoteAgentArgs;
+pub use run::RunArgs;
 pub use store::StoreArgs;
 pub use upgrade::UpgradeArgs;
 pub use version_check::VersionCheckArgs;

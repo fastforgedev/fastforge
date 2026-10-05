@@ -5,8 +5,8 @@ mod config;
 mod utils;
 
 use cli::{
-    AnalyzeArgs, BuildArgs, PackageArgs, PublishArgs, ReleaseArgs, StoreArgs, UpgradeArgs,
-    VersionCheckArgs, WorkflowArgs,
+    AnalyzeArgs, BuildArgs, HostArgs, PackageArgs, PublishArgs, ReleaseArgs, RemoteAgentArgs,
+    RunArgs, StoreArgs, UpgradeArgs, VersionCheckArgs, WorkflowArgs,
 };
 use fastforge_app_gallery_connect::cli::AppGalleryConnectArgs;
 use fastforge_app_store_connect::cli::AppStoreConnectArgs;
@@ -57,6 +57,18 @@ enum Commands {
     Publish(Box<PublishArgs>),
     #[command(about = "Release the current Flutter application")]
     Release(ReleaseArgs),
+    #[command(
+        about = "Run the app on a device, like `flutter run`",
+        long_about = "Run the app on a device, like `flutter run`\n\n\
+                      Arguments after `--` are passed to 'flutter run'. With --host the app runs on a\n\
+                      remote host; hot reload (r/R) syncs the project first and the URLs it prints\n\
+                      (VM service, DevTools, web server) are forwarded to this machine."
+    )]
+    Run(RunArgs),
+    #[command(about = "Manage remote hosts that package and publish on other machines")]
+    Host(HostArgs),
+    #[command(name = "remote-agent", hide = true)]
+    RemoteAgent(RemoteAgentArgs),
     #[command(about = "Manage distribution store configuration")]
     Store(StoreArgs),
     #[command(about = "Open Studio to manage local projects")]
@@ -128,15 +140,18 @@ fn init_logging() {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     init_logging();
-    print_rename_notice_if_needed();
-    print_local_build_notice_if_needed();
+    // The remote agent's output is relayed to a client; keep it to the run's own.
+    if !std::env::args().any(|arg| arg == "remote-agent") {
+        print_rename_notice_if_needed();
+        print_local_build_notice_if_needed();
+    }
     let cli = Cli::parse();
 
     // Mirrors the Dart CLI's `--[no-]version-check` (default on). The
     // `upgrade` / `version-check` commands perform their own check.
     let checks_itself = matches!(
         cli.command,
-        Commands::Upgrade(_) | Commands::VersionCheck(_)
+        Commands::Upgrade(_) | Commands::VersionCheck(_) | Commands::RemoteAgent(_)
     );
     if !cli.no_version_check && !checks_itself {
         cli::version_check::run_startup_check().await;
@@ -157,6 +172,15 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Release(args) => {
             cli::release::execute(args).await?;
+        }
+        Commands::Run(args) => {
+            cli::run::execute(args).await?;
+        }
+        Commands::Host(args) => {
+            cli::host::execute(args).await?;
+        }
+        Commands::RemoteAgent(args) => {
+            cli::remote_agent::execute(args).await?;
         }
         Commands::Store(args) => {
             cli::store::execute(args).await?;

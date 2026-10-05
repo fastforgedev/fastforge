@@ -105,7 +105,9 @@ impl<'a> FlutterCommand<'a> {
         Ok(FlutterVersion { flutter_version })
     }
 
-    fn base_command(&self) -> Result<Command, BuildError> {
+    /// A `flutter` command (resolved through `FLUTTER_ROOT` when set) with the
+    /// environment applied, for callers that run other subcommands.
+    pub fn base_command(&self) -> Result<Command, BuildError> {
         let executable = self.resolve_executable()?;
         let mut cmd = Command::new(executable);
         if let Some(env) = self.environment {

@@ -23,7 +23,9 @@ Top-level commands:
 | --------------- | -------------------------------------------------- |
 | `analyze`       | Analyze app packages, or a directory of them       |
 | `build`         | Build a project with Flutter Builder               |
+| `host`          | Manage remote hosts (see [Remote Hosts](remote-hosts.md)) |
 | `package`       | Build and package a project                        |
+| `run`           | Run the app on a device, like `flutter run`        |
 | `publish`       | Publish an existing artifact                       |
 | `release`       | Preserve compatibility with legacy releases        |
 | `store`         | Manage aggregated store configuration and catalogs |
@@ -115,12 +117,57 @@ fastforge package [OPTIONS]
 | `--build-dart-define <KEY=VALUE>`     | `--dart-define` passed to `flutter build`; repeatable                       |
 | `--hook-pre <COMMAND>`                | Shell command to run before packaging                                       |
 | `--hook-post <COMMAND>`               | Shell command to run after packaging                                        |
+| `--host <NAME\|auto>`                 | Package on a remote host and fetch the artifacts into the output directory |
+
+> [!WARNING]
+> `distribute_options.yaml` is deprecated. It is still read for compatibility with the Dart CLI, but it gets no new features. Use `--output` and environment variables with `package`, and [local workflows](workflows.md) instead of `release`.
 
 Like the Dart CLI, `package` reads `distribute_options.yaml` when present: artifacts go to its `output` directory (default `dist/`), and its `variables` are layered over the environment for the build, the packagers (for example `INNO_SETUP_PATH`) and the hooks. `flutter clean` runs at most once; non-Android platforms build once and reuse the output for every target. A target whose builder cannot run on the current OS is skipped with a warning.
+
+With `--host`, the project is synced to the host, the same `package` command runs there, and the artifacts are fetched into the local output directory. See [Remote Hosts](remote-hosts.md).
 
 See [Packaging](packaging.md) for current support.
 
 See the [packager overview](packagers/README.md) for platform and format details.
+
+## `host`
+
+```text
+fastforge host add <NAME> [DESTINATION] [OPTIONS]
+fastforge host list
+fastforge host remove <NAME>
+fastforge host doctor <NAME>
+fastforge host exec <NAME> [--no-sync] -- <COMMAND>...
+```
+
+| Subcommand | Description |
+| ---------- | ----------- |
+| `add`      | Add a host to `~/.fastforge/hosts.yaml`. `DESTINATION` is `[user@]host[:port]` or an `~/.ssh/config` alias. Options: `--identity-file`, `--workdir`, `--fastforge`, `--platforms`, `--forward-env`, `--env KEY=VALUE` (repeatable), `--transport ssh\|local`, `--os unix\|windows`, `--force` |
+| `list`     | List the configured hosts |
+| `remove`   | Remove a host |
+| `doctor`   | Check the connection, the remote fastforge and its tools; saves the detected OS and platforms when not configured |
+| `exec`     | Sync the current project and run a shell command in the remote workspace |
+
+See [Remote Hosts](remote-hosts.md).
+
+## `run`
+
+```text
+fastforge run [OPTIONS] [-- <FLUTTER_ARGS>...]
+```
+
+| Option                           | Description                                                              |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| `-p, --platform <PLATFORM>`      | Platform to run on; picks the first matching device when `-d` is omitted (Chrome for `web`) |
+| `-d, --device-id <ID>`           | Device id or name, as listed by `flutter devices`                        |
+| `--release` / `--profile`        | Build mode (default debug)                                               |
+| `--flavor <FLAVOR>`              | Build flavor                                                             |
+| `-t, --target <PATH>`            | Entry-point file (default `lib/main.dart`)                               |
+| `--dart-define <KEY=VALUE>`      | Compile-time variable; repeatable                                        |
+| `--dart-define-from-file <PATH>` | File of compile-time variables                                           |
+| `--host <NAME\|auto>`            | Run on a remote host (see [Remote Hosts](remote-hosts.md#running-the-app-on-a-host)) |
+
+Runs `flutter run` with these options, plus everything after `--`. Without `-p` and `-d`, Flutter picks the device. The environment is passed through unchanged; `distribute_options.yaml` is not read. Only Flutter projects are supported for now.
 
 ## `publish`
 
@@ -144,6 +191,9 @@ See the [publisher overview](publishers/README.md) for credentials and arguments
 ```text
 fastforge release [--name <NAME>] [--jobs <JOB,...>] [--skip-jobs <JOB,...>] [--skip-clean] [--dry-run]
 ```
+
+> [!WARNING]
+> Deprecated together with `distribute_options.yaml`: kept for compatibility, no new features. Use [local workflows](workflows.md).
 
 Runs the releases defined in `distribute_options.yaml`: every release when `--name` is omitted, otherwise the named one. `--jobs` selects jobs and takes precedence over `--skip-jobs`. Each job packages its target and, when `publish`/`publish_to` is set, publishes the first artifact. Variables are merged as environment < global `variables` < release `variables` < job `variables`. `flutter clean` runs at most once per release. The run ends with `RELEASE SUCCESSFUL in Ns` or `RELEASE FAILED in Ns`. For new automation, prefer `fastforge workflow`.
 

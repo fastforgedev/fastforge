@@ -82,6 +82,12 @@ pub struct PackageArgs {
     /// Shell command to run after packaging.
     #[arg(long = "hook-post")]
     pub hook_post: Option<String>,
+
+    /// Package on a remote host from `~/.fastforge/hosts.yaml` and fetch the
+    /// artifacts back. `auto` picks the first host whose `platforms` lists the
+    /// platform.
+    #[arg(long = "host", value_name = "NAME|auto")]
+    pub host: Option<String>,
 }
 
 impl PackageArgs {
@@ -152,6 +158,9 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
         return Err(anyhow!("At least one 'target' must be specified!"));
     }
     let target_refs: Vec<&str> = targets.iter().map(String::as_str).collect();
+    if let Some(host) = args.host.as_deref() {
+        return super::remote::package(args, host, &target_refs);
+    }
     let platform = match args.platform.as_deref() {
         Some(platform) => platform.to_string(),
         None => super::platform_infer::infer_platform(&target_refs)?
@@ -175,6 +184,7 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
     // `--output` wins over the file, so a workflow can drive the output
     // directory without one.
     let options = DistributeOptions::load()?;
+    super::remote::hint_if_unsupported(&platform);
     let output = resolve_output(args.output.as_deref(), &options);
     package(PackageRequest {
         platform: &platform,
@@ -193,7 +203,7 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
 /// The directory the artifacts are written to: the `--output` argument when it
 /// is given, the `output` key of `distribute_options.yaml` otherwise (which
 /// itself defaults to `dist/` when the file does not exist).
-fn resolve_output(argument: Option<&str>, options: &DistributeOptions) -> String {
+pub(crate) fn resolve_output(argument: Option<&str>, options: &DistributeOptions) -> String {
     match argument.map(str::trim).filter(|value| !value.is_empty()) {
         Some(value) => value.to_string(),
         None => options.output.clone(),

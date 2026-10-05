@@ -23,7 +23,9 @@ fastforge <COMMAND>
 | --------------- | ----------------------------- |
 | `analyze`       | 分析应用包，或整个目录        |
 | `build`         | 使用 Flutter Builder 构建项目 |
+| `host`          | 管理远程主机（见[远程主机](remote-hosts.md)） |
 | `package`       | 构建并打包项目                |
+| `run`           | 在设备上运行应用（类似 `flutter run`） |
 | `publish`       | 发布现有产物                  |
 | `release`       | 兼容旧版发布流程              |
 | `store`         | 管理聚合商店配置与 catalog    |
@@ -115,12 +117,57 @@ fastforge package [OPTIONS]
 | `--build-dart-define <KEY=VALUE>`     | 传给 `flutter build` 的 `--dart-define`；可重复                  |
 | `--hook-pre <COMMAND>`                | 打包前 shell 命令                                                |
 | `--hook-post <COMMAND>`               | 打包后 shell 命令                                                |
+| `--host <NAME\|auto>`                 | 在远程主机上打包，并把产物取回本地输出目录                       |
+
+> [!WARNING]
+> `distribute_options.yaml` 已废弃。为兼容 Dart 版仍会读取，但不再增加新功能。`package` 请改用 `--output` 和环境变量，`release` 请改用[本地工作流](workflows.md)。
 
 与 Dart 版一致，存在 `distribute_options.yaml` 时 `package` 会读取它：产物输出到其 `output` 目录（默认 `dist/`），其 `variables` 叠加在环境变量之上，传给构建、打包器（例如 `INNO_SETUP_PATH`）和 hook。`flutter clean` 最多执行一次；非 Android 平台只构建一次并复用给所有 target。构建器无法在当前系统运行的 target 会打印警告并跳过。
+
+使用 `--host` 时，项目会同步到远程主机，在那里执行同一条 `package` 命令，产物取回本地输出目录。详见[远程主机](remote-hosts.md)。
 
 当前支持范围见[打包](packaging.md)。
 
 各平台和格式说明见[打包器总览](packagers/README.md)。
+
+## `host`
+
+```text
+fastforge host add <NAME> [DESTINATION] [OPTIONS]
+fastforge host list
+fastforge host remove <NAME>
+fastforge host doctor <NAME>
+fastforge host exec <NAME> [--no-sync] -- <COMMAND>...
+```
+
+| 子命令   | 说明 |
+| -------- | ---- |
+| `add`    | 向 `~/.fastforge/hosts.yaml` 添加主机。`DESTINATION` 为 `[user@]host[:port]` 或 `~/.ssh/config` 中的别名。参数：`--identity-file`、`--workdir`、`--fastforge`、`--platforms`、`--forward-env`、`--env KEY=VALUE`（可重复）、`--transport ssh\|local`、`--os unix\|windows`、`--force` |
+| `list`   | 列出已配置的主机 |
+| `remove` | 删除主机 |
+| `doctor` | 检查连接、远端 fastforge 及工具链；未配置时保存探测到的系统和平台 |
+| `exec`   | 同步当前项目，并在远端工作区执行 shell 命令 |
+
+详见[远程主机](remote-hosts.md)。
+
+## `run`
+
+```text
+fastforge run [OPTIONS] [-- <FLUTTER_ARGS>...]
+```
+
+| 参数                             | 说明                                                     |
+| -------------------------------- | -------------------------------------------------------- |
+| `-p, --platform <PLATFORM>`      | 运行平台；未指定 `-d` 时选第一个匹配的设备（`web` 优先 Chrome） |
+| `-d, --device-id <ID>`           | 设备 id 或名称，见 `flutter devices`                     |
+| `--release` / `--profile`        | 构建模式（默认 debug）                                   |
+| `--flavor <FLAVOR>`              | 构建 flavor                                              |
+| `-t, --target <PATH>`            | 入口文件（默认 `lib/main.dart`）                         |
+| `--dart-define <KEY=VALUE>`      | 编译期变量；可重复                                       |
+| `--dart-define-from-file <PATH>` | 编译期变量文件                                           |
+| `--host <NAME\|auto>`            | 在远程主机上运行（见[远程主机](remote-hosts.md#在主机上运行应用)） |
+
+用这些参数加上 `--` 之后的全部参数执行 `flutter run`。既没有 `-p` 也没有 `-d` 时由 Flutter 选择设备。环境变量原样传入，不读取 `distribute_options.yaml`。目前只支持 Flutter 项目。
 
 ## `publish`
 
@@ -144,6 +191,9 @@ fastforge publish [OPTIONS]
 ```text
 fastforge release [--name <NAME>] [--jobs <JOB,...>] [--skip-jobs <JOB,...>] [--skip-clean] [--dry-run]
 ```
+
+> [!WARNING]
+> 随 `distribute_options.yaml` 一同废弃：保留以兼容旧用法，不再增加新功能。请改用[本地工作流](workflows.md)。
 
 执行 `distribute_options.yaml` 中定义的 release：省略 `--name` 时执行全部 release，否则只执行指定的那个。`--jobs` 选择要执行的 job，优先于 `--skip-jobs`。每个 job 打包其 target，配置了 `publish`/`publish_to` 时发布第一个产物。变量合并顺序为：环境变量 < 全局 `variables` < release `variables` < job `variables`。每个 release 最多执行一次 `flutter clean`。结束时输出 `RELEASE SUCCESSFUL in Ns` 或 `RELEASE FAILED in Ns`。新的自动化流程建议使用 `fastforge workflow`。
 

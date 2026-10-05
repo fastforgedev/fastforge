@@ -18,10 +18,12 @@ fastforge_app_analyzer = { path = "../../crates/app_analyzer" }
 fastforge_app_builder = { path = "../../crates/app_builder" }
 fastforge_app_packager = { path = "../../crates/app_packager" }
 fastforge_app_publisher = { path = "../../crates/app_publisher" }
+fastforge_remote = { path = "../../crates/remote" }
 fastforge_app_store_connect = { path = "../../crates/stores/app_store_connect" }
 fastforge_app_gallery_connect = { path = "../../crates/stores/app_gallery_connect" }
 fastforge_google_play_console = { path = "../../crates/stores/google_play_console" }
 anyhow = "1.0.100"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4.5.48", features = ["derive"] }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -29,7 +31,7 @@ serde_json = "1.0.145"
 serde_yaml = "0.9.34"
 async-trait = "0.1"
 minact-core = { git = "https://github.com/fastforgedev/minact.git" }
-tokio = { version = "1.47.1", features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1.47.1", features = ["rt", "rt-multi-thread", "macros", "signal"] }
 log = "0.4.28"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 tracing = "0.1"
