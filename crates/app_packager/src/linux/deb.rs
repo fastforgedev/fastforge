@@ -7,15 +7,18 @@ use serde::Deserialize;
 use crate::fs_util::copy_dir_contents;
 
 use super::common::{
-    Person, deb_architecture, desktop_list, install_hicolor_icons, install_metainfo,
-    load_make_config, load_pubspec_meta, render_desktop_entry,
+    FormatVariables, Person, RawPackaging, deb_architecture, desktop_list, install_hicolor_icons,
+    install_metainfo, load_make_config, load_pubspec_meta, make_executable, render_desktop_entry,
 };
 
 /// Builds a Debian `.deb` package using `dpkg-deb`, mirroring
 /// Dart's `AppPackageMakerDeb`.
 ///
-/// Reads `linux/packaging/deb/make_config.yaml` when present (same schema as
-/// Dart's `MakeDebConfig`); falls back to sensible defaults otherwise.
+/// Raw files in `linux/packaging/deb/` (`control`, maintainer scripts,
+/// `conffiles`, `triggers`, a `.desktop` file and a `files/` overlay) are
+/// rendered with fastforge's variables and win over what would be generated
+/// from `linux/packaging/deb/make_config.yaml` (same schema as Dart's
+/// `MakeDebConfig`), which in turn falls back to sensible defaults.
 ///
 /// Requires `dpkg-deb` to be installed on the host (`dpkg-dev` on Debian/Ubuntu).
 pub struct LinuxDebPackager;
@@ -81,7 +84,7 @@ impl DebMakeConfig {
                 Some(
                     self.package_name
                         .clone()
-                        .unwrap_or_else(|| config.app_binary_name.clone()),
+                        .unwrap_or_else(|| deb_package_name(&config.app_binary_name)),
                 ),
             ),
             ("Version", Some(config.app_version.clone())),
@@ -189,6 +192,22 @@ impl DebMakeConfig {
     }
 }
 
+/// The default Debian package name for a binary: lowercased, with characters
+/// Debian does not allow (anything but `a-z0-9+-.`, e.g. `_`) replaced by `-`.
+fn deb_package_name(binary_name: &str) -> String {
+    binary_name
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
 fn run(cmd: &mut Command) -> Result<(), PackageError> {
     let out = cmd.output().map_err(|e| {
         PackageError::MissingTool(format!("{}: {}", cmd.get_program().to_string_lossy(), e))
@@ -223,7 +242,24 @@ impl AppPackager for LinuxDebPackager {
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
         let make_config = DebMakeConfig::load()?;
         let pkg_dir = config.packaging_dir();
+        let output_file = config.output_file();
         let binary_name = &config.app_binary_name;
+        let raw = RawPackaging::load(
+            config,
+            "deb",
+            FormatVariables {
+                package_name: make_config
+                    .package_name
+                    .clone()
+                    .unwrap_or_else(|| deb_package_name(binary_name)),
+                package_arch: deb_architecture().to_string(),
+                install_dir: Some(format!("/opt/{}", binary_name)),
+                display_name: make_config.display_name.clone(),
+                packaging_dir: &pkg_dir,
+                output_file: &output_file,
+                extra: vec![],
+            },
+        )?;
 
         // Create the required directory tree
         let debian_dir = pkg_dir.join("DEBIAN");
@@ -234,8 +270,8 @@ impl AppPackager for LinuxDebPackager {
         std::fs::create_dir_all(&applications_dir)?;
 
         // Install the configured icon and metainfo (when provided)
-        if let Some(icon) = &make_config.icon {
-            install_hicolor_icons(icon, &pkg_dir, binary_name)?;
+        if let Some(icon) = raw.icon(make_config.icon.as_ref()) {
+            install_hicolor_icons(&icon, &pkg_dir, binary_name)?;
         }
         if let Some(metainfo) = &make_config.metainfo {
             install_metainfo(metainfo, &pkg_dir, binary_name)?;
@@ -245,30 +281,61 @@ impl AppPackager for LinuxDebPackager {
         copy_dir_contents(&config.build_output_dir, &share_app_dir)?;
 
         // DEBIAN/control
-        std::fs::write(debian_dir.join("control"), make_config.control_file(config))?;
+        raw.write_or_generate(raw.file(&["control"]), &debian_dir.join("control"), || {
+            make_config.control_file(config)
+        })?;
 
-        // DEBIAN/postinst + DEBIAN/postrm
+        // DEBIAN/postinst + DEBIAN/postrm (generated unless provided)
         let postinst_path = debian_dir.join("postinst");
-        std::fs::write(&postinst_path, make_config.postinst(binary_name))?;
-        run(Command::new("chmod").args(["+x", &postinst_path.display().to_string()]))?;
-
+        raw.write_or_generate(raw.file(&["postinst"]), &postinst_path, || {
+            make_config.postinst(binary_name)
+        })?;
+        make_executable(&postinst_path)?;
         let postrm_path = debian_dir.join("postrm");
-        std::fs::write(&postrm_path, make_config.postrm(binary_name))?;
-        run(Command::new("chmod").args(["+x", &postrm_path.display().to_string()]))?;
+        raw.write_or_generate(raw.file(&["postrm"]), &postrm_path, || {
+            make_config.postrm(binary_name)
+        })?;
+        make_executable(&postrm_path)?;
+
+        // Other control files are only written when provided.
+        for (name, executable) in [
+            ("preinst", true),
+            ("prerm", true),
+            ("config", true),
+            ("conffiles", false),
+            ("triggers", false),
+            ("templates", false),
+            ("shlibs", false),
+            ("symbols", false),
+        ] {
+            if let Some(src) = raw.file(&[name]) {
+                let dest = debian_dir.join(name);
+                std::fs::write(&dest, raw.render(&src)?)?;
+                if executable {
+                    make_executable(&dest)?;
+                }
+            }
+        }
 
         // usr/share/applications/{binary_name}.desktop
-        std::fs::write(
-            applications_dir.join(format!("{}.desktop", binary_name)),
-            make_config.desktop_file(config),
+        raw.write_or_generate(
+            raw.file_with_extension("desktop")?,
+            &applications_dir.join(format!("{}.desktop", binary_name)),
+            || make_config.desktop_file(config),
         )?;
 
-        let output_file = config.output_file();
-        run(Command::new("dpkg-deb").args([
+        // files/ overlay into the package root
+        raw.install_overlay(&pkg_dir)?;
+
+        let mut cmd = Command::new("dpkg-deb");
+        cmd.args([
             "--build",
             "--root-owner-group",
             &pkg_dir.display().to_string(),
             &output_file.display().to_string(),
-        ]))?;
+        ]);
+        raw.apply_env(&mut cmd);
+        run(&mut cmd)?;
 
         std::fs::remove_dir_all(&pkg_dir).ok();
         config.resolve_result(output_file)
@@ -377,10 +444,16 @@ startup_notify: true
     }
 
     #[test]
+    fn default_package_name_is_a_valid_debian_name() {
+        assert_eq!(deb_package_name("hola_amigos"), "hola-amigos");
+        assert_eq!(deb_package_name("Hello.World+2"), "hello.world+2");
+    }
+
+    #[test]
     fn defaults_without_make_config() {
         let mc = DebMakeConfig::default();
         let control = mc.control_file(&test_config());
-        assert!(control.contains("Package: hola_amigos"));
+        assert!(control.contains("Package: hola-amigos"));
         assert!(control.contains("Section: x11"));
         assert!(control.contains("Priority: optional"));
         let desktop = mc.desktop_file(&test_config());

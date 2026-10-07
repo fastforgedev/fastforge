@@ -7,13 +7,19 @@ use serde::Deserialize;
 use crate::fs_util::copy_dir_contents;
 
 use super::common::{
-    desktop_list, load_make_config, load_pubspec_meta, render_desktop_entry, uname_machine,
+    FormatVariables, RawPackaging, desktop_list, load_make_config, load_pubspec_meta,
+    machine_architecture, render_desktop_entry,
 };
 
 /// Builds an RPM package using `rpmbuild`, mirroring Dart's `AppPackageMakerRPM`.
 ///
-/// Reads `linux/packaging/rpm/make_config.yaml` when present (same schema as
-/// Dart's `MakeRPMConfig`); falls back to sensible defaults otherwise.
+/// A raw `.spec` file, `.desktop` file and `files/` overlay in
+/// `linux/packaging/rpm/` are rendered with fastforge's variables (which are
+/// also set in rpmbuild's environment, so `%{getenv:APP_VERSION}` works too)
+/// and win over what would be generated from
+/// `linux/packaging/rpm/make_config.yaml` (same schema as Dart's
+/// `MakeRPMConfig`), which in turn falls back to sensible defaults. The
+/// overlay is copied into `%{_builddir}`, next to the bundle directory.
 ///
 /// Requires `rpmbuild` (from the `rpm-build` package) and `patchelf`.
 pub struct LinuxRpmPackager;
@@ -57,11 +63,7 @@ pub struct RpmMakeConfig {
 
 /// RPM architecture from `uname -m`, mirroring Dart's `_getArchitecture`.
 fn rpm_architecture() -> String {
-    if uname_machine() == "aarch64" {
-        "aarch64".to_string()
-    } else {
-        "x86_64".to_string()
-    }
+    machine_architecture().to_string()
 }
 
 /// RPM `Release` from the app version, mirroring Dart's
@@ -173,27 +175,30 @@ impl RpmMakeConfig {
         // Body
         let app_name = &config.app_name;
         let binary_name = &config.app_binary_name;
+        // Sources are addressed from `%{_topdir}/BUILD` (where `package()`
+        // stages them): rpm 4.20+ runs `%install` in a per-build
+        // subdirectory, so paths relative to the working directory break.
         let install_script = [
             "mkdir -p %{buildroot}%{_bindir}".to_string(),
             "mkdir -p %{buildroot}%{_datadir}/%{name}".to_string(),
             "mkdir -p %{buildroot}%{_datadir}/applications".to_string(),
             "mkdir -p %{buildroot}%{_datadir}/metainfo".to_string(),
             "mkdir -p %{buildroot}%{_datadir}/pixmaps".to_string(),
-            format!("cp -r {}/* %{{buildroot}}%{{_datadir}}/%{{name}}", app_name),
+            format!("cp -r %{{_topdir}}/BUILD/{}/* %{{buildroot}}%{{_datadir}}/%{{name}}", app_name),
             format!(
                 "ln -s %{{_datadir}}/%{{name}}/{} %{{buildroot}}%{{_bindir}}/%{{name}}",
                 binary_name
             ),
             format!(
-                "cp -r {}.desktop %{{buildroot}}%{{_datadir}}/applications/%{{name}}.desktop",
+                "cp -r %{{_topdir}}/BUILD/{}.desktop %{{buildroot}}%{{_datadir}}/applications/%{{name}}.desktop",
                 binary_name
             ),
             format!(
-                "cp -r {}.png %{{buildroot}}%{{_datadir}}/pixmaps/%{{name}}.png",
+                "cp -r %{{_topdir}}/BUILD/{}.png %{{buildroot}}%{{_datadir}}/pixmaps/%{{name}}.png",
                 binary_name
             ),
             format!(
-                "cp -r {}*.xml %{{buildroot}}%{{_datadir}}/metainfo/%{{name}}.appdata.xml || :",
+                "cp -r %{{_topdir}}/BUILD/{}*.xml %{{buildroot}}%{{_datadir}}/metainfo/%{{name}}.appdata.xml || :",
                 binary_name
             ),
         ]
@@ -341,6 +346,7 @@ impl AppPackager for LinuxRpmPackager {
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
         let make_config = RpmMakeConfig::load()?;
         let pkg_dir = config.packaging_dir();
+        let output_file = config.output_file();
         let binary_name = &config.app_binary_name;
         let app_name = &config.app_name;
 
@@ -351,9 +357,24 @@ impl AppPackager for LinuxRpmPackager {
         for sub in &["BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"] {
             std::fs::create_dir_all(rpmbuild_dir.join(sub))?;
         }
+        let build_dir = rpmbuild_dir.join("BUILD");
+
+        let rpm_name = make_config.rpm_name(config);
+        let raw = RawPackaging::load(
+            config,
+            "rpm",
+            FormatVariables {
+                package_name: rpm_name.clone(),
+                package_arch: make_config.build_arch(),
+                install_dir: Some(format!("/usr/share/{}", rpm_name)),
+                display_name: make_config.display_name.clone(),
+                packaging_dir: &build_dir,
+                output_file: &output_file,
+                extra: vec![("RPM_RELEASE", rpm_release(&config.app_version))],
+            },
+        )?;
 
         // Copy app files into BUILD/{app_name}/
-        let build_dir = rpmbuild_dir.join("BUILD");
         let build_root = build_dir.join(app_name);
         std::fs::create_dir_all(&build_root)?;
         copy_dir_contents(&config.build_output_dir, &build_root)?;
@@ -362,8 +383,8 @@ impl AppPackager for LinuxRpmPackager {
         sanitize_bundle_rpaths(&build_root)?;
 
         // Copy the configured icon into BUILD/<binary><ext>
-        if let Some(icon) = &make_config.icon {
-            let icon_path = Path::new(icon);
+        if let Some(icon) = raw.icon(make_config.icon.as_ref()) {
+            let icon_path = Path::new(&icon);
             if !icon_path.exists() {
                 return Err(PackageError::NotFound(format!(
                     "provided icon {} path wasn't found",
@@ -405,41 +426,62 @@ impl AppPackager for LinuxRpmPackager {
         }
 
         // Write BUILD/{binary_name}.desktop and SPECS/{binary_name}.spec
-        std::fs::write(
-            build_dir.join(format!("{}.desktop", binary_name)),
-            make_config.desktop_file(config),
+        raw.write_or_generate(
+            raw.file_with_extension("desktop")?,
+            &build_dir.join(format!("{}.desktop", binary_name)),
+            || make_config.desktop_file(config),
         )?;
         let spec_path = rpmbuild_dir
             .join("SPECS")
             .join(format!("{}.spec", binary_name));
-        std::fs::write(&spec_path, make_config.spec_file(config))?;
+        raw.write_or_generate(raw.file_with_extension("spec")?, &spec_path, || {
+            make_config.spec_file(config)
+        })?;
+
+        // files/ overlay into BUILD/ (`%{_builddir}`)
+        raw.install_overlay(&build_dir)?;
 
         // QA_RPATHS = 0x0001 | 0x0010 tolerates $ORIGIN-style RPATHs
-        run(Command::new("rpmbuild")
-            .args([
-                "--define",
-                &format!("_topdir {}", rpmbuild_dir.display()),
-                "-bb",
-                &spec_path.display().to_string(),
-            ])
-            .env("QA_RPATHS", (0x0001 | 0x0010).to_string()))?;
+        let mut cmd = Command::new("rpmbuild");
+        cmd.args([
+            "--define",
+            &format!("_topdir {}", rpmbuild_dir.display()),
+            "-bb",
+            &spec_path.display().to_string(),
+        ]);
+        raw.apply_env(&mut cmd);
+        cmd.env("QA_RPATHS", (0x0001 | 0x0010).to_string());
+        run(&mut cmd)?;
 
-        // Find the produced RPM and copy it to the output file
-        let rpm_dir = rpmbuild_dir.join("RPMS").join(make_config.build_arch());
-        let output_file = config.output_file();
-        let entries: Vec<_> = std::fs::read_dir(&rpm_dir)
-            .map_err(|_| PackageError::NotFound(rpm_dir.display().to_string()))?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().is_file())
-            .collect();
-        let first_rpm = entries
-            .first()
+        // Copy the produced RPM to the output file. A raw spec may set its
+        // own BuildArch, so look in every RPMS/<arch>/ directory.
+        let produced = find_rpm(&rpmbuild_dir.join("RPMS"))
             .ok_or_else(|| PackageError::General("rpmbuild produced no output".into()))?;
-        std::fs::copy(first_rpm.path(), &output_file)?;
+        std::fs::copy(produced, &output_file)?;
 
         std::fs::remove_dir_all(&pkg_dir).ok();
         config.resolve_result(output_file)
     }
+}
+
+/// The first `.rpm` file (by path) under `dir`.
+fn find_rpm(dir: &Path) -> Option<std::path::PathBuf> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            if let Some(found) = find_rpm(&path) {
+                return Some(found);
+            }
+        } else if path.extension().is_some_and(|e| e == "rpm") {
+            return Some(path);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -516,6 +558,9 @@ spec_macros:
         ));
         assert!(spec.contains("echo Uninstalling"));
         assert!(spec.contains("%attr(4755, root, root)"));
+        assert!(
+            spec.contains("cp -r %{_topdir}/BUILD/hola_amigos/* %{buildroot}%{_datadir}/%{name}")
+        );
     }
 
     #[test]
@@ -569,5 +614,20 @@ spec_macros:
         assert!(desktop.contains("Name=Hola"));
         assert!(desktop.contains("Icon=hola-amigos"));
         assert!(desktop.contains("Exec=hola-amigos %U"));
+    }
+
+    #[test]
+    fn find_rpm_looks_in_every_arch_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rpms = tmp.path().join("RPMS");
+        assert_eq!(find_rpm(&rpms), None);
+        std::fs::create_dir_all(rpms.join("noarch")).unwrap();
+        std::fs::write(rpms.join("noarch/readme.txt"), "").unwrap();
+        assert_eq!(find_rpm(&rpms), None);
+        std::fs::write(rpms.join("noarch/demo-1.0-1.noarch.rpm"), "").unwrap();
+        assert_eq!(
+            find_rpm(&rpms),
+            Some(rpms.join("noarch/demo-1.0-1.noarch.rpm"))
+        );
     }
 }

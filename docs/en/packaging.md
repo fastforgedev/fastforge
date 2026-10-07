@@ -82,6 +82,41 @@ When a channel is set, `{{channel}}` replaces the flavor segment. Available vari
 
 Most packagers read an optional `<platform>/packaging/<format>/make_config.yaml`, such as `macos/packaging/dmg/make_config.yaml` or `linux/packaging/deb/make_config.yaml`. A missing file means defaults; a file that cannot be parsed fails packaging. Only the `custom` format requires its configuration file.
 
+The Linux AppImage, DEB, RPM, and Pacman packagers also accept the format's own raw files, such as a Debian `control` file or an RPM spec, rendered with the packaging variables below. Raw files take precedence over `make_config.yaml`. See [Linux](packagers/linux.md#configuration).
+
+### Packaging Variables
+
+Fastforge provides these variables to raw packaging files as `${NAME}`. It also sets them in the environment of the packaging tools, the `custom` script, and the lifecycle hooks; a variable with an empty value is left unset there.
+
+| Variable                                                  | Value                                                                                               |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `APP_NAME`, `APP_BINARY_NAME`                             | The `pubspec.yaml` name and the executable name                                                     |
+| `APP_VERSION`, `BUILD_NAME`, `BUILD_NUMBER`               | `1.2.3+4`, `1.2.3`, `4`; `BUILD_NUMBER` is empty without a build number                             |
+| `APP_DISPLAY_NAME`                                        | `project.display_name`, else `display_name` from `make_config.yaml`, else `APP_NAME`                |
+| `APP_DESCRIPTION`, `APP_HOMEPAGE`                         | `project.description` / `project.homepage`, else `pubspec.yaml`                                    |
+| `APP_ID`                                                  | `project.app_id`                                                                                    |
+| `BUILD_MODE`, `FLAVOR`, `CHANNEL`, `PLATFORM`, `PACKAGE_FORMAT` | The build and packaging options                                                               |
+| `BUILD_OUTPUT_DIRECTORY`, `OUTPUT_DIRECTORY`              | Absolute paths of the build output and of the output directory                                     |
+| `PACKAGE_NAME`                                            | Linux only. `package_name` from `make_config.yaml`, else the format's default                       |
+| `PACKAGE_ARCH`, `ARCH`                                    | Linux only. The format's architecture name (`amd64` for DEB) and `x86_64` or `aarch64`              |
+| `INSTALL_DIR`                                             | DEB and Pacman `/opt/<binary>`, RPM `/usr/share/<name>`                                             |
+| `RPM_RELEASE`                                             | RPM only. The first part of the build number, `1` without one                                       |
+| `PACKAGING_DIRECTORY`, `OUTPUT_ARTIFACT_PATH`             | Linux only. The staging directory (the package root, the RPM build directory, or the AppDir) and the artifact path |
+
+Project metadata and your own variables come from `.fastforge/config.yaml`. An `env:` value written exactly as `${NAME}` is read from the environment. `env:` entries may not reuse a built-in name.
+
+```yaml
+project:
+  display_name: Hello World
+  description: A short description
+  homepage: https://example.com
+  app_id: com.example.hello
+  icon: assets/logo.png
+env:
+  SUPPORT_EMAIL: team@example.com
+  SIGNING_KEY_ID: ${SIGNING_KEY_ID}
+```
+
 ## Custom Format
 
 The `custom` target runs your own script to produce the artifact. It requires `<platform>/packaging/custom/make_config.yaml`:
@@ -96,7 +131,7 @@ output_extension: tar.gz
 fastforge package --platform linux --targets custom
 ```
 
-The script runs through `sh -c` (`cmd /c` on Windows) and receives `APP_NAME`, `APP_VERSION`, `BUILD_NAME`, `BUILD_NUMBER` (when present), `BUILD_MODE`, `FLAVOR` (when present), `CHANNEL` (when present), `BUILD_OUTPUT_DIRECTORY`, `OUTPUT_DIRECTORY`, and `OUTPUT_ARTIFACT_PATH`. It must create the artifact at `OUTPUT_ARTIFACT_PATH`; a nonzero exit status or a missing artifact fails packaging. Native iOS and Android projects do not support `custom`.
+The script runs through `sh -c` (`cmd /c` on Windows) and receives the [packaging variables](#packaging-variables) that apply to every format, including `.fastforge/config.yaml` `env:` entries, plus `OUTPUT_ARTIFACT_PATH`. `BUILD_NUMBER`, `FLAVOR`, and `CHANNEL` are set only when present. It must create the artifact at `OUTPUT_ARTIFACT_PATH`; a nonzero exit status or a missing artifact fails packaging. Native iOS and Android projects do not support `custom`.
 
 ## Lifecycle Hooks
 
@@ -115,7 +150,7 @@ Hooks run as `sh -c <command>` on every host, so Windows requires `sh` on `PATH`
 - `BUILD_OUTPUT_DIRECTORY`
 - `BUILD_OUTPUT_FILES` (colon-separated; empty for directory builds such as Windows, Linux, and Web)
 
-Hooks do not receive `CHANNEL`, `FLAVOR`, or the artifact path. Packaging fails immediately if any hook exits with a nonzero status.
+Hooks also receive the [packaging variables](#packaging-variables) that apply to every format, such as `APP_VERSION`, `APP_DISPLAY_NAME`, `CHANNEL`, `FLAVOR`, and `.fastforge/config.yaml` `env:` entries; `.fastforge/config.yaml` is read only when a hook is configured. Hooks do not receive the artifact path. Packaging fails immediately if any hook exits with a nonzero status.
 
 ## Automation
 

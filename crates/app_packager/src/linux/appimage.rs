@@ -5,14 +5,19 @@ use std::process::Command;
 use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
 use serde::Deserialize;
 
-use super::common::{load_make_config, uname_machine};
+use super::common::{
+    FormatVariables, RawPackaging, load_make_config, machine_architecture, make_executable,
+};
 
 /// Builds a Linux AppImage using `appimagetool`, mirroring Dart's
 /// `AppPackageMakerAppImage`.
 ///
-/// Reads `linux/packaging/appimage/make_config.yaml` when present (same
-/// schema as Dart's `MakeAppImageConfig`); falls back to sensible defaults
-/// otherwise.
+/// A raw `AppRun`, `.desktop` file and `files/` overlay in
+/// `linux/packaging/appimage/` are rendered with fastforge's variables and
+/// win over what would be generated from
+/// `linux/packaging/appimage/make_config.yaml` (same schema as Dart's
+/// `MakeAppImageConfig`), which in turn falls back to sensible defaults. The
+/// overlay is copied into the AppDir.
 ///
 /// Requires `appimagetool` (plus `ldd` and `locate` for dependency bundling)
 /// to be on `$PATH`.
@@ -218,6 +223,20 @@ impl AppPackager for LinuxAppImagePackager {
 
         let app_dir = pkg_dir.join(format!("{}.AppDir", app_name));
         std::fs::create_dir_all(&app_dir)?;
+        let arch = machine_architecture();
+        let raw = RawPackaging::load(
+            config,
+            "appimage",
+            FormatVariables {
+                package_name: app_name.clone(),
+                package_arch: arch.to_string(),
+                install_dir: None,
+                display_name: make_config.display_name.clone(),
+                packaging_dir: &app_dir,
+                output_file: &output_file,
+                extra: vec![],
+            },
+        )?;
 
         // Copy flutter build output contents into AppDir
         run(Command::new("cp").args([
@@ -227,17 +246,20 @@ impl AppPackager for LinuxAppImagePackager {
         ]))?;
 
         // Write .desktop file and AppRun
-        std::fs::write(
-            app_dir.join(format!("{}.desktop", app_name)),
-            make_config.desktop_file(config),
+        raw.write_or_generate(
+            raw.file_with_extension("desktop")?,
+            &app_dir.join(format!("{}.desktop", app_name)),
+            || make_config.desktop_file(config),
         )?;
         let app_run_path = app_dir.join("AppRun");
-        std::fs::write(&app_run_path, make_config.app_run(config))?;
-        run(Command::new("chmod").args(["+x", &app_run_path.display().to_string()]))?;
+        raw.write_or_generate(raw.file(&["AppRun"]), &app_run_path, || {
+            make_config.app_run(config)
+        })?;
+        make_executable(&app_run_path)?;
 
         // Install the configured icon at AppDir root and in hicolor dirs
-        if let Some(icon) = &make_config.icon {
-            let icon_path = Path::new(icon);
+        if let Some(icon) = raw.icon(make_config.icon.as_ref()) {
+            let icon_path = Path::new(&icon);
             if !icon_path.exists() {
                 return Err(PackageError::NotFound(format!(
                     "icon {} path doesn't exist",
@@ -344,19 +366,18 @@ impl AppPackager for LinuxAppImagePackager {
             std::fs::copy(src, usr_lib.join(base))?;
         }
 
+        // files/ overlay into the AppDir
+        raw.install_overlay(&app_dir)?;
+
         // Build the AppImage
-        let arch = if uname_machine() == "aarch64" {
-            "aarch64"
-        } else {
-            "x86_64"
-        };
-        run(Command::new("appimagetool")
-            .args([
-                "--no-appstream",
-                &app_dir.display().to_string(),
-                &output_file.display().to_string(),
-            ])
-            .env("ARCH", arch))?;
+        let mut cmd = Command::new("appimagetool");
+        cmd.args([
+            "--no-appstream",
+            &app_dir.display().to_string(),
+            &output_file.display().to_string(),
+        ]);
+        raw.apply_env(&mut cmd);
+        run(&mut cmd)?;
 
         std::fs::remove_dir_all(&pkg_dir).ok();
         effective.resolve_result(output_file)

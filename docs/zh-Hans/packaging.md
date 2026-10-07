@@ -82,6 +82,41 @@ fastforge package --platform macos --targets dmg,zip
 
 大多数打包器会读取可选的 `<platform>/packaging/<format>/make_config.yaml`，例如 `macos/packaging/dmg/make_config.yaml` 或 `linux/packaging/deb/make_config.yaml`。文件不存在时使用默认值；文件无法解析时打包失败。只有 `custom` 格式必须提供配置文件。
 
+Linux 的 AppImage、DEB、RPM 和 Pacman 打包器还接受各格式自己的原始文件，例如 Debian 的 `control` 文件或 RPM spec，并用下文的打包变量渲染。原始文件优先于 `make_config.yaml`，详见 [Linux](packagers/linux.md#配置)。
+
+### 打包变量
+
+Fastforge 在原始打包文件中以 `${NAME}` 的形式提供以下变量，同时把它们设置到打包工具、`custom` 脚本和生命周期钩子的环境中；值为空的变量不会设置到环境中。
+
+| 变量                                                      | 值                                                                                     |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `APP_NAME`、`APP_BINARY_NAME`                             | `pubspec.yaml` 中的名称和可执行文件名                                                  |
+| `APP_VERSION`、`BUILD_NAME`、`BUILD_NUMBER`               | `1.2.3+4`、`1.2.3`、`4`；没有构建号时 `BUILD_NUMBER` 为空                               |
+| `APP_DISPLAY_NAME`                                        | `project.display_name`，其次 `make_config.yaml` 的 `display_name`，最后为 `APP_NAME`    |
+| `APP_DESCRIPTION`、`APP_HOMEPAGE`                         | `project.description` / `project.homepage`，其次取自 `pubspec.yaml`                     |
+| `APP_ID`                                                  | `project.app_id`                                                                       |
+| `BUILD_MODE`、`FLAVOR`、`CHANNEL`、`PLATFORM`、`PACKAGE_FORMAT` | 构建与打包选项                                                                    |
+| `BUILD_OUTPUT_DIRECTORY`、`OUTPUT_DIRECTORY`              | 构建输出目录和产物输出目录的绝对路径                                                   |
+| `PACKAGE_NAME`                                            | 仅 Linux。`make_config.yaml` 的 `package_name`，其次为该格式的默认值                    |
+| `PACKAGE_ARCH`、`ARCH`                                    | 仅 Linux。该格式的架构名（DEB 为 `amd64`）以及 `x86_64` 或 `aarch64`                    |
+| `INSTALL_DIR`                                             | DEB 和 Pacman 为 `/opt/<binary>`，RPM 为 `/usr/share/<name>`                           |
+| `RPM_RELEASE`                                             | 仅 RPM。构建号的第一段，没有构建号时为 `1`                                              |
+| `PACKAGING_DIRECTORY`、`OUTPUT_ARTIFACT_PATH`             | 仅 Linux。暂存目录（包根目录、RPM 构建目录或 AppDir）和产物路径                        |
+
+项目元数据和自定义变量来自 `.fastforge/config.yaml`。`env:` 中整个值写成 `${NAME}` 时，从环境变量读取。`env:` 中的键不能与内置变量重名。
+
+```yaml
+project:
+  display_name: Hello World
+  description: A short description
+  homepage: https://example.com
+  app_id: com.example.hello
+  icon: assets/logo.png
+env:
+  SUPPORT_EMAIL: team@example.com
+  SIGNING_KEY_ID: ${SIGNING_KEY_ID}
+```
+
 ## 自定义格式
 
 `custom` target 运行你自己的脚本来生成产物，必须提供 `<platform>/packaging/custom/make_config.yaml`：
@@ -96,7 +131,7 @@ output_extension: tar.gz
 fastforge package --platform linux --targets custom
 ```
 
-脚本通过 `sh -c`（Windows 上为 `cmd /c`）执行，并获得 `APP_NAME`、`APP_VERSION`、`BUILD_NAME`、`BUILD_NUMBER`（存在时）、`BUILD_MODE`、`FLAVOR`（存在时）、`CHANNEL`（存在时）、`BUILD_OUTPUT_DIRECTORY`、`OUTPUT_DIRECTORY` 和 `OUTPUT_ARTIFACT_PATH`。脚本必须在 `OUTPUT_ARTIFACT_PATH` 生成产物；退出码非零或产物不存在时打包失败。原生 iOS 和 Android 项目不支持 `custom`。
+脚本通过 `sh -c`（Windows 上为 `cmd /c`）执行，并获得适用于所有格式的[打包变量](#打包变量)（包括 `.fastforge/config.yaml` 中的 `env:`）以及 `OUTPUT_ARTIFACT_PATH`。`BUILD_NUMBER`、`FLAVOR` 和 `CHANNEL` 仅在存在时设置。脚本必须在 `OUTPUT_ARTIFACT_PATH` 生成产物；退出码非零或产物不存在时打包失败。原生 iOS 和 Android 项目不支持 `custom`。
 
 ## 生命周期钩子
 
@@ -115,7 +150,7 @@ fastforge package --targets zip \
 - `BUILD_OUTPUT_DIRECTORY`
 - `BUILD_OUTPUT_FILES`（以 `:` 分隔；Windows、Linux、Web 等目录型构建为空）
 
-钩子不会获得 `CHANNEL`、`FLAVOR` 或产物路径。任意钩子返回非零退出码时，打包立即失败。
+钩子还会获得适用于所有格式的[打包变量](#打包变量)，例如 `APP_VERSION`、`APP_DISPLAY_NAME`、`CHANNEL`、`FLAVOR` 以及 `.fastforge/config.yaml` 中的 `env:`；只有配置了钩子时才会读取 `.fastforge/config.yaml`。钩子不会获得产物路径。任意钩子返回非零退出码时，打包立即失败。
 
 ## 自动化
 

@@ -11,6 +11,7 @@ use fastforge_app_packager::{
     OHOSAppPackager, OHOSHapPackager, PackageConfig, WebDirectPackager, WebZipPackager,
     WindowsDirectPackager, WindowsExePackager, WindowsMsixPackager, WindowsZipPackager,
 };
+use fastforge_core::{ProjectSettings, environment_variables};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use serde_yaml;
@@ -482,6 +483,16 @@ fn package_with_hooks(
     let post_hooks = resolve_hooks(hooks, "post");
 
     let mut hook_env = environment;
+    // Hooks also get the packaging variables (app metadata and the
+    // `.fastforge/config.yaml` `env:` entries). Only read the project config
+    // when there is a hook to run, so a broken config cannot fail packaging
+    // formats that never use it.
+    if !pre_hooks.is_empty() || !post_hooks.is_empty() {
+        let settings = ProjectSettings::load().map_err(|e| anyhow!("{}", e))?;
+        let variables = package_config.package_variables(&settings);
+        hook_env
+            .extend(environment_variables(&variables).map(|(k, v)| (k.to_string(), v.to_string())));
+    }
     hook_env.insert(
         "PLATFORM".to_string(),
         package_config.platform.as_str().to_string(),

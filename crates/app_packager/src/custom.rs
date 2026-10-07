@@ -1,7 +1,10 @@
 use std::path::Path;
 use std::process::Command;
 
-use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
+use fastforge_core::{
+    AppPackager, PackageConfig, PackageError, PackageResult, Platform, ProjectSettings,
+    environment_variables,
+};
 use serde::Deserialize;
 
 /// Runs a user-provided script to produce the package artifact, mirroring
@@ -16,10 +19,10 @@ use serde::Deserialize;
 /// output_extension: tar.gz
 /// ```
 ///
-/// The script receives the following environment variables:
-/// `APP_NAME`, `APP_VERSION`, `BUILD_NAME`, `BUILD_NUMBER` (when present),
-/// `BUILD_MODE`, `FLAVOR` (when present), `CHANNEL` (when present),
-/// `BUILD_OUTPUT_DIRECTORY`, `OUTPUT_DIRECTORY`, `OUTPUT_ARTIFACT_PATH`.
+/// The script receives fastforge's packaging variables (see
+/// [`PackageConfig::package_variables`], including `.fastforge/config.yaml`
+/// `env:` entries) plus `OUTPUT_ARTIFACT_PATH`; variables without a value
+/// (`BUILD_NUMBER`, `FLAVOR`, `CHANNEL`, ...) are left unset.
 #[derive(Debug)]
 pub struct CustomPackager {
     platform: Platform,
@@ -101,8 +104,12 @@ impl AppPackager for CustomPackager {
             ("sh", "-c")
         };
 
+        let settings = ProjectSettings::load()?;
+        let variables = config.package_variables(&settings);
+
         let mut cmd = Command::new(shell);
         cmd.args([flag, &self.script]);
+        cmd.envs(environment_variables(&variables));
         cmd.env("APP_NAME", &effective.app_name)
             .env("APP_VERSION", &effective.app_version)
             .env("BUILD_NAME", build_name)

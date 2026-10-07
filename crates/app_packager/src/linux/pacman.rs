@@ -7,15 +7,18 @@ use serde::Deserialize;
 use crate::fs_util::copy_dir_contents;
 
 use super::common::{
-    Person, desktop_list, install_hicolor_icons, install_metainfo, load_make_config,
-    load_pubspec_meta, render_desktop_entry, uname_machine,
+    FormatVariables, Person, RawPackaging, desktop_list, install_hicolor_icons, install_metainfo,
+    load_make_config, load_pubspec_meta, machine_architecture, render_desktop_entry,
 };
 
 /// Builds a pacman `.pkg.tar.xz` using `bsdtar` and `xz`, mirroring
 /// Dart's `AppPackageMakerPacman`.
 ///
-/// Reads `linux/packaging/pacman/make_config.yaml` when present (same schema
-/// as Dart's `MakePacmanConfig`); falls back to sensible defaults otherwise.
+/// Raw `PKGINFO` and `INSTALL` files (with or without the leading dot), a
+/// `.desktop` file and a `files/` overlay in `linux/packaging/pacman/` are
+/// rendered with fastforge's variables and win over what would be generated
+/// from `linux/packaging/pacman/make_config.yaml` (same schema as Dart's
+/// `MakePacmanConfig`), which in turn falls back to sensible defaults.
 ///
 /// Requires `bsdtar` (libarchive) and `xz` to be on `$PATH`.
 pub struct LinuxPacmanPackager;
@@ -51,11 +54,7 @@ pub struct PacmanMakeConfig {
 
 /// pacman architecture from `uname -m`.
 fn pacman_architecture() -> String {
-    if uname_machine() == "aarch64" {
-        "aarch64".to_string()
-    } else {
-        "x86_64".to_string()
-    }
+    machine_architecture().to_string()
 }
 
 impl PacmanMakeConfig {
@@ -205,7 +204,24 @@ impl AppPackager for LinuxPacmanPackager {
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
         let make_config = PacmanMakeConfig::load()?;
         let pkg_dir = config.packaging_dir();
+        let output_file = config.output_file();
         let binary_name = &config.app_binary_name;
+        let raw = RawPackaging::load(
+            config,
+            "pacman",
+            FormatVariables {
+                package_name: make_config
+                    .package_name
+                    .clone()
+                    .unwrap_or_else(|| binary_name.clone()),
+                package_arch: pacman_architecture(),
+                install_dir: Some(format!("/opt/{}", binary_name)),
+                display_name: make_config.display_name.clone(),
+                packaging_dir: &pkg_dir,
+                output_file: &output_file,
+                extra: vec![],
+            },
+        )?;
 
         // Create directory tree
         let share_app_dir = pkg_dir.join("opt").join(binary_name);
@@ -214,8 +230,8 @@ impl AppPackager for LinuxPacmanPackager {
         std::fs::create_dir_all(&applications_dir)?;
 
         // Install the configured icon and metainfo (when provided)
-        if let Some(icon) = &make_config.icon {
-            install_hicolor_icons(icon, &pkg_dir, binary_name)?;
+        if let Some(icon) = raw.icon(make_config.icon.as_ref()) {
+            install_hicolor_icons(&icon, &pkg_dir, binary_name)?;
         }
         if let Some(metainfo) = &make_config.metainfo {
             install_metainfo(metainfo, &pkg_dir, binary_name)?;
@@ -225,38 +241,58 @@ impl AppPackager for LinuxPacmanPackager {
         copy_dir_contents(&config.build_output_dir, &share_app_dir)?;
 
         // Write .PKGINFO, .INSTALL, .desktop
-        std::fs::write(pkg_dir.join(".PKGINFO"), make_config.pkginfo_file(config))?;
-        std::fs::write(
-            pkg_dir.join(".INSTALL"),
-            make_config.install_file(binary_name),
+        raw.write_or_generate(
+            raw.file(&["PKGINFO", ".PKGINFO"]),
+            &pkg_dir.join(".PKGINFO"),
+            || make_config.pkginfo_file(config),
         )?;
-        std::fs::write(
-            applications_dir.join(format!("{}.desktop", binary_name)),
-            make_config.desktop_file(config),
+        raw.write_or_generate(
+            raw.file(&["INSTALL", ".INSTALL"]),
+            &pkg_dir.join(".INSTALL"),
+            || make_config.install_file(binary_name),
+        )?;
+        raw.write_or_generate(
+            raw.file_with_extension("desktop")?,
+            &applications_dir.join(format!("{}.desktop", binary_name)),
+            || make_config.desktop_file(config),
         )?;
 
+        // files/ overlay into the package root
+        raw.install_overlay(&pkg_dir)?;
+
+        // Archive the metadata files plus every top-level directory (the
+        // overlay may add e.g. `etc/` next to `usr/` and `opt/`).
+        let mut contents: Vec<String> = std::fs::read_dir(&pkg_dir)?
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .filter(|name| name != ".PKGINFO" && name != ".INSTALL")
+            .collect();
+        contents.sort();
+        let mut entries = vec![".PKGINFO".to_string(), ".INSTALL".to_string()];
+        entries.extend(contents);
+
         // Create .MTREE metadata
-        run(Command::new("bsdtar")
+        let mut mtree = Command::new("bsdtar");
+        mtree
             .current_dir(&pkg_dir)
             .args([
                 "-czf",
                 ".MTREE",
                 "--format=mtree",
                 "--options=!all,use-set,type,uid,gid,mode,time,size,md5,sha256,link",
-                ".PKGINFO",
-                ".INSTALL",
-                "usr",
-                "opt",
             ])
-            .env("LANG", "C"))?;
+            .args(&entries)
+            .env("LANG", "C");
+        run(&mut mtree)?;
 
         // Archive with bsdtar
-        run(Command::new("bsdtar")
+        let mut archive = Command::new("bsdtar");
+        archive
             .current_dir(&pkg_dir)
-            .args([
-                "-cf", "temptar", ".MTREE", ".INSTALL", ".PKGINFO", "usr", "opt",
-            ])
-            .env("LANG", "C"))?;
+            .args(["-cf", "temptar", ".MTREE"])
+            .args(&entries)
+            .env("LANG", "C");
+        run(&mut archive)?;
 
         // Compress with xz
         run(Command::new("xz")
@@ -264,7 +300,6 @@ impl AppPackager for LinuxPacmanPackager {
             .args(["-z", "temptar"]))?;
 
         // Move to output
-        let output_file = config.output_file();
         std::fs::rename(pkg_dir.join("temptar.xz"), &output_file)?;
 
         std::fs::remove_dir_all(&pkg_dir).ok();
