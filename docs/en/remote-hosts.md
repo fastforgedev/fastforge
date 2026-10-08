@@ -95,7 +95,7 @@ Syncs are incremental: only files that changed (size, modification time, executa
 Excluded:
 
 - Everything matched by `.gitignore` files (also outside git repositories) and `.git/info/exclude`.
-- The directories `.git`, `.dart_tool`, `.fastforge`, `.gradle`, and the local output directory.
+- The directories `.git`, `.dart_tool`, `.gradle`, `.fastforge/remote` (the remote host's own state), and the local output directory. The rest of `.fastforge/`, such as `config.yaml` and the packaging files, is synced, so keep credentials in `config.yaml` as `${NAME}` references to environment variables rather than literal values.
 - Patterns in `.fastforgeignore` (same syntax as `.gitignore`).
 
 `.fastforgeignore` can re-include ignored files, for example a signing configuration the build needs:

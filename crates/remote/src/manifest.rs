@@ -17,7 +17,12 @@ use std::time::UNIX_EPOCH;
 pub const IGNORE_FILE: &str = ".fastforgeignore";
 
 /// Directory names that are never synced.
-const ALWAYS_EXCLUDED_DIRS: &[&str] = &[".git", ".dart_tool", ".fastforge", ".gradle"];
+const ALWAYS_EXCLUDED_DIRS: &[&str] = &[".git", ".dart_tool", ".gradle"];
+
+/// Directories, relative to the workspace root, that are never synced: the
+/// remote agent's own state (manifest, runs and their outputs). The rest of
+/// `.fastforge/` (packaging files, `config.yaml`) is part of the project.
+const ALWAYS_EXCLUDED_PATHS: &[&str] = &[".fastforge/remote"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
@@ -120,7 +125,10 @@ impl Manifest {
                     return false;
                 }
                 match relative_key(&walk_root, entry.path()) {
-                    Some(key) => !excludes.contains(&key),
+                    Some(key) => {
+                        !excludes.contains(&key)
+                            && !(is_dir && ALWAYS_EXCLUDED_PATHS.contains(&key.as_str()))
+                    }
                     None => true,
                 }
             });
@@ -251,12 +259,19 @@ mod tests {
         write(root, ".dart_tool/x", "x");
         write(root, "dist/1.0/app.apk", "x");
         write(root, "android/app/build.gradle", "g");
+        // `.fastforge/` is synced, except the remote agent's state.
+        write(root, ".fastforge/config.yaml", "project: {}");
+        write(root, ".fastforge/packaging/linux/deb/control", "Package: x");
+        write(root, ".fastforge/remote/manifest.json", "{}");
+        write(root, ".fastforge/remote/runs/1/out/app.deb", "x");
 
         let manifest = Manifest::scan(root, &["dist/".to_string()]).unwrap();
         let keys: Vec<&str> = manifest.entries.keys().map(String::as_str).collect();
         assert_eq!(
             keys,
             vec![
+                ".fastforge/config.yaml",
+                ".fastforge/packaging/linux/deb/control",
                 ".fastforgeignore",
                 ".gitignore",
                 "android/app/build.gradle",

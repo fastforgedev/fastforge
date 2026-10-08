@@ -95,7 +95,7 @@ Windows 主机需要开启 OpenSSH 服务端，并使用默认 shell `cmd.exe`�
 不同步的内容：
 
 - `.gitignore`（不在 git 仓库中也生效）和 `.git/info/exclude` 匹配的文件。
-- `.git`、`.dart_tool`、`.fastforge`、`.gradle` 目录，以及本地输出目录。
+- `.git`、`.dart_tool`、`.gradle`、`.fastforge/remote`（远程主机自身的状态）目录，以及本地输出目录。`.fastforge/` 的其余内容（如 `config.yaml` 和打包文件）会同步，因此 `config.yaml` 中的凭据请写成引用环境变量的 `${NAME}`，不要直接写明文。
 - `.fastforgeignore` 中的规则（语法同 `.gitignore`）。
 
 `.fastforgeignore` 可以把被忽略的文件重新纳入，例如构建需要的签名配置：
