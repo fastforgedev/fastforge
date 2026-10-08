@@ -44,6 +44,10 @@ pub struct RunArgs {
     /// the project first. `auto` picks a host listing the platform.
     #[arg(long = "host", value_name = "NAME|auto")]
     pub host: Option<String>,
+    /// With --host: once the app runs, show its window on this machine
+    /// (Windows hosts only for now).
+    #[arg(long = "remote-window", requires = "host")]
+    pub remote_window: bool,
     /// Extra arguments passed to `flutter run`.
     #[arg(last = true, value_name = "FLUTTER_ARGS")]
     pub flutter_args: Vec<String>,
@@ -277,5 +281,8 @@ mod tests {
             ]
         );
         assert!(Cli::try_parse_from(["x", "--release", "--profile"]).is_err());
+        assert!(Cli::try_parse_from(["x", "--remote-window"]).is_err());
+        let cli = Cli::parse_from(["x", "--host", "win", "--remote-window"]);
+        assert!(cli.args.remote_window);
     }
 }

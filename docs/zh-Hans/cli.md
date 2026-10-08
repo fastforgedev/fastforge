@@ -166,6 +166,7 @@ fastforge run [OPTIONS] [-- <FLUTTER_ARGS>...]
 | `--dart-define <KEY=VALUE>`      | 编译期变量；可重复                                       |
 | `--dart-define-from-file <PATH>` | 编译期变量文件                                           |
 | `--host <NAME\|auto>`            | 在远程主机上运行（见[远程主机](remote-hosts.md#在主机上运行应用)） |
+| `--remote-window`                | 配合 `--host`：应用运行起来后，在本机显示它的窗口（见[在本机显示窗口](remote-hosts.md#在本机显示窗口)） |
 
 用这些参数加上 `--` 之后的全部参数执行 `flutter run`。既没有 `-p` 也没有 `-d` 时由 Flutter 选择设备。环境变量原样传入，不读取 `distribute_options.yaml`。目前只支持 Flutter 项目。
 

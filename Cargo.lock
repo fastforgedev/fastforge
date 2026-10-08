@@ -907,6 +907,7 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
+ "dirs 6.0.0",
  "fastforge_app_analyzer",
  "fastforge_app_builder",
  "fastforge_app_gallery_connect",

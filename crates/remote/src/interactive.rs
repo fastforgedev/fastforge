@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use std::collections::BTreeSet;
 use std::io::{IsTerminal, Read, Write};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 
 /// Keys that make `flutter run` re-read the sources.
 const RELOAD_KEYS: &[u8] = b"rR";
@@ -20,6 +21,10 @@ const LOOPBACK_PREFIXES: &[&str] = &[
     "ws://localhost:",
     "http://[::1]:",
 ];
+
+/// Called with each line of the run's output and whether the local terminal
+/// is in raw mode; it runs on the output thread, so it must not block.
+pub type LineHook = Box<dyn FnMut(&str, bool) + Send>;
 
 /// Where a project is synced, for re-syncing on reload.
 pub struct ResyncTarget {
@@ -106,8 +111,30 @@ fn remote_tty_setup(size: Option<(u16, u16)>) -> String {
     }
 }
 
+/// Splits a byte stream into lines (capped at 16 KiB each), calling `each`
+/// with every complete line.
+#[derive(Default)]
+struct LineSplitter {
+    line: Vec<u8>,
+}
+
+impl LineSplitter {
+    fn feed(&mut self, bytes: &[u8], mut each: impl FnMut(&str)) {
+        for &byte in bytes {
+            if byte != b'\n' {
+                if self.line.len() < 16 * 1024 {
+                    self.line.push(byte);
+                }
+                continue;
+            }
+            each(String::from_utf8_lossy(&self.line).trim_end_matches('\r'));
+            self.line.clear();
+        }
+    }
+}
+
 /// Prints a fastforge status line; raw mode needs explicit carriage returns.
-fn notice(raw: bool, message: &str) {
+pub fn notice(raw: bool, message: &str) {
     let mut stderr = std::io::stderr();
     if raw {
         let _ = write!(stderr, "\r\n\x1b[90m[fastforge] {message}\x1b[0m\r\n");
@@ -119,12 +146,14 @@ fn notice(raw: bool, message: &str) {
 
 impl RemoteClient {
     /// Attaches the local terminal to the interactive run `run_id` stored by
-    /// a previous sync, and returns its exit code.
+    /// a previous sync, and returns its exit code. `on_line` sees each line
+    /// of the output.
     pub fn attach_interactive(
         &self,
         workspace: &str,
         run_id: &str,
         resync: Option<ResyncTarget>,
+        on_line: Option<LineHook>,
     ) -> Result<i32> {
         let terminal =
             cfg!(unix) && std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
@@ -132,12 +161,18 @@ impl RemoteClient {
         if terminal && self.host.os() == crate::hosts::RemoteOs::Unix {
             script = format!("{}{script}", remote_tty_setup(terminal_size()));
         }
+        // Without a terminal the remote stderr arrives separately; the hook
+        // sees it too.
         let mut child = self
             .transport
             .command(&script, terminal)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(if on_line.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::inherit()
+            })
             .spawn()
             .context("Failed to start the transport")?;
         let raw = if terminal {
@@ -146,6 +181,26 @@ impl RemoteClient {
             None
         };
         let is_raw = raw.is_some();
+        let on_line = Arc::new(Mutex::new(on_line));
+        let stderr_relay = child.stderr.take().map(|mut remote_stderr| {
+            let on_line = on_line.clone();
+            std::thread::spawn(move || {
+                let mut stderr = std::io::stderr();
+                let mut lines = LineSplitter::default();
+                let mut buf = [0u8; 8192];
+                loop {
+                    let n = match remote_stderr.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => n,
+                    };
+                    let _ = stderr.write_all(&buf[..n]);
+                    let _ = stderr.flush();
+                    if let Some(hook) = on_line.lock().unwrap().as_mut() {
+                        lines.feed(&buf[..n], |line| hook(line, is_raw));
+                    }
+                }
+            })
+        });
 
         // Input: local keys → remote, syncing first on reload keys. The thread
         // is left blocked on stdin when the run ends; the process exits soon after.
@@ -186,7 +241,7 @@ impl RemoteClient {
         let mut stdout = std::io::stdout();
         let mut forwarders: Vec<Child> = Vec::new();
         let mut forwarded = BTreeSet::new();
-        let mut line = Vec::new();
+        let mut lines = LineSplitter::default();
         let mut buf = [0u8; 8192];
         loop {
             let n = match remote_stdout.read(&mut buf) {
@@ -195,14 +250,11 @@ impl RemoteClient {
             };
             let _ = stdout.write_all(&buf[..n]);
             let _ = stdout.flush();
-            for &byte in &buf[..n] {
-                if byte != b'\n' {
-                    if line.len() < 16 * 1024 {
-                        line.push(byte);
-                    }
-                    continue;
+            lines.feed(&buf[..n], |text| {
+                if let Some(hook) = on_line.lock().unwrap().as_mut() {
+                    hook(text, is_raw);
                 }
-                for port in loopback_ports(&String::from_utf8_lossy(&line)) {
+                for port in loopback_ports(text) {
                     if !forwarded.insert(port) {
                         continue;
                     }
@@ -227,11 +279,13 @@ impl RemoteClient {
                         }
                     }
                 }
-                line.clear();
-            }
+            });
         }
 
         let status = child.wait()?;
+        if let Some(relay) = stderr_relay {
+            let _ = relay.join();
+        }
         for mut forwarder in forwarders {
             let _ = forwarder.kill();
             let _ = forwarder.wait();
@@ -252,6 +306,21 @@ mod tests {
             "stty sane rows 40 cols 120 2>/dev/null; "
         );
         assert_eq!(remote_tty_setup(None), "stty sane 2>/dev/null; ");
+    }
+
+    #[test]
+    fn splits_lines_across_reads() {
+        let mut splitter = LineSplitter::default();
+        let mut lines = Vec::new();
+        splitter.feed(b"Started app in the desk", |l| lines.push(l.to_string()));
+        splitter.feed(b"top session (pid 1).\r\nnext\n", |l| {
+            lines.push(l.to_string())
+        });
+        splitter.feed(b"partial", |l| lines.push(l.to_string()));
+        assert_eq!(
+            lines,
+            ["Started app in the desktop session (pid 1).", "next"]
+        );
     }
 
     #[test]

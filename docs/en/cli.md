@@ -166,6 +166,7 @@ fastforge run [OPTIONS] [-- <FLUTTER_ARGS>...]
 | `--dart-define <KEY=VALUE>`      | Compile-time variable; repeatable                                        |
 | `--dart-define-from-file <PATH>` | File of compile-time variables                                           |
 | `--host <NAME\|auto>`            | Run on a remote host (see [Remote Hosts](remote-hosts.md#running-the-app-on-a-host)) |
+| `--remote-window`                | With `--host`: once the app runs, show its window on this machine (see [Showing the window here](remote-hosts.md#showing-the-window-here)) |
 
 Runs `flutter run` with these options, plus everything after `--`. Without `-p` and `-d`, Flutter picks the device. The environment is passed through unchanged; `distribute_options.yaml` is not read. Only Flutter projects are supported for now.
 

@@ -115,7 +115,8 @@ fn effective_path() -> Option<std::ffi::OsString> {
     Some(expand_path_entries(&path, dirs::home_dir().as_deref()))
 }
 
-fn which(name: &str) -> Option<PathBuf> {
+/// Finds `name` on this process's `PATH` (with `~` entries expanded).
+pub fn which(name: &str) -> Option<PathBuf> {
     let path = effective_path()?;
     let suffixes: &[&str] = if cfg!(windows) {
         &[".exe", ".bat", ".cmd", ""]

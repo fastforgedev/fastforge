@@ -7,6 +7,7 @@ pub mod publish;
 pub mod release;
 pub mod remote;
 pub mod remote_agent;
+pub mod remote_window;
 pub mod run;
 pub mod run_desktop;
 pub mod store;

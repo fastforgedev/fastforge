@@ -86,7 +86,25 @@ Windows hosts need the OpenSSH server with its default shell, `cmd.exe`. `fastfo
 - There is no login shell: remote runs see the user's environment as Windows sets it up. Values in `env` still accept `~/`, `$VAR` and `${VAR}`; separate `PATH` entries with `;`.
 - `host exec` runs the command with `cmd.exe` in the workspace.
 - Files keep no executable bit on Windows, and symbolic links are skipped with a warning unless the account may create them (Developer Mode).
-- `run -p windows --host` builds and starts the app with hot reload and a forwarded VM service, but the window can't appear: programs started over SSH have no desktop. Use `-p web` (served and forwarded to this machine) for UI work, or run on the Windows machine itself.
+- `run -p windows --host` builds the app over SSH and starts it in the logged-in user's desktop session through an interactive scheduled task, since programs started over SSH have no desktop; `flutter attach` then provides hot reload. The window opens on the host's screen; add `--remote-window` to see it here (see [Showing the window here](#showing-the-window-here)).
+
+## Showing the window here
+
+```bash
+fastforge run -p windows --host windows-laptop --remote-window
+```
+
+With `--remote-window`, the app's window appears on this machine as if it were a local window, and you can click and type in it. Once the run reports that the app started, fastforge opens the window here in the background, without holding up the run: the host moves the app's windows (matched by the `BINARY_NAME` in `windows/CMakeLists.txt`) onto a virtual display to the right of its own displays and streams only those, with the menus and dialogs they own. Other windows on the host don't appear here, and the host's own displays stay on. The window closes when the run ends.
+
+Remote windows are built on [dazzdesk](https://github.com/dazzlabs/dazzdesk). There is nothing to install: on first use, fastforge downloads the version it needs into `~/.fastforge/tools/dazzdesk/<version>/` on this machine and on the host, before the build starts. The two machines accept only each other's certificate.
+
+Currently this needs:
+
+- A Windows host running `-p windows`, and macOS or Windows on this machine.
+- On the host, the [Parsec Virtual Display Driver](https://builds.parsec.app/vdd/parsec-vdd-0.45.0.0.exe). The driver must know the resolution of this machine's screens: the first time a new one is used, add it in the Parsec VDD settings, or run `%USERPROFILE%\.fastforge\tools\dazzdesk\<version>\dazzdesk.exe host` once from an elevated terminal on the host while a remote window is open. The run shows a warning when this is needed.
+- Direct network access from this machine to UDP port 47100 on the host. The window is streamed over QUIC, which `ssh -L` can't forward, so it connects to the address SSH resolves for the host (`ssh -G`); jump hosts and proxies don't apply. Windows Firewall on the host must allow `%USERPROFILE%\.fastforge\tools\dazzdesk\<version>\dazzdesk.exe`.
+
+Problems are shown in the run's output. The log of this machine's side is written to `fastforge-remote-window-<pid>.log` in the temporary directory, and the host keeps the log of the last remote window in `%TEMP%\fastforge-remote-window.log`.
 
 ## What gets synced
 

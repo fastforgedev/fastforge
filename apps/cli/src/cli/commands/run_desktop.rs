@@ -21,6 +21,9 @@ use crate::utils::bright_black;
 /// Set to `0` to never use the desktop session, or `1` to always use it.
 const DESKTOP_LAUNCH_ENV: &str = "FASTFORGE_DESKTOP_LAUNCH";
 
+/// Kinds of [`launch`]: the app, and the Host of its remote window.
+const LAUNCH_KINDS: &[&str] = &["run", "window"];
+
 /// How long the logged-in session gets to start the app.
 const START_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -113,6 +116,36 @@ fn find_executable(root: &Path, name: &str, mode: &str) -> Result<PathBuf> {
     bail!("Built app `{name}.exe` not found under build/windows")
 }
 
+/// Quotes one argument for a Windows command line, as the C runtime parses
+/// it: plain when it has no blanks or quotes, else in double quotes with
+/// inner quotes and the backslashes before them escaped.
+fn windows_arg(value: &str) -> String {
+    if !value.is_empty() && !value.contains([' ', '\t', '"']) {
+        return value.to_string();
+    }
+    let mut quoted = String::from('"');
+    let mut backslashes = 0;
+    for c in value.chars() {
+        match c {
+            '\\' => backslashes += 1,
+            '"' => {
+                quoted.push_str(&"\\".repeat(backslashes * 2 + 1));
+                quoted.push('"');
+                backslashes = 0;
+            }
+            _ => {
+                quoted.push_str(&"\\".repeat(backslashes));
+                quoted.push(c);
+                backslashes = 0;
+            }
+        }
+    }
+    // Backslashes before the closing quote are doubled so they stay literal.
+    quoted.push_str(&"\\".repeat(backslashes * 2));
+    quoted.push('"');
+    quoted
+}
+
 /// Quotes a string for PowerShell (single quotes, doubled inside).
 fn ps_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
@@ -139,11 +172,23 @@ impl LaunchFiles {
     }
 }
 
-/// The script the scheduled task runs in the desktop session: starts the
-/// app with a VM service on a free port, records its pid, and stops it once
-/// `owner` (this process) is gone.
-fn launch_script(exe: &Path, cwd: &Path, files: &LaunchFiles, owner: u32, debug: bool) -> String {
+/// The script the scheduled task runs in the desktop session: starts `exe`
+/// with `args` and `env` (the app with a VM service on a free port when
+/// `debug`), records its pid, and stops it once `owner` (this process) is
+/// gone.
+fn launch_script(
+    exe: &Path,
+    args: &[String],
+    env: &[(&str, &str)],
+    cwd: &Path,
+    files: &LaunchFiles,
+    owner: u32,
+    debug: bool,
+) -> String {
     let mut script = String::from("$ErrorActionPreference = 'Stop'\n");
+    for (key, value) in env {
+        script.push_str(&format!("$env:{key} = {}\n", ps_quote(value)));
+    }
     if debug {
         script.push_str(
             "$env:FLUTTER_ENGINE_SWITCHES = '2'\n\
@@ -151,8 +196,14 @@ fn launch_script(exe: &Path, cwd: &Path, files: &LaunchFiles, owner: u32, debug:
              $env:FLUTTER_ENGINE_SWITCH_2 = 'disable-service-auth-codes'\n",
         );
     }
+    let arguments = if args.is_empty() {
+        String::new()
+    } else {
+        let line: Vec<String> = args.iter().map(|a| windows_arg(a)).collect();
+        format!(" -ArgumentList {}", ps_quote(&line.join(" ")))
+    };
     script.push_str(&format!(
-        "$app = Start-Process -FilePath {exe} -WorkingDirectory {cwd} -RedirectStandardOutput {log} -RedirectStandardError {err} -PassThru\n\
+        "$app = Start-Process -FilePath {exe}{arguments} -WorkingDirectory {cwd} -RedirectStandardOutput {log} -RedirectStandardError {err} -PassThru\n\
          Set-Content -Path {pid} -Value $app.Id\n\
          while (-not $app.HasExited) {{\n\
          \x20 if (-not (Get-Process -Id {owner} -ErrorAction SilentlyContinue)) {{ Stop-Process -Id $app.Id -Force; break }}\n\
@@ -245,11 +296,23 @@ pub fn vm_service_url(log: &str) -> Option<String> {
     url.starts_with("http").then_some(url)
 }
 
-/// The app started in the desktop session; stopped (if still running) and
-/// its files removed when dropped.
-struct DesktopApp {
-    pid: u32,
+/// A program started in the desktop session; stopped (if still running)
+/// and its files removed when dropped.
+pub struct DesktopApp {
+    pub pid: u32,
     files: LaunchFiles,
+}
+
+impl DesktopApp {
+    pub fn is_running(&self) -> bool {
+        is_running(self.pid)
+    }
+
+    /// What the program has written to stdout and stderr so far.
+    pub fn output(&self) -> (String, String) {
+        let read = |path: &Path| std::fs::read_to_string(path).unwrap_or_default();
+        (read(&self.files.log), read(&self.files.err))
+    }
 }
 
 impl Drop for DesktopApp {
@@ -272,8 +335,8 @@ fn remove_dir_eventually(dir: &Path) {
     }
 }
 
-/// Removes launch directories left by runs whose process is gone (for
-/// example after a dropped connection).
+/// Removes launch directories (`fastforge-<kind>-<pid>`) left by runs whose
+/// process is gone (for example after a dropped connection).
 fn purge_stale_launches(temp: &Path) {
     let Ok(entries) = std::fs::read_dir(temp) else {
         return;
@@ -282,8 +345,10 @@ fn purge_stale_launches(temp: &Path) {
         let name = entry.file_name();
         let Some(pid) = name
             .to_str()
-            .and_then(|n| n.strip_prefix("fastforge-run-"))
-            .and_then(|p| p.parse::<u32>().ok())
+            .and_then(|n| n.strip_prefix("fastforge-"))
+            .and_then(|n| n.split_once('-'))
+            .filter(|(kind, _)| LAUNCH_KINDS.contains(kind))
+            .and_then(|(_, p)| p.parse::<u32>().ok())
         else {
             continue;
         };
@@ -293,20 +358,35 @@ fn purge_stale_launches(temp: &Path) {
     }
 }
 
-fn launch(exe: &Path, cwd: &Path, debug: bool) -> Result<DesktopApp> {
+/// Starts `exe` in the logged-in user's desktop session with `args` and
+/// the variables in `env`; `kind` names the launch (`run` for the app) and
+/// keeps concurrent launches apart.
+pub fn launch(
+    kind: &str,
+    exe: &Path,
+    args: &[String],
+    env: &[(&str, &str)],
+    cwd: &Path,
+    debug: bool,
+) -> Result<DesktopApp> {
+    debug_assert!(LAUNCH_KINDS.contains(&kind));
     let owner = std::process::id();
-    let task = format!("fastforge-run-{owner}");
+    let task = format!("fastforge-{kind}-{owner}");
     purge_stale_launches(&std::env::temp_dir());
     let files = LaunchFiles::new(std::env::temp_dir().join(&task));
     std::fs::create_dir_all(&files.dir)?;
-    std::fs::write(&files.script, launch_script(exe, cwd, &files, owner, debug))?;
+    std::fs::write(
+        &files.script,
+        launch_script(exe, args, env, cwd, &files, owner, debug),
+    )?;
+    let name = exe.file_name().unwrap_or(exe.as_os_str()).to_string_lossy();
 
     let output = powershell(&start_task_script(&task, &files.script))?;
     if !output.status.success() {
         remove_task(&task);
         let _ = std::fs::remove_dir_all(&files.dir);
         bail!(
-            "Could not start the app in the desktop session: {}",
+            "Could not start {name} in the desktop session: {}",
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
@@ -323,8 +403,13 @@ fn launch(exe: &Path, cwd: &Path, debug: bool) -> Result<DesktopApp> {
             remove_task(&task);
             let _ = std::fs::remove_dir_all(&files.dir);
             bail!(
-                "The app did not start in a desktop session. Log in to this Windows machine's desktop \
-                 (a locked screen is fine), or use `-p web` instead."
+                "{name} did not start in a desktop session. Log in to this Windows machine's desktop \
+                 (a locked screen is fine){}.",
+                if kind == "run" {
+                    ", or use `-p web` instead"
+                } else {
+                    ""
+                }
             );
         }
         std::thread::sleep(Duration::from_millis(300));
@@ -412,7 +497,7 @@ pub async fn run(args: &RunArgs, flutter: &FlutterCommand<'_>) -> Result<()> {
     let exe = find_executable(&root, &name, mode)?;
     let app = tokio::task::spawn_blocking({
         let root = root.clone();
-        move || launch(&exe, &root, debug)
+        move || launch("run", &exe, &[], &[], &root, debug)
     })
     .await??;
 
@@ -514,6 +599,16 @@ mod tests {
     }
 
     #[test]
+    fn quotes_windows_arguments() {
+        assert_eq!(windows_arg("winapp"), "winapp");
+        assert_eq!(windows_arg(""), r#""""#);
+        assert_eq!(windows_arg("my app"), r#""my app""#);
+        assert_eq!(windows_arg(r#"say "hi""#), r#""say \"hi\"""#);
+        assert_eq!(windows_arg(r"C:\my dir\"), r#""C:\my dir\\""#);
+        assert_eq!(windows_arg(r#"a\"b"#), r#""a\\\"b""#);
+    }
+
+    #[test]
     fn finds_the_vm_service_url() {
         let log = "[IMPORTANT:flutter/...] Using the Impeller rendering backend.\nThe Dart VM service is listening on http://127.0.0.1:50505/\n";
         assert_eq!(
@@ -528,6 +623,8 @@ mod tests {
         let files = LaunchFiles::new(PathBuf::from(r"C:\Temp\fastforge-run-7"));
         let script = launch_script(
             Path::new(r"C:\Users\O'Neil\app\build\winapp.exe"),
+            &[],
+            &[],
             Path::new(r"C:\Users\O'Neil\app"),
             &files,
             42,
@@ -536,10 +633,19 @@ mod tests {
         assert!(script.contains(r"-FilePath 'C:\Users\O''Neil\app\build\winapp.exe'"));
         assert!(script.contains("vm-service-port=0"));
         assert!(script.contains("Get-Process -Id 42"));
-        assert!(
-            !launch_script(Path::new("a.exe"), Path::new("."), &files, 1, false)
-                .contains("ENGINE_SWITCH")
+        assert!(!script.contains("-ArgumentList"));
+        let script = launch_script(
+            Path::new("dazzdesk.exe"),
+            &["--filter".into(), "O'Neil app".into()],
+            &[("RUST_LOG", "info")],
+            Path::new("."),
+            &files,
+            1,
+            false,
         );
+        assert!(!script.contains("ENGINE_SWITCH"));
+        assert!(script.contains(r#"-ArgumentList '--filter "O''Neil app"'"#));
+        assert!(script.contains("$env:RUST_LOG = 'info'"));
 
         let task = start_task_script("fastforge-run-7", &files.script);
         assert!(task.contains("-LogonType Interactive"));

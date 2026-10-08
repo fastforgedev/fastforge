@@ -86,7 +86,25 @@ Windows 主机需要开启 OpenSSH 服务端，并使用默认 shell `cmd.exe`�
 - Windows 上没有登录 shell，远程运行使用 Windows 为该用户设置的环境。`env` 中的值仍支持 `~/`、`$VAR` 和 `${VAR}`，`PATH` 用 `;` 分隔。
 - `host exec` 在工作区中用 `cmd.exe` 执行命令。
 - Windows 上的文件没有可执行位；账户没有创建符号链接的权限（开发者模式）时，符号链接会被跳过并给出警告。
-- `run -p windows --host` 可以构建并启动应用，热重载和 VM Service 转发都可用，但窗口无法显示：通过 SSH 启动的程序没有桌面。界面调试请用 `-p web`（在主机上提供服务并转发到本机），或直接在 Windows 机器上运行。
+- `run -p windows --host` 通过 SSH 构建应用，再通过交互式计划任务在已登录用户的桌面会话中启动它（通过 SSH 启动的程序没有桌面），然后用 `flutter attach` 提供热重载。窗口显示在主机的屏幕上；加上 `--remote-window` 可以在本机看到它（见[在本机显示窗口](#在本机显示窗口)）。
+
+## 在本机显示窗口
+
+```bash
+fastforge run -p windows --host windows-laptop --remote-window
+```
+
+加上 `--remote-window` 后，应用窗口会像本地窗口一样显示在本机，可以直接点击和输入。运行输出显示应用已启动后，fastforge 会在后台把窗口显示到本机，不影响运行本身：主机把该应用的窗口（按 `windows/CMakeLists.txt` 中的 `BINARY_NAME` 匹配）移到排在它自己显示器右侧的虚拟显示器上，只传输这些窗口及其拥有的菜单、对话框。主机上的其他窗口不会出现在本机，主机自己的显示器也保持开启。运行结束时窗口随之关闭。
+
+远程窗口基于 [dazzdesk](https://github.com/dazzlabs/dazzdesk) 实现，无需另外安装：第一次使用时，fastforge 会在构建开始前，把所需版本下载到本机和主机的 `~/.fastforge/tools/dazzdesk/<版本>/`。两台机器只接受对方的证书。
+
+目前需要：
+
+- Windows 主机，运行 `-p windows`；本机为 macOS 或 Windows。
+- 主机上安装 [Parsec 虚拟显示驱动](https://builds.parsec.app/vdd/parsec-vdd-0.45.0.0.exe)。驱动需要知道本机屏幕的分辨率：第一次用到新分辨率时，在 Parsec VDD 设置中添加它，或者在远程窗口打开期间，在主机上以管理员身份运行一次 `%USERPROFILE%\.fastforge\tools\dazzdesk\<版本>\dazzdesk.exe host`。需要这样做时，运行输出会给出警告。
+- 本机能直接访问主机的 UDP 47100 端口。窗口通过 QUIC 传输，无法用 `ssh -L` 转发，因此会连接 SSH 为该主机解析出的地址（`ssh -G`），跳板机和代理不起作用。主机的 Windows 防火墙需要放行 `%USERPROFILE%\.fastforge\tools\dazzdesk\<版本>\dazzdesk.exe`。
+
+问题会显示在运行输出中。本机一侧的日志写入临时目录中的 `fastforge-remote-window-<pid>.log`，主机会把最近一次远程窗口的日志保存在 `%TEMP%\fastforge-remote-window.log`。
 
 ## 同步范围
 

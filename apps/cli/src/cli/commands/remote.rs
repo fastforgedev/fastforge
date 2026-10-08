@@ -6,12 +6,14 @@
 
 use anyhow::{Result, anyhow, bail};
 use fastforge_app_builder::Platform;
-use fastforge_remote::interactive::ResyncTarget;
+use fastforge_remote::interactive::{LineHook, ResyncTarget};
 use fastforge_remote::{HostConfig, HostsFile, LocalProject, RemoteClient, RunSpec, new_run_id};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use super::package::{PackageArgs, resolve_output};
 use super::platform_infer;
+use super::remote_window::RemoteWindow;
 use super::run::RunArgs;
 use crate::config::DistributeOptions;
 use crate::utils::{bright_green, yellow};
@@ -24,6 +26,9 @@ const RUN_PATH_FLAGS: &[&str] = &["-t", "--target", "--dart-define-from-file"];
 
 /// Flags the client handles itself and never forwards.
 const LOCAL_ONLY_FLAGS: &[&str] = &["--host", "--output"];
+
+/// Switches (no value) the client handles itself and never forwards.
+const LOCAL_ONLY_SWITCHES: &[&str] = &["--remote-window"];
 
 /// Resolves `--host <name|auto>`; `auto` picks the first host whose
 /// `platforms` contains `platform`.
@@ -92,6 +97,9 @@ pub fn remote_argv(
             Some((flag, value)) if flag.starts_with("--") => (flag, Some(value.to_string())),
             _ => (arg.as_str(), None),
         };
+        if LOCAL_ONLY_SWITCHES.contains(&arg.as_str()) {
+            continue;
+        }
         if LOCAL_ONLY_FLAGS.contains(&flag) {
             if inline.is_none() {
                 iter.next();
@@ -228,6 +236,14 @@ pub async fn run(args: &RunArgs, host_spec: &str) -> Result<()> {
 
     let mut client = RemoteClient::new(host.clone());
     client.ensure_os()?;
+    // Checked now; started once the app runs and stopped when the run ends.
+    let window = if args.remote_window {
+        Some(Arc::new(
+            RemoteWindow::prepare(&client, platform.as_deref()).await?,
+        ))
+    } else {
+        None
+    };
     let workspace = client.workspace(&project);
     let run = RunSpec {
         id: new_run_id(),
@@ -255,10 +271,16 @@ pub async fn run(args: &RunArgs, host_spec: &str) -> Result<()> {
         workspace: workspace.clone(),
         excludes,
     };
+    let on_line = window
+        .clone()
+        .map(|window| Box::new(move |line: &str, raw: bool| window.observe(line, raw)) as LineHook);
     let code = tokio::task::spawn_blocking(move || {
-        client.attach_interactive(&workspace, &run_id, Some(resync))
+        client.attach_interactive(&workspace, &run_id, Some(resync), on_line)
     })
     .await??;
+    if let Some(window) = &window {
+        window.stop();
+    }
     if code != 0 {
         std::process::exit(code);
     }
@@ -357,6 +379,7 @@ mod tests {
             "/repo/lib/dev.dart",
             "--host",
             "mac",
+            "--remote-window",
             "--",
             "--host",
             "x",

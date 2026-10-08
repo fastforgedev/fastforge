@@ -2,8 +2,9 @@
 
 use crate::hosts::{HostConfig, TransportKind};
 use crate::shell::quote;
+use anyhow::{Context, Result, anyhow};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub trait Transport: Send + Sync {
     /// A command that runs the POSIX shell command `script` on the host.
@@ -21,6 +22,9 @@ pub trait Transport: Send + Sync {
     fn forward_port(&self, _port: u16) -> Option<Command> {
         None
     }
+
+    /// The name or address the host is reached at over the network.
+    fn network_host(&self) -> Result<String>;
 }
 
 pub fn for_host(host: &HostConfig) -> Box<dyn Transport> {
@@ -107,6 +111,26 @@ impl Transport for SshTransport {
             .arg(&self.destination);
         Some(command)
     }
+
+    fn network_host(&self) -> Result<String> {
+        let output = Command::new("ssh")
+            .arg("-G")
+            .args(&self.args)
+            .arg(&self.destination)
+            .stdin(Stdio::null())
+            .output()
+            .context("Failed to run `ssh -G`")?;
+        ssh_config_hostname(&String::from_utf8_lossy(&output.stdout))
+            .ok_or_else(|| anyhow!("`ssh -G {}` printed no hostname", self.destination))
+    }
+}
+
+/// The `hostname` line of `ssh -G` output.
+pub fn ssh_config_hostname(config: &str) -> Option<String> {
+    config.lines().find_map(|line| {
+        let value = line.strip_prefix("hostname ")?.trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })
 }
 
 /// `~/.fastforge/ssh`, created with private permissions. Connection sharing
@@ -142,6 +166,10 @@ impl Transport for LocalTransport {
     fn login_script(&self, script: &str) -> String {
         script.to_string()
     }
+
+    fn network_host(&self) -> Result<String> {
+        Ok("127.0.0.1".to_string())
+    }
 }
 
 #[cfg(test)]
@@ -169,6 +197,17 @@ mod tests {
         assert!(args.join(" ").contains("-L 9100:127.0.0.1:9100"));
         assert_eq!(args.last().unwrap(), "mac.local");
         assert!(LocalTransport.forward_port(1).is_none());
+    }
+
+    #[test]
+    fn reads_the_hostname_from_ssh_config() {
+        let config = "user builder\nhostname 192.168.1.20\nport 22\n";
+        assert_eq!(ssh_config_hostname(config).as_deref(), Some("192.168.1.20"));
+        assert_eq!(ssh_config_hostname("user x\n"), None);
+        assert_eq!(
+            LocalTransport.network_host().unwrap(),
+            "127.0.0.1".to_string()
+        );
     }
 
     #[test]

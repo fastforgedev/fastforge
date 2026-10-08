@@ -177,8 +177,15 @@ impl RemoteClient {
         self.transport.login_script(&script)
     }
 
-    fn agent_command(&self, args: &[&str]) -> Command {
+    /// A command running `fastforge remote-agent <args>` on the host.
+    pub fn agent_command(&self, args: &[&str]) -> Command {
         self.transport.command(&self.agent_script(args), false)
+    }
+
+    /// The name or address other programs reach the host at: what SSH
+    /// connects to after applying `~/.ssh/config`.
+    pub fn network_host(&self) -> Result<String> {
+        self.transport.network_host()
     }
 
     /// Runs an empty command on the host to check the connection.

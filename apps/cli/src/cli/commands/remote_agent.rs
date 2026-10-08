@@ -37,6 +37,18 @@ pub enum RemoteAgentCommands {
         #[arg(long)]
         run: String,
     },
+    /// Download what remote windows need, if not done yet
+    RemoteWindowSetup,
+    /// Start the Host of a remote window in the desktop session for one
+    /// Client, print where it listens as JSON, and stop it when stdin closes
+    RemoteWindow {
+        /// Fingerprint of the Client allowed to connect.
+        #[arg(long)]
+        client: String,
+        /// Windows to move onto the virtual display (title or process name).
+        #[arg(long)]
+        filter: String,
+    },
 }
 
 pub async fn execute(args: &RemoteAgentArgs) -> Result<()> {
@@ -63,6 +75,14 @@ pub async fn execute(args: &RemoteAgentArgs) -> Result<()> {
         }
         RemoteAgentCommands::Fetch { workspace, run } => {
             agent::fetch(workspace, run, std::io::stdout().lock())
+        }
+        RemoteAgentCommands::RemoteWindowSetup => {
+            super::remote_window::ensure_dazzdesk().await.map(|_| ())
+        }
+        RemoteAgentCommands::RemoteWindow { client, filter } => {
+            let (client, filter) = (client.clone(), filter.clone());
+            tokio::task::spawn_blocking(move || super::remote_window::serve_host(&client, &filter))
+                .await?
         }
     }
 }

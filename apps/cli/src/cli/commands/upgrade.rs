@@ -34,7 +34,11 @@ fn binary_name() -> &'static str {
     }
 }
 
-async fn download(client: &reqwest::Client, asset: &ReleaseAsset, dest: &Path) -> Result<()> {
+pub(crate) async fn download(
+    client: &reqwest::Client,
+    asset: &ReleaseAsset,
+    dest: &Path,
+) -> Result<()> {
     let mut response = client
         .get(&asset.browser_download_url)
         .send()
@@ -71,7 +75,7 @@ async fn download(client: &reqwest::Client, asset: &ReleaseAsset, dest: &Path) -
     Ok(())
 }
 
-fn extract(archive: &Path, into: &Path) -> Result<()> {
+pub(crate) fn extract(archive: &Path, into: &Path) -> Result<()> {
     // `tar` ships with macOS, Linux and Windows 10+ (bsdtar, which also
     // understands zip archives).
     let flags = if cfg!(windows) { "-xf" } else { "-xzf" };
