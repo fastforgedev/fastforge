@@ -1,30 +1,39 @@
 use std::path::Path;
 use std::process::Command;
 
-use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
+use fastforge_core::{
+    AppPackager, PackageConfig, PackageError, PackageResult, Platform, Variables,
+};
 use serde::Deserialize;
 
-use crate::fs_util::copy_dir_contents;
-
 use super::common::{
-    FormatVariables, Person, RawPackaging, desktop_list, install_hicolor_icons, install_metainfo,
-    load_make_config, load_pubspec_meta, machine_architecture, render_desktop_entry,
+    FormatVariables, Person, RawPackaging, desktop_categories, desktop_list, load_make_config,
+    machine_architecture, render_desktop_entry, var,
 };
+use super::staging::{self, Contents, Layout};
 
-/// Builds a pacman `.pkg.tar.xz` using `bsdtar` and `xz`, mirroring
+/// The artifact's extension, as `makepkg` names packages.
+const PACKAGE_EXTENSION: &str = "pkg.tar.zst";
+
+/// Builds a pacman package (`.pkg.tar.zst`) using `bsdtar`, mirroring
 /// Dart's `AppPackageMakerPacman`.
 ///
-/// Raw `PKGINFO` and `INSTALL` files (with or without the leading dot), a
-/// `.desktop` file and a `files/` overlay in `linux/packaging/pacman/` are
+/// The package root is staged by [`staging::stage`] (bundle in
+/// `/opt/<binary>`, `/usr/bin/<binary>` link, desktop entry, icons,
+/// metainfo, `files/` overlays). Raw `PKGINFO` and `INSTALL` files (with or
+/// without the leading dot) in `.fastforge/packaging/linux/pacman/` are
 /// rendered with fastforge's variables and win over what would be generated
 /// from `linux/packaging/pacman/make_config.yaml` (same schema as Dart's
-/// `MakePacmanConfig`), which in turn falls back to sensible defaults.
+/// `MakePacmanConfig`) or defaults; `size`, `builddate` and the `backup`
+/// entries of `/etc` files are filled in. Files are archived as owned by root, like `makepkg` under
+/// `fakeroot`.
 ///
-/// Requires `bsdtar` (libarchive) and `xz` to be on `$PATH`.
+/// Requires `bsdtar` (libarchive, with zstd support) on `$PATH`.
 pub struct LinuxPacmanPackager;
 
 /// Schema of `linux/packaging/pacman/make_config.yaml`, mirroring Dart's
-/// `MakePacmanConfig.fromJson`.
+/// `MakePacmanConfig.fromJson`. `installed_size` and `options` (a `makepkg`
+/// setting) are accepted but unused: the size is computed.
 #[derive(Debug, Default, Deserialize)]
 pub struct PacmanMakeConfig {
     pub display_name: Option<String>,
@@ -57,6 +66,19 @@ fn pacman_architecture() -> String {
     machine_architecture().to_string()
 }
 
+/// `pkgver-pkgrel` from the app version (`1.2.3+4` -> `1.2.3-4`). pkgver may
+/// not contain `-`, so a pre-release `1.2.3-beta.1` becomes `1.2.3beta.1`,
+/// which pacman sorts before `1.2.3`.
+fn pacman_version(app_version: &str) -> String {
+    let (name, build) = app_version.split_once('+').unwrap_or((app_version, ""));
+    let release = build
+        .split('.')
+        .next()
+        .filter(|r| !r.is_empty())
+        .unwrap_or("1");
+    format!("{}-{}", name.replace('-', ""), release)
+}
+
 impl PacmanMakeConfig {
     fn load() -> Result<Self, PackageError> {
         Ok(
@@ -65,85 +87,91 @@ impl PacmanMakeConfig {
         )
     }
 
-    /// Renders `.PKGINFO`, mirroring Dart's `toFilesString()['PKGINFO']`.
-    fn pkginfo_file(&self, config: &PackageConfig) -> String {
-        let meta = load_pubspec_meta();
-        // Dart writes a configured-but-empty list as `()`; only an absent
-        // key is omitted.
-        let paren = |v: &Option<Vec<String>>| -> Option<String> {
-            v.as_ref().map(|v| format!("({})", v.join(", ")))
-        };
+    /// Renders the default `.PKGINFO` in `makepkg`'s format (`key = value`,
+    /// one line per list item). Project metadata fills what
+    /// `make_config.yaml` leaves out; `size` and `builddate` are added by
+    /// [`fill_pkginfo`].
+    fn pkginfo_file(&self, config: &PackageConfig, variables: &Variables) -> String {
+        let name = var(variables, "PACKAGE_NAME").unwrap_or_else(|| config.app_binary_name.clone());
+        let description = var(variables, "APP_DESCRIPTION")
+            .or_else(|| var(variables, "APP_DISPLAY_NAME"))
+            .unwrap_or_else(|| config.app_name.clone());
+        let packager = self
+            .maintainer
+            .as_ref()
+            .map(Person::formatted)
+            .or_else(|| var(variables, "APP_MAINTAINER"))
+            .unwrap_or_else(|| "Unknown Packager".to_string());
         let licenses = self
             .licenses
             .clone()
-            .unwrap_or_else(|| vec!["unknown".to_string()]);
-        let groups = self
-            .groups
-            .clone()
-            .unwrap_or_else(|| vec!["default".to_string()]);
+            .filter(|v| !v.is_empty())
+            .or_else(|| var(variables, "APP_LICENSE").map(|l| vec![l]))
+            .unwrap_or_else(|| vec!["LicenseRef-Unknown".to_string()]);
 
-        let entries: Vec<(&str, Option<String>)> = vec![
-            (
-                "pkgname",
-                Some(
-                    self.package_name
-                        .clone()
-                        .unwrap_or_else(|| config.app_binary_name.clone()),
-                ),
+        let mut lines = vec![
+            format!("pkgname = {}", name),
+            format!("pkgbase = {}", name),
+            "xdata = pkgtype=pkg".to_string(),
+            format!(
+                "pkgver = {}",
+                var(variables, "PACKAGE_VERSION")
+                    .unwrap_or_else(|| pacman_version(&config.app_version))
             ),
-            ("pkgver", Some(config.app_version.clone())),
-            // Omitted when pubspec.yaml has no `description` (like Dart).
-            ("pkgdesc", meta.description),
-            ("packager", self.maintainer.as_ref().map(Person::formatted)),
-            ("size", self.installed_size.map(|s| s.to_string())),
-            ("license", Some(format!("({})", licenses.join(", ")))),
-            ("groups", Some(format!("({})", groups.join(", ")))),
-            ("arch", Some(format!("({})", pacman_architecture()))),
-            ("url", meta.homepage),
-            ("options", paren(&self.options)),
-            ("depends", paren(&self.dependencies)),
-            ("optdepends", paren(&self.optional_dependencies)),
-            ("conflicts", paren(&self.conflicts)),
-            ("replaces", paren(&self.replaces)),
-            ("provides", paren(&self.provides)),
+            format!("pkgdesc = {}", description),
         ];
+        if let Some(url) = var(variables, "APP_HOMEPAGE") {
+            lines.push(format!("url = {}", url));
+        }
+        lines.push(format!("packager = {}", packager));
+        lines.push(format!("arch = {}", pacman_architecture()));
+        let mut list = |key: &str, values: &[String]| {
+            for value in values {
+                lines.push(format!("{} = {}", key, value));
+            }
+        };
+        list("license", &licenses);
+        // A Flutter app needs GTK; an empty list opts out.
+        let depends = self
+            .dependencies
+            .clone()
+            .unwrap_or_else(|| vec!["gtk3".to_string()]);
+        for (key, values) in [
+            ("group", &self.groups),
+            ("conflict", &self.conflicts),
+            ("provides", &self.provides),
+            ("replaces", &self.replaces),
+            ("depend", &Some(depends)),
+            ("optdepend", &self.optional_dependencies),
+        ] {
+            list(key, values.as_deref().unwrap_or_default());
+        }
+        lines.join("\n") + "\n"
+    }
 
-        let mut out = String::new();
-        for (key, value) in entries {
-            if let Some(value) = value {
-                out.push_str(&format!("{}={}\n", key, value));
+    /// Renders `.INSTALL` from the configured scripts, `None` when there are
+    /// none (the `/usr/bin` link is part of the package, not created by a
+    /// script).
+    fn install_file(&self) -> Option<String> {
+        let mut sections = Vec::new();
+        for (function, scripts) in [
+            ("post_install", &self.postinstall_scripts),
+            ("post_upgrade", &self.postupgrade_scripts),
+            ("post_remove", &self.postuninstall_scripts),
+        ] {
+            if let Some(scripts) = scripts.as_ref().filter(|s| !s.is_empty()) {
+                sections.push(format!(
+                    "{}() {{\n\t{}\n}}\n",
+                    function,
+                    scripts.join("\n\t")
+                ));
             }
         }
-        out
+        (!sections.is_empty()).then(|| sections.join("\n"))
     }
 
-    /// Renders `.INSTALL`, mirroring Dart's `toFilesString()['INSTALL']`.
-    fn install_file(&self, binary_name: &str) -> String {
-        let mut post_install = vec![
-            format!("ln -s /opt/{n}/{n} /usr/bin/{n}", n = binary_name),
-            format!("chmod +x /usr/bin/{}", binary_name),
-        ];
-        post_install.extend(self.postinstall_scripts.clone().unwrap_or_default());
-
-        let mut post_remove = vec![format!("rm /usr/bin/{}", binary_name)];
-        post_remove.extend(self.postuninstall_scripts.clone().unwrap_or_default());
-
-        let mut sections = vec![format!(
-            "post_install() {{\n\t{}\n}}",
-            post_install.join("\n\t")
-        )];
-        if let Some(upgrade) = self.postupgrade_scripts.as_ref().filter(|v| !v.is_empty()) {
-            sections.push(format!("post_upgrade() {{\n\t{}\n}}", upgrade.join("\n")));
-        }
-        sections.push(format!(
-            "post_remove() {{\n\t{}\n}}",
-            post_remove.join("\n")
-        ));
-        sections.join("\n")
-    }
-
-    /// Renders the desktop entry, mirroring Dart's `toJson()['DESKTOP']`.
-    fn desktop_file(&self, config: &PackageConfig) -> String {
+    /// Renders the default desktop entry.
+    fn desktop_file(&self, config: &PackageConfig, icon: &str) -> String {
         let binary_name = &config.app_binary_name;
         render_desktop_entry(&[
             ("Type", Some("Application".to_string())),
@@ -156,11 +184,11 @@ impl PacmanMakeConfig {
                 ),
             ),
             ("GenericName", self.generic_name.clone()),
-            ("Icon", Some(binary_name.clone())),
+            ("Icon", Some(icon.to_string())),
             ("Exec", Some(format!("{} %U", binary_name))),
             ("Actions", desktop_list(&self.actions)),
             ("MimeType", desktop_list(&self.supported_mime_type)),
-            ("Categories", desktop_list(&self.categories)),
+            ("Categories", desktop_categories(&self.categories)),
             ("Keywords", desktop_list(&self.keywords)),
             (
                 "StartupNotify",
@@ -168,6 +196,36 @@ impl PacmanMakeConfig {
             ),
         ])
     }
+}
+
+/// Adds `size` (installed bytes) and `builddate` to a `.PKGINFO` that does
+/// not set them, a `backup` entry for every configuration file (`/etc`) so
+/// pacman keeps local changes, and makes sure it ends with a newline.
+fn fill_pkginfo(pkginfo: &str, size: u64, build_date: u64, config_files: &[String]) -> String {
+    let mut out = pkginfo.trim_end_matches('\n').to_string();
+    out.push('\n');
+    let has = |key: &str| {
+        pkginfo
+            .lines()
+            .any(|line| line.split_once('=').is_some_and(|(k, _)| k.trim() == key))
+    };
+    if !has("builddate") {
+        out.push_str(&format!("builddate = {}\n", build_date));
+    }
+    if !has("size") {
+        out.push_str(&format!("size = {}\n", size));
+    }
+    for file in config_files {
+        let entry = file.trim_start_matches('/');
+        let listed = pkginfo.lines().any(|line| {
+            line.split_once('=')
+                .is_some_and(|(k, v)| k.trim() == "backup" && v.trim() == entry)
+        });
+        if !listed {
+            out.push_str(&format!("backup = {}\n", entry));
+        }
+    }
+    out
 }
 
 fn run(cmd: &mut Command) -> Result<(), PackageError> {
@@ -183,6 +241,11 @@ fn run(cmd: &mut Command) -> Result<(), PackageError> {
     Ok(())
 }
 
+/// `bsdtar` options recording every file as owned by root.
+const ROOT_OWNER: [&str; 8] = [
+    "--uid", "0", "--gid", "0", "--uname", "root", "--gname", "root",
+];
+
 impl AppPackager for LinuxPacmanPackager {
     fn name(&self) -> &str {
         "pacman"
@@ -193,7 +256,7 @@ impl AppPackager for LinuxPacmanPackager {
     }
 
     fn package_format(&self) -> &str {
-        "pacman"
+        PACKAGE_EXTENSION
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -203,19 +266,24 @@ impl AppPackager for LinuxPacmanPackager {
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
         let make_config = PacmanMakeConfig::load()?;
-        let pkg_dir = config.packaging_dir();
-        let output_file = config.output_file();
+        // The artifact uses makepkg's `.pkg.tar.zst` extension.
+        let mut effective = config.clone();
+        effective.package_format = PACKAGE_EXTENSION.to_string();
+        let pkg_dir = effective.packaging_dir();
+        let output_file = effective.output_file();
+        // bsdtar runs in the package root, so it needs an absolute path.
+        let archive_path = std::path::absolute(&output_file)?;
         let binary_name = &config.app_binary_name;
+        let layout = Layout::system(binary_name);
         let raw = RawPackaging::load(
-            config,
+            &effective,
             "pacman",
             FormatVariables {
-                package_name: make_config
-                    .package_name
-                    .clone()
-                    .unwrap_or_else(|| binary_name.clone()),
+                package_name: make_config.package_name.clone(),
+                default_package_name: binary_name.clone(),
+                package_version: pacman_version(&config.app_version),
                 package_arch: pacman_architecture(),
-                install_dir: Some(format!("/opt/{}", binary_name)),
+                install_dir: Some(layout.install_dir()),
                 display_name: make_config.display_name.clone(),
                 packaging_dir: &pkg_dir,
                 output_file: &output_file,
@@ -223,55 +291,55 @@ impl AppPackager for LinuxPacmanPackager {
             },
         )?;
 
-        // Create directory tree
-        let share_app_dir = pkg_dir.join("opt").join(binary_name);
-        let applications_dir = pkg_dir.join("usr/share/applications");
-        std::fs::create_dir_all(&share_app_dir)?;
-        std::fs::create_dir_all(&applications_dir)?;
+        staging::stage(
+            &raw,
+            config,
+            &pkg_dir,
+            &layout,
+            Contents {
+                icon: raw.icon(make_config.icon.as_ref()),
+                metainfo: make_config.metainfo.clone(),
+            },
+            || make_config.desktop_file(config, raw.app_id()),
+        )?;
+        let (size, _) = staging::installed_size(&pkg_dir, &[])?;
 
-        // Install the configured icon and metainfo (when provided)
-        if let Some(icon) = raw.icon(make_config.icon.as_ref()) {
-            install_hicolor_icons(&icon, &pkg_dir, binary_name)?;
+        // .PKGINFO (with size/builddate) and .INSTALL
+        let pkginfo = match raw.file(&["PKGINFO", ".PKGINFO"]) {
+            Some(src) => raw.render(&src)?,
+            None => make_config.pkginfo_file(config, raw.variables()),
+        };
+        std::fs::write(
+            pkg_dir.join(".PKGINFO"),
+            fill_pkginfo(
+                &pkginfo,
+                size,
+                staging::build_date(),
+                &staging::config_files(&pkg_dir)?,
+            ),
+        )?;
+        let install = match raw.file(&["INSTALL", ".INSTALL"]) {
+            Some(src) => Some(raw.render(&src)?),
+            None => make_config.install_file(),
+        };
+        if let Some(install) = &install {
+            std::fs::write(pkg_dir.join(".INSTALL"), install)?;
         }
-        if let Some(metainfo) = &make_config.metainfo {
-            install_metainfo(metainfo, &pkg_dir, binary_name)?;
-        }
 
-        // Copy the flutter build output into /opt/{binary_name}/
-        copy_dir_contents(&config.build_output_dir, &share_app_dir)?;
-
-        // Write .PKGINFO, .INSTALL, .desktop
-        raw.write_or_generate(
-            raw.file(&["PKGINFO", ".PKGINFO"]),
-            &pkg_dir.join(".PKGINFO"),
-            || make_config.pkginfo_file(config),
-        )?;
-        raw.write_or_generate(
-            raw.file(&["INSTALL", ".INSTALL"]),
-            &pkg_dir.join(".INSTALL"),
-            || make_config.install_file(binary_name),
-        )?;
-        raw.write_or_generate(
-            raw.file_with_extension("desktop")?,
-            &applications_dir.join(format!("{}.desktop", binary_name)),
-            || make_config.desktop_file(config),
-        )?;
-
-        // files/ overlay into the package root
-        raw.install_overlay(&pkg_dir)?;
-
-        // Archive the metadata files plus every top-level directory (the
-        // overlay may add e.g. `etc/` next to `usr/` and `opt/`).
+        // The metadata files, then every top-level entry of the root.
         let mut contents: Vec<String> = std::fs::read_dir(&pkg_dir)?
             .flatten()
             .map(|entry| entry.file_name().to_string_lossy().to_string())
             .filter(|name| name != ".PKGINFO" && name != ".INSTALL")
             .collect();
         contents.sort();
-        let mut entries = vec![".PKGINFO".to_string(), ".INSTALL".to_string()];
+        let mut entries = vec![".PKGINFO".to_string()];
+        if install.is_some() {
+            entries.push(".INSTALL".to_string());
+        }
         entries.extend(contents);
 
-        // Create .MTREE metadata
+        // .MTREE metadata, then the zstd-compressed archive.
         let mut mtree = Command::new("bsdtar");
         mtree
             .current_dir(&pkg_dir)
@@ -281,29 +349,25 @@ impl AppPackager for LinuxPacmanPackager {
                 "--format=mtree",
                 "--options=!all,use-set,type,uid,gid,mode,time,size,md5,sha256,link",
             ])
+            .args(ROOT_OWNER)
             .args(&entries)
             .env("LANG", "C");
         run(&mut mtree)?;
 
-        // Archive with bsdtar
         let mut archive = Command::new("bsdtar");
         archive
             .current_dir(&pkg_dir)
-            .args(["-cf", "temptar", ".MTREE"])
+            .args(["-c", "--zstd", "-f"])
+            .arg(&archive_path)
+            .args(ROOT_OWNER)
+            .arg(".MTREE")
             .args(&entries)
             .env("LANG", "C");
+        raw.apply_env(&mut archive);
         run(&mut archive)?;
 
-        // Compress with xz
-        run(Command::new("xz")
-            .current_dir(&pkg_dir)
-            .args(["-z", "temptar"]))?;
-
-        // Move to output
-        std::fs::rename(pkg_dir.join("temptar.xz"), &output_file)?;
-
         std::fs::remove_dir_all(&pkg_dir).ok();
-        config.resolve_result(output_file)
+        effective.resolve_result(output_file)
     }
 }
 
@@ -369,55 +433,107 @@ startup_notify: true
     }
 
     #[test]
-    fn pkginfo_contains_configured_fields() {
-        let pkginfo = full_make_config().pkginfo_file(&test_config());
-        assert!(pkginfo.contains("pkgname=hola-amigos"));
-        assert!(pkginfo.contains("pkgver=1.2.3+4"));
-        assert!(pkginfo.contains("packager=Gamer Boy 69 <rickastley@gmail.lol>"));
-        assert!(pkginfo.contains("size=24400"));
-        assert!(pkginfo.contains("license=(MIT)"));
-        assert!(pkginfo.contains("groups=(default)"));
-        assert!(pkginfo.contains("options=(zipman)"));
-        assert!(pkginfo.contains("depends=(mysupercooldep)"));
-        assert!(pkginfo.contains("optdepends=(iamalwaysoptional)"));
-        assert!(pkginfo.contains("conflicts=(libwhatsup)"));
-        assert!(pkginfo.contains("replaces=(yourdep)"));
-        assert!(pkginfo.contains("provides=(libx11)"));
+    fn pkginfo_uses_makepkg_format() {
+        let variables: Variables = [("PACKAGE_NAME", "hola-amigos")]
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let pkginfo = full_make_config().pkginfo_file(&test_config(), &variables);
+        assert_eq!(
+            pkginfo,
+            format!(
+                "pkgname = hola-amigos\n\
+                 pkgbase = hola-amigos\n\
+                 xdata = pkgtype=pkg\n\
+                 pkgver = 1.2.3-4\n\
+                 pkgdesc = hola_amigos\n\
+                 packager = Gamer Boy 69 <rickastley@gmail.lol>\n\
+                 arch = {}\n\
+                 license = MIT\n\
+                 conflict = libwhatsup\n\
+                 provides = libx11\n\
+                 replaces = yourdep\n\
+                 depend = mysupercooldep\n\
+                 optdepend = iamalwaysoptional\n",
+                pacman_architecture()
+            )
+        );
+    }
+
+    #[test]
+    fn pkginfo_defaults_come_from_the_project() {
+        let variables: Variables = [
+            ("APP_DESCRIPTION", "A demo"),
+            ("APP_HOMEPAGE", "https://example.com"),
+            ("APP_MAINTAINER", "Jane <jane@example.com>"),
+            ("APP_LICENSE", "Apache-2.0"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let pkginfo = PacmanMakeConfig::default().pkginfo_file(&test_config(), &variables);
+        assert!(pkginfo.contains("pkgname = hola_amigos\n"));
+        assert!(pkginfo.contains("pkgdesc = A demo\n"));
+        assert!(pkginfo.contains("url = https://example.com\n"));
+        assert!(pkginfo.contains("packager = Jane <jane@example.com>\n"));
+        assert!(pkginfo.contains("license = Apache-2.0\n"));
+        // A Flutter app needs GTK unless dependencies are configured.
+        assert!(pkginfo.contains("depend = gtk3\n"));
+        let none: PacmanMakeConfig = serde_yaml::from_str("dependencies: []\n").unwrap();
+        assert!(
+            !none
+                .pkginfo_file(&test_config(), &variables)
+                .contains("depend")
+        );
+
+        let bare = PacmanMakeConfig::default().pkginfo_file(&test_config(), &Variables::new());
+        assert!(bare.contains("packager = Unknown Packager\n"));
+        assert!(bare.contains("license = LicenseRef-Unknown\n"));
+        assert!(!bare.contains("url ="));
+    }
+
+    #[test]
+    fn versions_follow_pacman_rules() {
+        assert_eq!(pacman_version("1.2.3+4"), "1.2.3-4");
+        assert_eq!(pacman_version("1.2.3"), "1.2.3-1");
+        assert_eq!(pacman_version("1.2.3-beta.1+7"), "1.2.3beta.1-7");
+    }
+
+    #[test]
+    fn size_and_builddate_are_filled_in() {
+        let raw = "pkgname = x\npkgver = 1-1";
+        assert_eq!(
+            fill_pkginfo(raw, 2048, 1700000000, &[]),
+            "pkgname = x\npkgver = 1-1\nbuilddate = 1700000000\nsize = 2048\n"
+        );
+        let set = "pkgname = x\nsize = 1\nbuilddate=5\n";
+        assert_eq!(fill_pkginfo(set, 2048, 1700000000, &[]), set);
+
+        // Configuration files are backed up, once.
+        let etc = vec!["/etc/x/a.conf".to_string(), "/etc/x/b.conf".to_string()];
+        let listed = "pkgname = x\nsize = 1\nbuilddate = 5\nbackup = etc/x/b.conf\n";
+        assert_eq!(
+            fill_pkginfo(listed, 2048, 1700000000, &etc),
+            format!("{}backup = etc/x/a.conf\n", listed)
+        );
     }
 
     #[test]
     fn install_file_sections() {
-        let install = full_make_config().install_file("hola_amigos");
-        assert!(install.contains("post_install() {"));
-        assert!(install.contains("ln -s /opt/hola_amigos/hola_amigos /usr/bin/hola_amigos"));
-        assert!(install.contains("echo Installed"));
-        assert!(install.contains("post_upgrade() {"));
-        assert!(install.contains("echo Upgraded"));
-        assert!(install.contains("post_remove() {"));
-        assert!(install.contains("rm /usr/bin/hola_amigos"));
-        assert!(install.contains("echo Removed"));
-    }
-
-    #[test]
-    fn install_file_omits_empty_upgrade_section() {
-        let install = PacmanMakeConfig::default().install_file("demo");
-        assert!(!install.contains("post_upgrade"));
-    }
-
-    #[test]
-    fn pkginfo_empty_lists_and_missing_description() {
-        let mc: PacmanMakeConfig = serde_yaml::from_str("options: []\ndependencies: []\n").unwrap();
-        let pkginfo = mc.pkginfo_file(&test_config());
-        assert!(pkginfo.contains("options=()\n"));
-        assert!(pkginfo.contains("depends=()\n"));
-        assert!(!pkginfo.contains("optdepends"));
-        // No pubspec.yaml description here: pkgdesc is omitted.
-        assert!(!pkginfo.contains("pkgdesc"));
+        let install = full_make_config().install_file().unwrap();
+        assert_eq!(
+            install,
+            "post_install() {\n\techo Installed\n}\n\n\
+             post_upgrade() {\n\techo Upgraded\n}\n\n\
+             post_remove() {\n\techo Removed\n}\n"
+        );
+        assert!(!install.contains("/usr/bin"));
+        assert_eq!(PacmanMakeConfig::default().install_file(), None);
     }
 
     #[test]
     fn desktop_defaults() {
-        let desktop = PacmanMakeConfig::default().desktop_file(&test_config());
+        let desktop = PacmanMakeConfig::default().desktop_file(&test_config(), "hola_amigos");
         assert!(desktop.contains("Name=hola_amigos"));
         assert!(desktop.contains("StartupNotify=false"));
     }

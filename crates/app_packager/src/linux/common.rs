@@ -65,22 +65,12 @@ pub(crate) fn deb_architecture() -> &'static str {
     }
 }
 
-/// `description` / `homepage` read from the project's `pubspec.yaml`
-/// (used by deb's `Description:`/`Homepage:` control fields and rpm's
-/// `%description`).
-#[derive(Debug, Default, Deserialize)]
-pub(crate) struct PubspecMeta {
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub homepage: Option<String>,
-}
-
-pub(crate) fn load_pubspec_meta() -> PubspecMeta {
-    std::fs::read_to_string("pubspec.yaml")
-        .ok()
-        .and_then(|content| serde_yaml::from_str(&content).ok())
-        .unwrap_or_default()
+/// A variable's value, `None` when unset or empty.
+pub(crate) fn var(variables: &Variables, key: &str) -> Option<String> {
+    variables
+        .get(key)
+        .filter(|value| !value.trim().is_empty())
+        .cloned()
 }
 
 /// Renders a `[Desktop Entry]` file from `(key, Option<value>)` pairs,
@@ -95,6 +85,13 @@ pub(crate) fn render_desktop_entry(entries: &[(&str, Option<String>)]) -> String
     lines.join("\n")
 }
 
+/// The `Categories` of a generated desktop entry: the configured ones, else
+/// `Utility;` (the spec expects a main category, and appimagetool requires
+/// one).
+pub(crate) fn desktop_categories(values: &Option<Vec<String>>) -> Option<String> {
+    desktop_list(values).or_else(|| Some("Utility;".to_string()))
+}
+
 /// Joins list values as `a;b;c;` (freedesktop list syntax); `None` when empty.
 pub(crate) fn desktop_list(values: &Option<Vec<String>>) -> Option<String> {
     values
@@ -103,91 +100,55 @@ pub(crate) fn desktop_list(values: &Option<Vec<String>>) -> Option<String> {
         .map(|v| format!("{};", v.join(";")))
 }
 
-/// Copies the icon configured in `make_config.yaml` into
-/// `usr/share/icons/hicolor/{128x128,256x256}/apps/<binary><ext>`,
-/// mirroring Dart's deb/rpm maker behavior.
-pub(crate) fn install_hicolor_icons(
-    icon: &str,
-    packaging_root: &Path,
-    binary_name: &str,
-) -> Result<(), PackageError> {
-    let icon_path = Path::new(icon);
-    if !icon_path.exists() {
-        return Err(PackageError::NotFound(format!(
-            "provided icon {} path wasn't found",
-            icon
-        )));
-    }
-    let ext = icon_path
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy()))
-        .unwrap_or_default();
-    for size in ["128x128", "256x256"] {
-        let dir = packaging_root
-            .join("usr/share/icons/hicolor")
-            .join(size)
-            .join("apps");
-        std::fs::create_dir_all(&dir)?;
-        std::fs::copy(icon_path, dir.join(format!("{}{}", binary_name, ext)))?;
-    }
-    Ok(())
-}
-
-/// Copies a metainfo XML into `usr/share/metainfo/<binary>.appdata.xml`
-/// (double extension preserved, mirroring Dart's `path.extension(..., 2)`).
-pub(crate) fn install_metainfo(
-    metainfo: &str,
-    packaging_root: &Path,
-    binary_name: &str,
-) -> Result<(), PackageError> {
-    let metainfo_path = Path::new(metainfo);
-    if !metainfo_path.exists() {
-        return Err(PackageError::NotFound(format!(
-            "Metainfo {} path wasn't found",
-            metainfo
-        )));
-    }
-    let file_name = metainfo_path
-        .file_name()
-        .map(|f| f.to_string_lossy().to_string())
-        .unwrap_or_default();
-    // Keep up to two extensions (e.g. `.appdata.xml`).
-    let ext = {
-        let parts: Vec<&str> = file_name.split('.').collect();
-        match parts.len() {
-            0 | 1 => String::new(),
-            2 => format!(".{}", parts[1]),
-            n => format!(".{}.{}", parts[n - 2], parts[n - 1]),
-        }
-    };
-    let dir = packaging_root.join("usr/share/metainfo");
-    std::fs::create_dir_all(&dir)?;
-    std::fs::copy(metainfo_path, dir.join(format!("{}{}", binary_name, ext)))?;
-    Ok(())
-}
-
 /// Format-specific facts a packager contributes to the variable set.
 pub(crate) struct FormatVariables<'a> {
-    pub package_name: String,
+    /// `package_name` from `make_config.yaml`; else `project.package_name`,
+    /// else `default_package_name`.
+    pub package_name: Option<String>,
+    pub default_package_name: String,
+    /// The version in the format's syntax (`PACKAGE_VERSION`).
+    pub package_version: String,
     pub package_arch: String,
     /// Where the bundle is installed (`/opt/<binary>`); `None` for AppImage.
     pub install_dir: Option<String>,
     /// `display_name` from `make_config.yaml`, used when `project:` has none.
     pub display_name: Option<String>,
-    /// The directory staged into the package (deb/pacman root, rpm `BUILD`,
-    /// the AppDir).
+    /// The package root (see [`super::staging`]): the DEB or Pacman
+    /// package's root, the tree an RPM spec copies, or the AppDir.
     pub packaging_dir: &'a Path,
     pub output_file: &'a Path,
     pub extra: Vec<(&'static str, String)>,
 }
 
+/// Where the raw Linux packaging files live: one directory per format, plus
+/// [`SHARED_DIR`] for what every format uses.
+pub(crate) const RAW_PACKAGING_DIR: &str = ".fastforge/packaging/linux";
+
+/// The directory, next to the format directories, holding what every format
+/// shares.
+pub(crate) const SHARED_DIR: &str = "shared";
+
+/// The desktop entry template; installed as `${APP_ID}.desktop`.
+pub(crate) const DESKTOP_TEMPLATE: &str = "app.desktop";
+
+/// The AppStream metainfo template; installed as
+/// `usr/share/metainfo/${APP_ID}.metainfo.xml`.
+pub(crate) const METAINFO_TEMPLATE: &str = "app.metainfo.xml";
+
+/// `.fastforge/packaging/linux/shared/` for a format directory.
+fn shared_dir(format_dir: &Path) -> Option<PathBuf> {
+    format_dir.parent().map(|dir| dir.join(SHARED_DIR))
+}
+
 /// The raw packaging files of one Linux format, read from
-/// `linux/packaging/<format>/`, plus the variables they are rendered with.
+/// `.fastforge/packaging/linux/<format>/` (and `shared/`), plus the variables
+/// they are rendered with.
 ///
-/// A raw file replaces the file fastforge would otherwise generate from
-/// `make_config.yaml`, one file at a time; `files/` is an overlay copied into
-/// the package root. Text files and file names are rendered with
-/// [`render_variables`]; binary files are copied as they are.
+/// A raw file replaces the file fastforge would otherwise generate (from
+/// `make_config.yaml` or defaults), one file at a time; `files/` (shared,
+/// then the format's own) is an overlay copied into the package root. Text
+/// files and file names are rendered with [`render_variables`]; binary files
+/// are copied as they are.
 pub(crate) struct RawPackaging {
     dir: PathBuf,
     settings: ProjectSettings,
@@ -201,7 +162,7 @@ impl RawPackaging {
         facts: FormatVariables,
     ) -> Result<Self, PackageError> {
         Self::load_from(
-            Path::new("linux/packaging").join(format),
+            Path::new(RAW_PACKAGING_DIR).join(format),
             ProjectSettings::load()?,
             config,
             facts,
@@ -229,7 +190,14 @@ impl RawPackaging {
         {
             set("APP_DISPLAY_NAME", name);
         }
-        set("PACKAGE_NAME", facts.package_name);
+        set(
+            "PACKAGE_NAME",
+            facts
+                .package_name
+                .or_else(|| settings.package_name.clone())
+                .unwrap_or(facts.default_package_name),
+        );
+        set("PACKAGE_VERSION", facts.package_version);
         set("PACKAGE_ARCH", facts.package_arch);
         set("ARCH", machine_architecture().to_string());
         if let Some(install_dir) = facts.install_dir {
@@ -240,11 +208,29 @@ impl RawPackaging {
         for (key, value) in facts.extra {
             set(key, value);
         }
-        Ok(Self {
+        // Templates have fixed names; catch a misnamed one early.
+        let raw = Self {
             dir,
             settings,
             variables,
-        })
+        };
+        raw.template(DESKTOP_TEMPLATE)?;
+        Ok(raw)
+    }
+
+    pub fn variables(&self) -> &Variables {
+        &self.variables
+    }
+
+    /// `APP_ID`, which names the desktop file, the icon and the metainfo so
+    /// they match the window's app ID that Wayland compositors look up.
+    pub fn app_id(&self) -> &str {
+        &self.variables["APP_ID"]
+    }
+
+    /// The package name (`PACKAGE_NAME`).
+    pub fn package_name(&self) -> &str {
+        &self.variables["PACKAGE_NAME"]
     }
 
     /// The icon from `make_config.yaml`, else `project.icon`.
@@ -270,23 +256,35 @@ impl RawPackaging {
     /// The only file in the format directory with extension `ext`; an error
     /// when there are several, since fastforge could not tell which to use.
     pub fn file_with_extension(&self, ext: &str) -> Result<Option<PathBuf>, PackageError> {
-        let Ok(entries) = std::fs::read_dir(&self.dir) else {
-            return Ok(None);
-        };
-        let mut found: Vec<PathBuf> = entries
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|path| path.is_file() && path.extension().is_some_and(|e| e == ext))
-            .collect();
-        found.sort();
-        if found.len() > 1 {
-            return Err(PackageError::General(format!(
-                "{} contains several .{} files; keep only one",
-                self.dir.display(),
-                ext
-            )));
+        single_file_with_extension(&self.dir, ext)
+    }
+
+    /// A template with a fixed name (`app.desktop`, `app.metainfo.xml`): the
+    /// format directory's, else the shared one. Another file with the same
+    /// extension next to it is an error, as it would silently be ignored.
+    pub fn template(&self, name: &str) -> Result<Option<PathBuf>, PackageError> {
+        let ext = name.split_once('.').map(|(_, ext)| ext).unwrap_or(name);
+        let dirs = [Some(self.dir.clone()), shared_dir(&self.dir)];
+        for dir in dirs.iter().flatten() {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                if file_name != name && file_name.ends_with(&format!(".{}", ext)) {
+                    return Err(PackageError::General(format!(
+                        "{} is not used: name the template {}",
+                        entry.path().display(),
+                        dir.join(name).display()
+                    )));
+                }
+            }
         }
-        Ok(found.pop())
+        Ok(dirs
+            .into_iter()
+            .flatten()
+            .map(|dir| dir.join(name))
+            .find(|path| path.is_file()))
     }
 
     pub fn render(&self, path: &Path) -> Result<String, PackageError> {
@@ -312,23 +310,63 @@ impl RawPackaging {
         Ok(())
     }
 
-    /// Copies the `files/` overlay into `dest`, rendering file names and text
-    /// files and keeping permissions and symlinks.
-    pub fn install_overlay(&self, dest: &Path) -> Result<(), PackageError> {
-        let root = self.dir.join("files");
-        if root.is_dir() {
-            copy_rendered_tree(&root, dest, &self.variables)?;
+    /// Copies the `files/` overlays into `dest`: the one shared by every
+    /// format first, then the format's own, so its files win. With
+    /// `shared_top_level`, only those top-level directories of the shared
+    /// overlay are copied (an AppDir has no use for `etc/`). File names and
+    /// text files are rendered; permissions and symlinks are kept.
+    pub fn install_overlay(
+        &self,
+        dest: &Path,
+        shared_top_level: Option<&[&str]>,
+    ) -> Result<(), PackageError> {
+        if let Some(shared) = shared_dir(&self.dir).map(|dir| dir.join("files"))
+            && shared.is_dir()
+        {
+            copy_rendered_tree(&shared, dest, &self.variables, shared_top_level)?;
+        }
+        let own = self.dir.join("files");
+        if own.is_dir() {
+            copy_rendered_tree(&own, dest, &self.variables, None)?;
         }
         Ok(())
     }
 }
 
-fn copy_rendered_tree(src: &Path, dest: &Path, variables: &Variables) -> Result<(), PackageError> {
+fn single_file_with_extension(dir: &Path, ext: &str) -> Result<Option<PathBuf>, PackageError> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Ok(None);
+    };
+    let mut found: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file() && path.extension().is_some_and(|e| e == ext))
+        .collect();
+    found.sort();
+    if found.len() > 1 {
+        return Err(PackageError::General(format!(
+            "{} contains several .{} files; keep only one",
+            dir.display(),
+            ext
+        )));
+    }
+    Ok(found.pop())
+}
+
+fn copy_rendered_tree(
+    src: &Path,
+    dest: &Path,
+    variables: &Variables,
+    only: Option<&[&str]>,
+) -> Result<(), PackageError> {
     std::fs::create_dir_all(dest)?;
     let mut entries: Vec<_> = std::fs::read_dir(src)?.flatten().collect();
     entries.sort_by_key(|entry| entry.file_name());
     for entry in entries {
         let name = render_variables(&entry.file_name().to_string_lossy(), variables);
+        if only.is_some_and(|only| !only.contains(&name.as_str())) {
+            continue;
+        }
         let from = entry.path();
         let to = dest.join(name);
         let meta = std::fs::symlink_metadata(&from)?;
@@ -343,7 +381,7 @@ fn copy_rendered_tree(src: &Path, dest: &Path, variables: &Variables) -> Result<
             #[cfg(not(unix))]
             std::fs::copy(&from, &to).map(|_| ())?;
         } else if meta.is_dir() {
-            copy_rendered_tree(&from, &to, variables)?;
+            copy_rendered_tree(&from, &to, variables, None)?;
         } else {
             let bytes = std::fs::read(&from)?;
             match std::str::from_utf8(&bytes) {
@@ -432,13 +470,23 @@ mod tests {
     }
 
     fn raw(dir: &Path, settings: ProjectSettings, display_name: Option<&str>) -> RawPackaging {
+        try_raw(dir, settings, display_name).unwrap()
+    }
+
+    fn try_raw(
+        dir: &Path,
+        settings: ProjectSettings,
+        display_name: Option<&str>,
+    ) -> Result<RawPackaging, PackageError> {
         let config = test_config(dir);
         RawPackaging::load_from(
             dir.join("deb"),
             settings,
             &config,
             FormatVariables {
-                package_name: "hola-amigos".into(),
+                package_name: None,
+                default_package_name: "hola-amigos".into(),
+                package_version: "1.2.3+4".into(),
                 package_arch: "amd64".into(),
                 install_dir: Some("/opt/hola-amigos".into()),
                 display_name: display_name.map(str::to_string),
@@ -447,7 +495,6 @@ mod tests {
                 extra: vec![("RPM_RELEASE", "4".into())],
             },
         )
-        .unwrap()
     }
 
     #[test]
@@ -456,9 +503,12 @@ mod tests {
         let r = raw(tmp.path(), ProjectSettings::default(), Some("Hola Amigos"));
         let v = &r.variables;
         assert_eq!(v["PACKAGE_NAME"], "hola-amigos");
+        assert_eq!(v["PACKAGE_VERSION"], "1.2.3+4");
         assert_eq!(v["PACKAGE_ARCH"], "amd64");
         assert_eq!(v["INSTALL_DIR"], "/opt/hola-amigos");
         assert_eq!(v["RPM_RELEASE"], "4");
+        // Without `project.app_id`, `APP_ID` falls back to the binary name.
+        assert_eq!(v["APP_ID"], "hola-amigos");
         // make_config's display_name is used when project: has none ...
         assert_eq!(v["APP_DISPLAY_NAME"], "Hola Amigos");
         assert!(v["PACKAGING_DIRECTORY"].ends_with("staging"));
@@ -467,11 +517,14 @@ mod tests {
         // ... and project.display_name wins over it.
         let settings = ProjectSettings {
             display_name: Some("Project Name".into()),
+            package_name: Some("hola".into()),
             icon: Some("assets/icon.png".into()),
             ..Default::default()
         };
         let r = raw(tmp.path(), settings, Some("Hola Amigos"));
         assert_eq!(r.variables["APP_DISPLAY_NAME"], "Project Name");
+        // project.package_name replaces the format's default.
+        assert_eq!(r.package_name(), "hola");
         assert_eq!(r.icon(None).as_deref(), Some("assets/icon.png"));
         assert_eq!(
             r.icon(Some(&"make.png".to_string())).as_deref(),
@@ -552,7 +605,7 @@ mod tests {
 
         let r = raw(tmp.path(), ProjectSettings::default(), Some("Hola"));
         let dest = tmp.path().join("root");
-        r.install_overlay(&dest).unwrap();
+        r.install_overlay(&dest, None).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(dest.join("usr/share/applications/hola-amigos.desktop"))
@@ -572,6 +625,111 @@ mod tests {
         assert_eq!(
             std::fs::read_link(dest.join("etc/link")).unwrap(),
             Path::new("/opt/hola-amigos/hola-amigos")
+        );
+    }
+
+    #[test]
+    fn templates_have_fixed_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("deb")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("shared")).unwrap();
+        let r = raw(tmp.path(), ProjectSettings::default(), None);
+        assert_eq!(r.template(DESKTOP_TEMPLATE).unwrap(), None);
+
+        // The shared template ...
+        let shared = tmp.path().join("shared/app.desktop");
+        std::fs::write(&shared, "Exec=${APP_BINARY_NAME} %U\nIcon=${APP_ID}\n").unwrap();
+        let r = raw(tmp.path(), ProjectSettings::default(), None);
+        assert_eq!(r.template(DESKTOP_TEMPLATE).unwrap(), Some(shared.clone()));
+        assert_eq!(
+            r.render(&shared).unwrap(),
+            "Exec=hola-amigos %U\nIcon=hola-amigos\n"
+        );
+
+        // ... is overridden by the format's own.
+        let own = tmp.path().join("deb/app.desktop");
+        std::fs::write(&own, "").unwrap();
+        assert_eq!(r.template(DESKTOP_TEMPLATE).unwrap(), Some(own));
+
+        // A misnamed template would be silently ignored: refuse it.
+        std::fs::write(tmp.path().join("shared/${APP_ID}.desktop"), "").unwrap();
+        let err = try_raw(tmp.path(), ProjectSettings::default(), None)
+            .err()
+            .unwrap();
+        assert!(err.to_string().contains("name the template"));
+        let metainfo = tmp.path().join("shared/app.metainfo.xml");
+        std::fs::write(&metainfo, "").unwrap();
+        assert_eq!(r.template(METAINFO_TEMPLATE).unwrap(), Some(metainfo));
+    }
+
+    #[test]
+    fn app_id_names_the_desktop_file_and_icon() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = raw(tmp.path(), ProjectSettings::default(), None);
+        assert_eq!(r.app_id(), "hola-amigos");
+        let settings = ProjectSettings {
+            app_id: Some("dev.example.hola".into()),
+            ..Default::default()
+        };
+        let r = raw(tmp.path(), settings, None);
+        assert_eq!(r.app_id(), "dev.example.hola");
+        let from_cmake = ProjectSettings {
+            linux_application_id: Some("dev.example.cmake".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            raw(tmp.path(), from_cmake, None).app_id(),
+            "dev.example.cmake"
+        );
+    }
+
+    #[test]
+    fn shared_overlay_can_be_limited() {
+        let tmp = tempfile::tempdir().unwrap();
+        let files = tmp.path().join("shared/files");
+        std::fs::create_dir_all(files.join("etc")).unwrap();
+        std::fs::create_dir_all(files.join("usr/share/doc")).unwrap();
+        std::fs::write(files.join("etc/app.conf"), "").unwrap();
+        std::fs::write(files.join("usr/share/doc/README"), "").unwrap();
+        let own = tmp.path().join("deb/files/etc");
+        std::fs::create_dir_all(&own).unwrap();
+        std::fs::write(own.join("own.conf"), "").unwrap();
+
+        let r = raw(tmp.path(), ProjectSettings::default(), None);
+        let dest = tmp.path().join("root");
+        r.install_overlay(&dest, Some(&["usr"])).unwrap();
+        assert!(dest.join("usr/share/doc/README").is_file());
+        assert!(!dest.join("etc/app.conf").exists());
+        // The format's own overlay is never limited.
+        assert!(dest.join("etc/own.conf").is_file());
+    }
+
+    #[test]
+    fn format_overlay_wins_over_the_shared_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = tmp.path().join("shared/files/usr/share/metainfo");
+        let own = tmp.path().join("deb/files/usr/share/metainfo");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::create_dir_all(&own).unwrap();
+        std::fs::write(shared.join("${APP_BINARY_NAME}.xml"), "shared ${APP_NAME}").unwrap();
+        std::fs::write(shared.join("other.xml"), "shared only").unwrap();
+        std::fs::write(own.join("${APP_BINARY_NAME}.xml"), "deb ${APP_NAME}").unwrap();
+
+        std::fs::create_dir_all(tmp.path().join("shared/files/etc")).unwrap();
+        std::fs::write(tmp.path().join("shared/files/etc/app.conf"), "").unwrap();
+
+        let r = raw(tmp.path(), ProjectSettings::default(), None);
+        let dest = tmp.path().join("root");
+        r.install_overlay(&dest, None).unwrap();
+        assert!(dest.join("etc/app.conf").is_file());
+        let metainfo = dest.join("usr/share/metainfo");
+        assert_eq!(
+            std::fs::read_to_string(metainfo.join("hola-amigos.xml")).unwrap(),
+            "deb hola_amigos"
+        );
+        assert_eq!(
+            std::fs::read_to_string(metainfo.join("other.xml")).unwrap(),
+            "shared only"
         );
     }
 }

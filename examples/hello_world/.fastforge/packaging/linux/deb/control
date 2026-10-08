@@ -1,0 +1,11 @@
+Package: ${PACKAGE_NAME}
+Version: ${PACKAGE_VERSION}
+Architecture: ${PACKAGE_ARCH}
+Maintainer: ${APP_MAINTAINER}
+Section: utils
+Priority: optional
+Homepage: ${APP_HOMEPAGE}
+Depends: libgtk-3-0
+Description: ${APP_DESCRIPTION}
+ Hello World is the fastforge example app: a Flutter counter that shows its
+ build name, build number and APP_ENV.

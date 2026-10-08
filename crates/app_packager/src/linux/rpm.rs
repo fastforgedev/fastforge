@@ -1,25 +1,30 @@
 use std::path::Path;
 use std::process::Command;
 
-use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
+use fastforge_core::{
+    AppPackager, PackageConfig, PackageError, PackageResult, Platform, Variables,
+};
 use serde::Deserialize;
 
-use crate::fs_util::copy_dir_contents;
-
 use super::common::{
-    FormatVariables, RawPackaging, desktop_list, load_make_config, load_pubspec_meta,
-    machine_architecture, render_desktop_entry,
+    FormatVariables, RawPackaging, desktop_categories, desktop_list, load_make_config,
+    machine_architecture, render_desktop_entry, var,
 };
+use super::staging::{self, Contents, Layout};
 
 /// Builds an RPM package using `rpmbuild`, mirroring Dart's `AppPackageMakerRPM`.
 ///
-/// A raw `.spec` file, `.desktop` file and `files/` overlay in
-/// `linux/packaging/rpm/` are rendered with fastforge's variables (which are
-/// also set in rpmbuild's environment, so `%{getenv:APP_VERSION}` works too)
-/// and win over what would be generated from
+/// The package root is staged by [`staging::stage`] (bundle in
+/// `/opt/<binary>`, `/usr/bin/<binary>` link, desktop entry, icons,
+/// metainfo, `files/` overlays) at `${PACKAGING_DIRECTORY}`, with its
+/// `%files` list at `${RPM_FILE_LIST}`, so a spec installs it with
+/// `cp -a ${PACKAGING_DIRECTORY}/. %{buildroot}/` and
+/// `%files -f ${RPM_FILE_LIST}`. A raw `.spec` in
+/// `.fastforge/packaging/linux/rpm/` (its file name rendered too) is rendered
+/// with fastforge's variables, which are also set in rpmbuild's environment
+/// (`%{getenv:APP_VERSION}`), and wins over the spec generated from
 /// `linux/packaging/rpm/make_config.yaml` (same schema as Dart's
-/// `MakeRPMConfig`), which in turn falls back to sensible defaults. The
-/// overlay is copied into `%{_builddir}`, next to the bundle directory.
+/// `MakeRPMConfig`) or defaults.
 ///
 /// Requires `rpmbuild` (from the `rpm-build` package) and `patchelf`.
 pub struct LinuxRpmPackager;
@@ -103,6 +108,52 @@ pub fn sanitize_rpm_rpath(rpath: &str) -> String {
     sanitized.join(":")
 }
 
+/// RPM `Version`: the build name, with `-` (not allowed) turned into `~`, so
+/// a pre-release (`1.2.3-beta.1` -> `1.2.3~beta.1`) sorts before the release.
+fn rpm_version(app_version: &str) -> String {
+    app_version
+        .split('+')
+        .next()
+        .unwrap_or(app_version)
+        .replace('-', "~")
+}
+
+/// `RPM_PRIVATE_LIBS`: the bundle's shared libraries (`lib/*.so*`) as a
+/// regular expression alternation of their `<name>.so` stems, escaped for a
+/// spec (see [`regex_escape`]), e.g. `libapp\\.so|libflutter_linux_gtk\\.so`,
+/// for `%__requires_exclude`.
+fn private_libs(lib_dir: &Path) -> String {
+    let Ok(entries) = std::fs::read_dir(lib_dir) else {
+        return String::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let end = name.find(".so")? + ".so".len();
+            Some(regex_escape(&name[..end]))
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    names.join("|")
+}
+
+/// Escapes a value for the regular expressions of rpm's dependency filters,
+/// as written in a spec: rpm consumes one level of backslashes when it
+/// expands `%global`, so `.` is written `\\.` to reach the regex as `\.`.
+fn regex_escape(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| match c {
+            '.' | '+' | '*' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '^' | '$' | '\\' => {
+                format!("\\\\{}", c)
+            }
+            c => c.to_string(),
+        })
+        .collect()
+}
+
 impl RpmMakeConfig {
     fn load() -> Result<Self, PackageError> {
         Ok(
@@ -121,141 +172,123 @@ impl RpmMakeConfig {
         self.build_arch.clone().unwrap_or_else(rpm_architecture)
     }
 
-    /// Renders the `.spec` file, mirroring Dart's `toFilesString()['SPEC']`.
-    fn spec_file(&self, config: &PackageConfig) -> String {
-        let meta = load_pubspec_meta();
-        // `description ?? pubspec.description`; the section is omitted when
-        // both are missing (like Dart).
-        let description = self
-            .description
-            .clone()
-            .or_else(|| meta.description.clone());
+    /// Renders the default `.spec`: it copies the staged root
+    /// (`PACKAGING_DIRECTORY`) and lists it with `%files -f RPM_FILE_LIST`.
+    /// The bundle's private libraries are kept out of the automatic
+    /// Provides/Requires, no debuginfo package or `.build-id` links are made
+    /// (they would clash between apps shipping the same Flutter engine), and
+    /// project metadata fills what `make_config.yaml` leaves out (`Summary`
+    /// and `License` are mandatory).
+    fn spec_file(
+        &self,
+        config: &PackageConfig,
+        variables: &Variables,
+        install_dir: &str,
+    ) -> String {
+        let root = var(variables, "PACKAGING_DIRECTORY").unwrap_or_default();
+        let file_list = var(variables, "RPM_FILE_LIST").unwrap_or_default();
+        let fallback_description = || {
+            var(variables, "APP_DESCRIPTION")
+                .or_else(|| var(variables, "APP_DISPLAY_NAME"))
+                .unwrap_or_else(|| config.app_name.clone())
+        };
+        let bundle = regex_escape(install_dir);
 
-        // Preamble
-        let mut preamble: Vec<(&str, Option<String>)> = vec![
-            ("Name", Some(self.rpm_name(config))),
-            ("Version", Some(config.app_version.clone())),
+        let mut macros = vec![
+            "%global debug_package %{nil}".to_string(),
+            "%global _build_id_links none".to_string(),
+            format!("%global __provides_exclude_from ^{}/.*$", bundle),
+        ];
+        // Only the bundle's own libraries are dropped from the automatic
+        // Requires; system libraries (GTK, glibc, ...) stay required.
+        if let Some(private) = var(variables, "RPM_PRIVATE_LIBS") {
+            macros.push(format!("%global __requires_exclude ^({})", private));
+        }
+        macros.extend(self.spec_macros.clone().unwrap_or_default());
+
+        let packager = match (&self.packager, &self.packager_email) {
+            (Some(p), Some(e)) => Some(format!("{} <{}>", p, e)),
+            (Some(p), None) => Some(p.clone()),
+            (None, Some(e)) => Some(format!("<{}>", e)),
+            (None, None) => var(variables, "APP_MAINTAINER"),
+        };
+        let list =
+            |v: &Option<Vec<String>>| v.as_ref().filter(|v| !v.is_empty()).map(|v| v.join(", "));
+        let preamble: Vec<(&str, Option<String>)> = vec![
+            (
+                "Name",
+                Some(var(variables, "PACKAGE_NAME").unwrap_or_else(|| self.rpm_name(config))),
+            ),
+            (
+                "Version",
+                Some(
+                    var(variables, "PACKAGE_VERSION")
+                        .unwrap_or_else(|| rpm_version(&config.app_version)),
+                ),
+            ),
             (
                 "Release",
                 Some(format!("{}%{{?dist}}", rpm_release(&config.app_version))),
             ),
-            // `summary ?? pubspec.description`, omitted when both are missing.
             (
                 "Summary",
-                self.summary.clone().or_else(|| meta.description.clone()),
+                Some(self.summary.clone().unwrap_or_else(fallback_description)),
+            ),
+            (
+                "License",
+                Some(
+                    self.license
+                        .clone()
+                        .or_else(|| var(variables, "APP_LICENSE"))
+                        .unwrap_or_else(|| "LicenseRef-Unknown".to_string()),
+                ),
+            ),
+            (
+                "URL",
+                self.url.clone().or_else(|| var(variables, "APP_HOMEPAGE")),
             ),
             ("Group", self.group.clone()),
             ("Vendor", self.vendor.clone()),
-            (
-                "Packager",
-                match (&self.packager, &self.packager_email) {
-                    (Some(p), Some(e)) => Some(format!("{} <{}>", p, e)),
-                    (p, None) => p.clone(),
-                    (None, Some(e)) => Some(format!(" <{}>", e)),
-                },
-            ),
-            ("License", self.license.clone()),
-            ("URL", self.url.clone()),
+            ("Packager", packager),
+            ("Requires", list(&self.requires)),
+            ("BuildRequires", list(&self.build_requires)),
+            ("BuildArch", Some(self.build_arch())),
         ];
-        // A configured-but-empty list is still written (`Requires: `), like
-        // Dart's `requires?.join(', ')`.
-        preamble.push(("Requires", self.requires.as_ref().map(|v| v.join(", "))));
-        preamble.push((
-            "BuildRequires",
-            self.build_requires.as_ref().map(|v| v.join(", ")),
-        ));
-        preamble.push(("BuildArch", Some(self.build_arch())));
-
-        let preamble_str = preamble
+        let preamble = preamble
             .into_iter()
             .filter_map(|(k, v)| v.map(|v| format!("{}: {}", k, v)))
             .collect::<Vec<_>>()
             .join("\n");
 
-        // Body
-        let app_name = &config.app_name;
-        let binary_name = &config.app_binary_name;
-        // Sources are addressed from `%{_topdir}/BUILD` (where `package()`
-        // stages them): rpm 4.20+ runs `%install` in a per-build
-        // subdirectory, so paths relative to the working directory break.
-        let install_script = [
-            "mkdir -p %{buildroot}%{_bindir}".to_string(),
-            "mkdir -p %{buildroot}%{_datadir}/%{name}".to_string(),
-            "mkdir -p %{buildroot}%{_datadir}/applications".to_string(),
-            "mkdir -p %{buildroot}%{_datadir}/metainfo".to_string(),
-            "mkdir -p %{buildroot}%{_datadir}/pixmaps".to_string(),
-            format!("cp -r %{{_topdir}}/BUILD/{}/* %{{buildroot}}%{{_datadir}}/%{{name}}", app_name),
+        let mut body = vec![
             format!(
-                "ln -s %{{_datadir}}/%{{name}}/{} %{{buildroot}}%{{_bindir}}/%{{name}}",
-                binary_name
+                "%description\n{}\n",
+                self.description
+                    .clone()
+                    .unwrap_or_else(fallback_description)
             ),
-            format!(
-                "cp -r %{{_topdir}}/BUILD/{}.desktop %{{buildroot}}%{{_datadir}}/applications/%{{name}}.desktop",
-                binary_name
-            ),
-            format!(
-                "cp -r %{{_topdir}}/BUILD/{}.png %{{buildroot}}%{{_datadir}}/pixmaps/%{{name}}.png",
-                binary_name
-            ),
-            format!(
-                "cp -r %{{_topdir}}/BUILD/{}*.xml %{{buildroot}}%{{_datadir}}/metainfo/%{{name}}.appdata.xml || :",
-                binary_name
-            ),
-        ]
-        .join("\n");
-
-        // %post always refreshes the MIME database, then runs any custom
-        // scripts (mirrors Dart's postScripts/postunScripts getters).
-        let mut post_scripts =
-            vec!["update-mime-database %{_datadir}/mime &> /dev/null || :".to_string()];
-        post_scripts.extend(self.postinstall_scripts.clone().unwrap_or_default());
-
-        let mut postun_scripts =
-            vec!["update-mime-database %{_datadir}/mime &> /dev/null || :".to_string()];
-        if let Some(postun) = &self.postun {
-            postun_scripts.push(postun.clone());
+            format!("%install\ncp -a {}/. %{{buildroot}}/\n", root),
+        ];
+        if let Some(scripts) = self.postinstall_scripts.as_ref().filter(|s| !s.is_empty()) {
+            body.push(format!("%post\n{}\n", scripts.join("\n")));
         }
-        postun_scripts.extend(self.postuninstall_scripts.clone().unwrap_or_default());
+        let mut postun: Vec<String> = self.postun.iter().cloned().collect();
+        postun.extend(self.postuninstall_scripts.clone().unwrap_or_default());
+        if !postun.is_empty() {
+            body.push(format!("%postun\n{}\n", postun.join("\n")));
+        }
+        body.push(format!("%files -f {}\n", file_list));
 
-        let files_section = [
-            "%{_bindir}/%{name}",
-            "%{_datadir}/%{name}",
-            "%{_datadir}/applications/%{name}.desktop",
-            "%{_datadir}/metainfo",
-        ]
-        .join("\n");
-
-        let body = [
-            description.map(|d| format!("%description\n{}\n", d)),
-            Some(format!("%install\n{}\n", install_script)),
-            Some(format!("%post\n{}\n", post_scripts.join("\n"))),
-            Some(format!("%postun\n{}\n", postun_scripts.join("\n"))),
-            Some(format!("%files\n{}\n", files_section)),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join("\n");
-
-        let inline_body = [
-            "%defattr(-,root,root)\n",
-            "%attr(4755, root, root) %{_datadir}/pixmaps/%{name}.png\n",
-        ]
-        .join("\n");
-
-        let macros = self
-            .spec_macros
-            .as_ref()
-            .filter(|v| !v.is_empty())
-            .map(|v| format!("{}\n\n", v.join("\n")))
-            .unwrap_or_default();
-
-        format!("{}{}\n\n{}\n\n{}", macros, preamble_str, body, inline_body)
+        format!(
+            "{}\n\n{}\n\n{}",
+            macros.join("\n"),
+            preamble,
+            body.join("\n")
+        )
     }
 
-    /// Renders the desktop entry, mirroring Dart's `toJson()['DESKTOP']`.
-    fn desktop_file(&self, config: &PackageConfig) -> String {
-        let rpm_name = self.rpm_name(config);
+    /// Renders the default desktop entry.
+    fn desktop_file(&self, config: &PackageConfig, icon: &str) -> String {
         render_desktop_entry(&[
             ("Type", Some("Application".to_string())),
             (
@@ -267,11 +300,11 @@ impl RpmMakeConfig {
                 ),
             ),
             ("GenericName", self.generic_name.clone()),
-            ("Icon", Some(rpm_name.clone())),
-            ("Exec", Some(format!("{} %U", rpm_name))),
+            ("Icon", Some(icon.to_string())),
+            ("Exec", Some(format!("{} %U", config.app_binary_name))),
             ("Actions", desktop_list(&self.actions)),
             ("MimeType", desktop_list(&self.supported_mime_type)),
-            ("Categories", desktop_list(&self.categories)),
+            ("Categories", desktop_categories(&self.categories)),
             ("Keywords", desktop_list(&self.keywords)),
             // Only written when `startup_notify` is configured (like Dart).
             ("StartupNotify", self.startup_notify.map(|b| b.to_string())),
@@ -345,101 +378,65 @@ impl AppPackager for LinuxRpmPackager {
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
         let make_config = RpmMakeConfig::load()?;
-        let pkg_dir = config.packaging_dir();
-        let output_file = config.output_file();
-        let binary_name = &config.app_binary_name;
-        let app_name = &config.app_name;
-
-        // Create rpmbuild tree: BUILD BUILDROOT RPMS SOURCES SPECS SRPMS.
-        // rpmbuild needs an absolute `_topdir` (Dart uses
+        // rpmbuild needs absolute paths (Dart uses
         // `packagingDirectory.absolute.path`).
-        let rpmbuild_dir = std::path::absolute(&pkg_dir)?.join("rpmbuild");
+        let pkg_dir = std::path::absolute(config.packaging_dir())?;
+        let output_file = config.output_file();
+        let rpmbuild_dir = pkg_dir.join("rpmbuild");
         for sub in &["BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"] {
             std::fs::create_dir_all(rpmbuild_dir.join(sub))?;
         }
-        let build_dir = rpmbuild_dir.join("BUILD");
-
-        let rpm_name = make_config.rpm_name(config);
+        let root = pkg_dir.join("root");
+        let file_list = pkg_dir.join("files.list");
+        let binary_name = &config.app_binary_name;
+        let layout = Layout::system(binary_name);
         let raw = RawPackaging::load(
             config,
             "rpm",
             FormatVariables {
-                package_name: rpm_name.clone(),
+                package_name: make_config.package_name.clone(),
+                default_package_name: config.app_name.clone(),
+                package_version: rpm_version(&config.app_version),
                 package_arch: make_config.build_arch(),
-                install_dir: Some(format!("/usr/share/{}", rpm_name)),
+                install_dir: Some(layout.install_dir()),
                 display_name: make_config.display_name.clone(),
-                packaging_dir: &build_dir,
+                packaging_dir: &root,
                 output_file: &output_file,
-                extra: vec![("RPM_RELEASE", rpm_release(&config.app_version))],
+                extra: vec![
+                    ("RPM_RELEASE", rpm_release(&config.app_version)),
+                    ("RPM_FILE_LIST", file_list.display().to_string()),
+                    (
+                        "RPM_PRIVATE_LIBS",
+                        private_libs(&config.build_output_dir.join("lib")),
+                    ),
+                ],
             },
         )?;
 
-        // Copy app files into BUILD/{app_name}/
-        let build_root = build_dir.join(app_name);
-        std::fs::create_dir_all(&build_root)?;
-        copy_dir_contents(&config.build_output_dir, &build_root)?;
-
-        // Fix lib_*_plugin.so RPATHs pointing at the build directory
-        sanitize_bundle_rpaths(&build_root)?;
-
-        // Copy the configured icon into BUILD/<binary><ext>
-        if let Some(icon) = raw.icon(make_config.icon.as_ref()) {
-            let icon_path = Path::new(&icon);
-            if !icon_path.exists() {
-                return Err(PackageError::NotFound(format!(
-                    "provided icon {} path wasn't found",
-                    icon
-                )));
-            }
-            let ext = icon_path
-                .extension()
-                .map(|e| format!(".{}", e.to_string_lossy()))
-                .unwrap_or_default();
-            std::fs::copy(icon_path, build_dir.join(format!("{}{}", binary_name, ext)))?;
-        }
-
-        // Copy the configured metainfo into BUILD/<binary><ext2>
-        if let Some(metainfo) = &make_config.metainfo {
-            let metainfo_path = Path::new(metainfo);
-            if !metainfo_path.exists() {
-                return Err(PackageError::NotFound(format!(
-                    "Metainfo {} path doesn't exist",
-                    metainfo
-                )));
-            }
-            let file_name = metainfo_path
-                .file_name()
-                .map(|f| f.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let ext = {
-                let parts: Vec<&str> = file_name.split('.').collect();
-                match parts.len() {
-                    0 | 1 => String::new(),
-                    2 => format!(".{}", parts[1]),
-                    n => format!(".{}.{}", parts[n - 2], parts[n - 1]),
-                }
-            };
-            std::fs::copy(
-                metainfo_path,
-                build_dir.join(format!("{}{}", binary_name, ext)),
-            )?;
-        }
-
-        // Write BUILD/{binary_name}.desktop and SPECS/{binary_name}.spec
-        raw.write_or_generate(
-            raw.file_with_extension("desktop")?,
-            &build_dir.join(format!("{}.desktop", binary_name)),
-            || make_config.desktop_file(config),
+        staging::stage(
+            &raw,
+            config,
+            &root,
+            &layout,
+            Contents {
+                icon: raw.icon(make_config.icon.as_ref()),
+                metainfo: make_config.metainfo.clone(),
+            },
+            || make_config.desktop_file(config, raw.app_id()),
         )?;
+        // Fix lib_*_plugin.so RPATHs pointing at the build directory
+        sanitize_bundle_rpaths(&root.join(&layout.bundle_dir))?;
+        std::fs::write(&file_list, staging::rpm_file_list(&root)?)?;
+
+        // The spec (the format directory's only `*.spec`, whatever its name)
+        // is written as `SPECS/<package>.spec`, as rpm conventionally names it.
+        let raw_spec = raw.file_with_extension("spec")?;
         let spec_path = rpmbuild_dir
             .join("SPECS")
-            .join(format!("{}.spec", binary_name));
-        raw.write_or_generate(raw.file_with_extension("spec")?, &spec_path, || {
-            make_config.spec_file(config)
+            .join(format!("{}.spec", raw.package_name()));
+        raw.write_or_generate(raw_spec, &spec_path, || {
+            make_config.spec_file(config, raw.variables(), &layout.install_dir())
         })?;
-
-        // files/ overlay into BUILD/ (`%{_builddir}`)
-        raw.install_overlay(&build_dir)?;
 
         // QA_RPATHS = 0x0001 | 0x0010 tolerates $ORIGIN-style RPATHs
         let mut cmd = Command::new("rpmbuild");
@@ -521,6 +518,21 @@ mod tests {
         assert_eq!(sanitize_rpm_rpath(""), "");
     }
 
+    fn variables(entries: &[(&str, &str)]) -> Variables {
+        entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    fn staged() -> Variables {
+        variables(&[
+            ("PACKAGING_DIRECTORY", "/tmp/pkg/root"),
+            ("RPM_FILE_LIST", "/tmp/pkg/files.list"),
+            ("RPM_PRIVATE_LIBS", r"libapp\\.so|libflutter_linux_gtk\\.so"),
+        ])
+    }
+
     #[test]
     fn spec_file_contains_configured_fields() {
         let mc: RpmMakeConfig = serde_yaml::from_str(
@@ -544,47 +556,77 @@ spec_macros:
 "#,
         )
         .unwrap();
-        let spec = mc.spec_file(&test_config());
-        assert!(spec.starts_with("%define _build_id_links none"));
-        assert!(spec.contains("Name: hola-amigos"));
-        assert!(spec.contains("Version: 1.2.3+4"));
-        assert!(spec.contains("Release: 4%{?dist}"));
-        assert!(spec.contains("Summary: An awesome app"));
-        assert!(spec.contains("Packager: Gamer Boy 69 <rickastley@gmail.lol>"));
-        assert!(spec.contains("License: MIT"));
-        assert!(spec.contains("Requires: libkeybinder"));
-        assert!(spec.contains(
-            "%post\nupdate-mime-database %{_datadir}/mime &> /dev/null || :\necho Installed"
+        let spec = mc.spec_file(&test_config(), &staged(), "/opt/hola_amigos");
+        assert!(spec.starts_with(
+            "%global debug_package %{nil}\n\
+             %global _build_id_links none\n\
+             %global __provides_exclude_from ^/opt/hola_amigos/.*$\n\
+             %global __requires_exclude ^(libapp\\\\.so|libflutter_linux_gtk\\\\.so)\n\
+             %define _build_id_links none\n"
         ));
-        assert!(spec.contains("echo Uninstalling"));
-        assert!(spec.contains("%attr(4755, root, root)"));
-        assert!(
-            spec.contains("cp -r %{_topdir}/BUILD/hola_amigos/* %{buildroot}%{_datadir}/%{name}")
-        );
+        assert!(spec.contains("Name: hola-amigos\n"));
+        assert!(spec.contains("Version: 1.2.3\n"));
+        assert!(spec.contains("Release: 4%{?dist}\n"));
+        assert!(spec.contains("Summary: An awesome app\n"));
+        assert!(spec.contains("Packager: Gamer Boy 69 <rickastley@gmail.lol>\n"));
+        assert!(spec.contains("License: MIT\n"));
+        assert!(spec.contains("Requires: libkeybinder\n"));
+        assert!(spec.contains("%install\ncp -a /tmp/pkg/root/. %{buildroot}/\n"));
+        assert!(spec.contains("%post\necho Installed\n"));
+        assert!(spec.contains("%postun\necho Uninstalling\n"));
+        assert!(spec.ends_with("%files -f /tmp/pkg/files.list\n"));
+        // No setuid icon, no system directory ownership.
+        assert!(!spec.contains("4755"));
+        assert!(!spec.contains("%{_datadir}/metainfo"));
     }
 
     #[test]
     fn spec_defaults_without_make_config() {
         let mc = RpmMakeConfig::default();
-        let spec = mc.spec_file(&test_config());
-        assert!(spec.contains("Name: hola_amigos"));
-        assert!(spec.contains("Release: 4%{?dist}"));
-        // No summary/description anywhere (no pubspec.yaml here): omitted.
-        assert!(!spec.contains("Summary:"));
-        assert!(!spec.contains("%description"));
+        let spec = mc.spec_file(&test_config(), &staged(), "/opt/hola_amigos");
+        assert!(spec.contains("Name: hola_amigos\n"));
+        assert!(spec.contains("Release: 4%{?dist}\n"));
+        // Summary and License are mandatory: defaults stand in.
+        assert!(spec.contains("Summary: hola_amigos\n"));
+        assert!(spec.contains("License: LicenseRef-Unknown\n"));
+        assert!(spec.contains("%description\nhola_amigos\n"));
         assert!(!spec.contains("Requires"));
-        assert!(spec.contains("%install"));
-        assert!(spec.contains("%files"));
+        assert!(!spec.contains("%post"));
+
+        let spec = mc.spec_file(
+            &test_config(),
+            &variables(&[
+                ("APP_DESCRIPTION", "A demo"),
+                ("APP_LICENSE", "Apache-2.0"),
+                ("APP_MAINTAINER", "Jane <jane@example.com>"),
+                ("APP_HOMEPAGE", "https://example.com"),
+            ]),
+            "/opt/hola_amigos",
+        );
+        assert!(spec.contains("Summary: A demo\n"));
+        assert!(spec.contains("License: Apache-2.0\n"));
+        assert!(spec.contains("Packager: Jane <jane@example.com>\n"));
+        assert!(spec.contains("URL: https://example.com\n"));
     }
 
     #[test]
-    fn spec_writes_empty_requires() {
-        let mc: RpmMakeConfig =
-            serde_yaml::from_str("requires: []\nbuild_requires: []\ndescription: Hi\n").unwrap();
-        let spec = mc.spec_file(&test_config());
-        assert!(spec.contains("Requires: \n"));
-        assert!(spec.contains("BuildRequires: \n"));
-        assert!(spec.contains("%description\nHi\n"));
+    fn versions_and_paths_follow_rpm_rules() {
+        assert_eq!(rpm_version("1.2.3+4"), "1.2.3");
+        assert_eq!(rpm_version("1.2.3-beta.1+4"), "1.2.3~beta.1");
+        assert_eq!(regex_escape("/opt/my.app+x"), r"/opt/my\\.app\\+x");
+    }
+
+    #[test]
+    fn private_libs_are_the_bundled_shared_objects() {
+        let tmp = tempfile::tempdir().unwrap();
+        for name in ["libapp.so", "libfoo_plugin.so", "libbar.so.1.2", "README"] {
+            std::fs::write(tmp.path().join(name), "").unwrap();
+        }
+        assert_eq!(
+            private_libs(tmp.path()),
+            r"libapp\\.so|libbar\\.so|libfoo_plugin\\.so"
+        );
+        assert_eq!(private_libs(&tmp.path().join("missing")), "");
     }
 
     #[test]
@@ -597,23 +639,23 @@ spec_macros:
 
     #[test]
     fn desktop_startup_notify_only_when_configured() {
-        let desktop = RpmMakeConfig::default().desktop_file(&test_config());
+        let desktop = RpmMakeConfig::default().desktop_file(&test_config(), "hola_amigos");
         assert!(!desktop.contains("StartupNotify"));
         let mc: RpmMakeConfig = serde_yaml::from_str("startup_notify: true\n").unwrap();
         assert!(
-            mc.desktop_file(&test_config())
+            mc.desktop_file(&test_config(), "hola_amigos")
                 .contains("StartupNotify=true")
         );
     }
 
     #[test]
-    fn desktop_uses_rpm_name_for_exec() {
+    fn desktop_execs_the_binary() {
         let mc: RpmMakeConfig =
             serde_yaml::from_str("display_name: Hola\npackage_name: hola-amigos\n").unwrap();
-        let desktop = mc.desktop_file(&test_config());
+        let desktop = mc.desktop_file(&test_config(), "dev.example.hola");
         assert!(desktop.contains("Name=Hola"));
-        assert!(desktop.contains("Icon=hola-amigos"));
-        assert!(desktop.contains("Exec=hola-amigos %U"));
+        assert!(desktop.contains("Icon=dev.example.hola"));
+        assert!(desktop.contains("Exec=hola_amigos %U"));
     }
 
     #[test]

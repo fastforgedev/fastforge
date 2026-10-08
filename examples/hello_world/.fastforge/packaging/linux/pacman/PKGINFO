@@ -1,0 +1,9 @@
+pkgname = ${PACKAGE_NAME}
+pkgbase = ${PACKAGE_NAME}
+pkgver = ${PACKAGE_VERSION}
+pkgdesc = ${APP_DESCRIPTION}
+url = ${APP_HOMEPAGE}
+packager = ${APP_MAINTAINER}
+arch = ${PACKAGE_ARCH}
+license = ${APP_LICENSE}
+depend = gtk3

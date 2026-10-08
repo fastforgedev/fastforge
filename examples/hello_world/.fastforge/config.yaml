@@ -2,8 +2,13 @@ version: 1
 
 project:
   name: hello_world
+  display_name: Hello World
   app_id: dev.fastforge.hello_world
-  description: Fastforge hello world example using the new .fastforge layout.
+  description: A Flutter counter demo packaged with fastforge
+  homepage: https://github.com/fastforgedev/fastforge
+  icon: assets/logo.png
+  license: MIT
+  maintainer: LiJianying <lijy91@foxmail.com>
 
 output: dist/
 

@@ -1,0 +1,7 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: ${APP_NAME}
+Source: ${APP_HOMEPAGE}
+
+Files: *
+Copyright: 2021-present ${APP_MAINTAINER}
+License: ${APP_LICENSE}

@@ -8,16 +8,19 @@ use serde::Deserialize;
 use super::common::{
     FormatVariables, RawPackaging, load_make_config, machine_architecture, make_executable,
 };
+use super::staging::{self, Contents, Layout};
 
 /// Builds a Linux AppImage using `appimagetool`, mirroring Dart's
 /// `AppPackageMakerAppImage`.
 ///
-/// A raw `AppRun`, `.desktop` file and `files/` overlay in
-/// `linux/packaging/appimage/` are rendered with fastforge's variables and
-/// win over what would be generated from
+/// The AppDir is staged by [`staging::stage`] (bundle, desktop entry and
+/// icon at the root, icons and metainfo under `usr/share`, `files/`
+/// overlays). A raw `AppRun` in `.fastforge/packaging/linux/appimage/` is
+/// rendered with fastforge's variables and wins over the one generated from
 /// `linux/packaging/appimage/make_config.yaml` (same schema as Dart's
-/// `MakeAppImageConfig`), which in turn falls back to sensible defaults. The
-/// overlay is copied into the AppDir.
+/// `MakeAppImageConfig`) or defaults.
+/// A `.desktop` template and a `files/` overlay in
+/// `.fastforge/packaging/linux/shared/` are shared by every format.
 ///
 /// Requires `appimagetool` (plus `ldd` and `locate` for dependency bundling)
 /// to be on `$PATH`.
@@ -63,7 +66,7 @@ impl AppImageMakeConfig {
 
     /// Renders the desktop file, mirroring Dart's `desktopFileContent`
     /// (including `[Desktop Action]` sections).
-    fn desktop_file(&self, config: &PackageConfig) -> String {
+    fn desktop_file(&self, config: &PackageConfig, icon: &str) -> String {
         let app_name = &config.app_name;
         // The executable is `BINARY_NAME` from `linux/CMakeLists.txt`, which
         // need not match the pubspec name that the AppDir files are named after.
@@ -81,11 +84,8 @@ impl AppImageMakeConfig {
                     .clone()
                     .unwrap_or_else(|| "A Flutter Application".to_string()),
             ),
-            (
-                "Exec",
-                format!("LD_LIBRARY_PATH=usr/lib {} %u", binary_name),
-            ),
-            ("Icon", app_name.clone()),
+            ("Exec", format!("{} %U", binary_name)),
+            ("Icon", icon.to_string()),
             ("Type", "Application".to_string()),
             (
                 "StartupNotify",
@@ -95,9 +95,13 @@ impl AppImageMakeConfig {
         if let Some(mime) = self.supported_mime_type.as_ref().filter(|v| !v.is_empty()) {
             fields.push(("MimeType", format!("{};", mime.join(";"))));
         }
-        if !self.categories.is_empty() {
-            fields.push(("Categories", self.categories.join(";")));
-        }
+        // The spec expects a main category, and appimagetool requires one.
+        let categories = if self.categories.is_empty() {
+            "Utility;".to_string()
+        } else {
+            self.categories.join(";")
+        };
+        fields.push(("Categories", categories));
         if !self.keywords.is_empty() {
             fields.push(("Keywords", self.keywords.join(";")));
         }
@@ -122,12 +126,13 @@ impl AppImageMakeConfig {
             .actions
             .iter()
             .map(|action| {
+                let exec = [binary_name.clone(), action.arguments.join(" ")]
+                    .join(" ")
+                    .trim()
+                    .to_string();
                 format!(
-                    "[Desktop Action {}]\nName={}\nExec=LD_LIBRARY_PATH=usr/lib {} {} %u",
-                    action.label,
-                    action.name,
-                    binary_name,
-                    action.arguments.join(" "),
+                    "[Desktop Action {}]\nName={}\nExec={}",
+                    action.label, action.name, exec,
                 )
             })
             .collect::<Vec<_>>()
@@ -136,10 +141,15 @@ impl AppImageMakeConfig {
         format!("[Desktop Entry]\n{}\n\n{}", entry, actions)
     }
 
-    /// Renders the `AppRun` launcher script, mirroring Dart's `appRunContent`.
+    /// Renders the default `AppRun`: it puts the bundled libraries first and
+    /// starts the binary with the given arguments, without changing the
+    /// working directory (so relative paths keep working).
     fn app_run(&self, config: &PackageConfig) -> String {
         format!(
-            "#!/bin/bash\n\ncd \"$(dirname \"$0\")\"\nexport LD_LIBRARY_PATH=usr/lib\nexec ./{}\n",
+            "#!/bin/sh\n\
+             HERE=\"$(dirname \"$(readlink -f \"$0\")\")\"\n\
+             export LD_LIBRARY_PATH=\"$HERE/usr/lib:$HERE/lib${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}\"\n\
+             exec \"$HERE/{}\" \"$@\"\n",
             config.app_binary_name
         )
     }
@@ -152,10 +162,22 @@ fn run(cmd: &mut Command) -> Result<(), PackageError> {
     if !out.status.success() {
         return Err(PackageError::CommandFailed {
             command: cmd.get_program().to_string_lossy().into(),
-            stderr: String::from_utf8_lossy(&out.stderr).into(),
+            stderr: failure_output(&out.stdout, &out.stderr),
         });
     }
     Ok(())
+}
+
+/// stderr followed by stdout: appimagetool prints the reason for some
+/// failures, such as `desktop-file-validate` errors, only on stdout.
+fn failure_output(stdout: &[u8], stderr: &[u8]) -> String {
+    let stderr = String::from_utf8_lossy(stderr);
+    let stdout = String::from_utf8_lossy(stdout);
+    match (stderr.trim(), stdout.trim()) {
+        (err, "") => err.to_string(),
+        ("", out) => out.to_string(),
+        (err, out) => format!("{}\n{}", err, out),
+    }
 }
 
 fn run_stdout(cmd: &mut Command) -> Result<String, PackageError> {
@@ -225,10 +247,12 @@ impl AppPackager for LinuxAppImagePackager {
         std::fs::create_dir_all(&app_dir)?;
         let arch = machine_architecture();
         let raw = RawPackaging::load(
-            config,
+            &effective,
             "appimage",
             FormatVariables {
-                package_name: app_name.clone(),
+                package_name: None,
+                default_package_name: app_name.clone(),
+                package_version: config.app_version.clone(),
                 package_arch: arch.to_string(),
                 install_dir: None,
                 display_name: make_config.display_name.clone(),
@@ -238,79 +262,22 @@ impl AppPackager for LinuxAppImagePackager {
             },
         )?;
 
-        // Copy flutter build output contents into AppDir
-        run(Command::new("cp").args([
-            "-r",
-            &format!("{}/.", config.build_output_dir.display()),
-            &app_dir.display().to_string(),
-        ]))?;
-
-        // Write .desktop file and AppRun
-        raw.write_or_generate(
-            raw.file_with_extension("desktop")?,
-            &app_dir.join(format!("{}.desktop", app_name)),
-            || make_config.desktop_file(config),
+        staging::stage(
+            &raw,
+            config,
+            &app_dir,
+            &Layout::app_dir(),
+            Contents {
+                icon: raw.icon(make_config.icon.as_ref()),
+                metainfo: make_config.metainfo.clone(),
+            },
+            || make_config.desktop_file(config, raw.app_id()),
         )?;
         let app_run_path = app_dir.join("AppRun");
         raw.write_or_generate(raw.file(&["AppRun"]), &app_run_path, || {
             make_config.app_run(config)
         })?;
         make_executable(&app_run_path)?;
-
-        // Install the configured icon at AppDir root and in hicolor dirs
-        if let Some(icon) = raw.icon(make_config.icon.as_ref()) {
-            let icon_path = Path::new(&icon);
-            if !icon_path.exists() {
-                return Err(PackageError::NotFound(format!(
-                    "icon {} path doesn't exist",
-                    icon
-                )));
-            }
-            let ext = icon_path
-                .extension()
-                .map(|e| format!(".{}", e.to_string_lossy()))
-                .unwrap_or_default();
-            std::fs::copy(icon_path, app_dir.join(format!("{}{}", app_name, ext)))?;
-            for size in ["128x128", "256x256"] {
-                let dir = app_dir
-                    .join("usr/share/icons/hicolor")
-                    .join(size)
-                    .join("apps");
-                std::fs::create_dir_all(&dir)?;
-                std::fs::copy(icon_path, dir.join(format!("{}{}", app_name, ext)))?;
-            }
-        }
-
-        // Install the configured metainfo
-        if let Some(metainfo) = &make_config.metainfo {
-            let metainfo_path = Path::new(metainfo);
-            if !metainfo_path.exists() {
-                return Err(PackageError::NotFound(format!(
-                    "Metainfo {} path doesn't exist",
-                    metainfo
-                )));
-            }
-            let file_name = metainfo_path
-                .file_name()
-                .map(|f| f.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let ext = {
-                let parts: Vec<&str> = file_name.split('.').collect();
-                match parts.len() {
-                    0 | 1 => String::new(),
-                    2 => format!(".{}", parts[1]),
-                    n => format!(".{}.{}", parts[n - 2], parts[n - 1]),
-                }
-            };
-            let metainfo_dir = app_dir.join("usr/share/metainfo");
-            std::fs::create_dir_all(&metainfo_dir)?;
-            // Dart's AppImage config extends `MakeConfig` (not the Linux
-            // variant), so its `appBinaryName` is the pubspec name.
-            std::fs::copy(
-                metainfo_path,
-                metainfo_dir.join(format!("{}{}", config.app_name, ext)),
-            )?;
-        }
 
         // Bundle shared-object dependencies of plugin libraries into usr/lib
         // (mirrors Dart: deps of each lib/*.so, minus the flutter GTK deps).
@@ -338,6 +305,12 @@ impl AppPackager for LinuxAppImagePackager {
                     let mut deps = shared_dependencies(&path)?;
                     deps = deps.difference(&gtk_deps).cloned().collect();
                     deps.retain(|lib| !lib.contains("libflutter_linux_gtk.so"));
+                    // Libraries the `files/` overlay provides win.
+                    deps.retain(|lib| {
+                        Path::new(lib)
+                            .file_name()
+                            .is_none_or(|name| !usr_lib.join(name).exists())
+                    });
                     if deps.is_empty() {
                         continue;
                     }
@@ -365,9 +338,6 @@ impl AppPackager for LinuxAppImagePackager {
                 .unwrap_or_default();
             std::fs::copy(src, usr_lib.join(base))?;
         }
-
-        // files/ overlay into the AppDir
-        raw.install_overlay(&app_dir)?;
 
         // Build the AppImage
         let mut cmd = Command::new("appimagetool");
@@ -429,25 +399,32 @@ actions:
 "#,
         )
         .unwrap();
-        let desktop = mc.desktop_file(&test_config());
+        let desktop = mc.desktop_file(&test_config(), "hola_amigos");
         assert!(desktop.contains("Name=Hola Amigos"));
         assert!(desktop.contains("GenericName=A Flutter Application"));
-        assert!(desktop.contains("Exec=LD_LIBRARY_PATH=usr/lib hola_amigos %u"));
+        assert!(desktop.contains("Exec=hola_amigos %U"));
+        assert!(!desktop.contains("LD_LIBRARY_PATH"));
         assert!(desktop.contains("MimeType=audio/mpeg;"));
         assert!(desktop.contains("Categories=Music;Media"));
         assert!(desktop.contains("Keywords=Hello"));
         assert!(desktop.contains("Actions=Gallery"));
         assert!(desktop.contains("[Desktop Action Gallery]"));
         assert!(desktop.contains("Name=Open Gallery"));
-        assert!(desktop.contains("Exec=LD_LIBRARY_PATH=usr/lib hola_amigos --gallery %u"));
+        assert!(desktop.contains("Exec=hola_amigos --gallery"));
     }
 
     #[test]
     fn app_run_script() {
         let script = AppImageMakeConfig::default().app_run(&test_config());
-        assert!(script.starts_with("#!/bin/bash"));
-        assert!(script.contains("export LD_LIBRARY_PATH=usr/lib"));
-        assert!(script.contains("exec ./hola_amigos"));
+        assert_eq!(
+            script,
+            "#!/bin/sh\n\
+             HERE=\"$(dirname \"$(readlink -f \"$0\")\")\"\n\
+             export LD_LIBRARY_PATH=\"$HERE/usr/lib:$HERE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\n\
+             exec \"$HERE/hola_amigos\" \"$@\"\n"
+        );
+        // Arguments reach the app and the working directory is kept.
+        assert!(!script.contains("cd "));
     }
 
     #[test]
@@ -457,9 +434,12 @@ actions:
             ..test_config()
         };
         let mc = AppImageMakeConfig::default();
-        assert!(mc.app_run(&config).contains("exec ./hola-amigos\n"));
-        let desktop = mc.desktop_file(&config);
-        assert!(desktop.contains("Exec=LD_LIBRARY_PATH=usr/lib hola-amigos %u"));
+        assert!(
+            mc.app_run(&config)
+                .contains("exec \"$HERE/hola-amigos\" \"$@\"\n")
+        );
+        let desktop = mc.desktop_file(&config, "hola_amigos");
+        assert!(desktop.contains("Exec=hola-amigos %U"));
         assert!(desktop.contains("Icon=hola_amigos"));
     }
 
@@ -471,5 +451,21 @@ actions:
             deps.into_iter().collect::<Vec<_>>(),
             vec!["/lib64/libc.so.6", "/lib64/libkeybinder-3.0.so.0"]
         );
+    }
+
+    #[test]
+    fn failure_output_keeps_stdout() {
+        assert_eq!(failure_output(b"", b"boom\n"), "boom");
+        assert_eq!(failure_output(b"details\n", b""), "details");
+        assert_eq!(
+            failure_output(b"error: Media\n", b"ERROR: Desktop file contains errors.\n"),
+            "ERROR: Desktop file contains errors.\nerror: Media"
+        );
+    }
+
+    #[test]
+    fn desktop_file_has_a_default_category() {
+        let desktop = AppImageMakeConfig::default().desktop_file(&test_config(), "hola_amigos");
+        assert!(desktop.contains("Categories=Utility;"));
     }
 }

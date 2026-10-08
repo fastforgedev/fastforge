@@ -10,7 +10,7 @@ use std::path::Path;
 
 use serde_yaml::Value;
 
-use crate::{PackageConfig, PackageError};
+use crate::{PackageConfig, PackageError, Platform};
 
 /// Variable name → value, ordered so rendered output and logs are stable.
 pub type Variables = BTreeMap<String, String>;
@@ -25,6 +25,8 @@ pub const BUILTIN_VARIABLES: &[&str] = &[
     "APP_DESCRIPTION",
     "APP_HOMEPAGE",
     "APP_ID",
+    "APP_LICENSE",
+    "APP_MAINTAINER",
     "BUILD_NAME",
     "BUILD_NUMBER",
     "BUILD_MODE",
@@ -33,10 +35,13 @@ pub const BUILTIN_VARIABLES: &[&str] = &[
     "PLATFORM",
     "PACKAGE_FORMAT",
     "PACKAGE_NAME",
+    "PACKAGE_VERSION",
     "PACKAGE_ARCH",
     "ARCH",
     "INSTALL_DIR",
     "RPM_RELEASE",
+    "RPM_FILE_LIST",
+    "RPM_PRIVATE_LIBS",
     "BUILD_OUTPUT_DIRECTORY",
     "OUTPUT_DIRECTORY",
     "OUTPUT_ARTIFACT_PATH",
@@ -89,8 +94,11 @@ pub fn environment_variables(variables: &Variables) -> impl Iterator<Item = (&st
 ///   display_name: Hello World
 ///   description: A short description   # falls back to pubspec.yaml
 ///   homepage: https://example.com       # falls back to pubspec.yaml
-///   app_id: dev.example.hello
-///   icon: assets/logo.png
+///   app_id: dev.example.hello           # Linux: else `APPLICATION_ID` from linux/CMakeLists.txt
+///   package_name: hello                 # Linux packages' name
+///   icon: assets/logo.png               # a PNG (resized as needed) or an SVG
+///   license: MIT                        # an SPDX expression
+///   maintainer: Jane Doe <jane@example.com>
 /// env:
 ///   SIGNING_KEY_ID: ${SIGNING_KEY_ID}   # a whole-value reference reads the environment
 ///   SUPPORT_EMAIL: team@example.com
@@ -101,9 +109,17 @@ pub struct ProjectSettings {
     pub description: Option<String>,
     pub homepage: Option<String>,
     pub app_id: Option<String>,
+    /// The Linux packages' name (`make_config.yaml`'s `package_name` wins).
+    pub package_name: Option<String>,
     pub icon: Option<String>,
+    pub license: Option<String>,
+    pub maintainer: Option<String>,
     /// User-defined variables (`env:`), already resolved.
     pub env: Variables,
+    /// `APPLICATION_ID` from a Flutter project's `linux/CMakeLists.txt`: the
+    /// GTK application ID, used as `APP_ID` when packaging for Linux without
+    /// `project.app_id`.
+    pub linux_application_id: Option<String>,
 }
 
 impl ProjectSettings {
@@ -115,6 +131,18 @@ impl ProjectSettings {
     /// is an error.
     pub fn load() -> Result<Self, PackageError> {
         Self::load_from(Path::new(Self::PATH), Path::new("pubspec.yaml"))
+            .map(|settings| settings.with_linux_application_id(Path::new("linux/CMakeLists.txt")))
+    }
+
+    /// Reads `set(APPLICATION_ID "...")` from `cmake` (`linux/CMakeLists.txt`).
+    pub fn with_linux_application_id(mut self, cmake: &Path) -> Self {
+        self.linux_application_id = std::fs::read_to_string(cmake).ok().and_then(|content| {
+            let start = content.find("set(APPLICATION_ID \"")? + "set(APPLICATION_ID \"".len();
+            let rest = &content[start..];
+            let id = &rest[..rest.find('"')?];
+            (!id.is_empty()).then(|| id.to_string())
+        });
+        self
     }
 
     pub fn load_from(config: &Path, pubspec: &Path) -> Result<Self, PackageError> {
@@ -161,8 +189,12 @@ impl ProjectSettings {
             description: string_at(&project, "description"),
             homepage: string_at(&project, "homepage"),
             app_id: string_at(&project, "app_id"),
+            package_name: string_at(&project, "package_name"),
             icon: string_at(&project, "icon"),
+            license: string_at(&project, "license"),
+            maintainer: string_at(&project, "maintainer"),
             env,
+            linux_application_id: None,
         })
     }
 }
@@ -203,7 +235,22 @@ impl PackageConfig {
             "APP_HOMEPAGE",
             settings.homepage.clone().unwrap_or_default(),
         );
-        set("APP_ID", settings.app_id.clone().unwrap_or_default());
+        // On Linux the app ID always has a value: `project.app_id`, else the
+        // GTK application ID from `linux/CMakeLists.txt`, else the binary.
+        let app_id = settings.app_id.clone().or_else(|| {
+            (self.platform == Platform::Linux).then(|| {
+                settings
+                    .linux_application_id
+                    .clone()
+                    .unwrap_or_else(|| self.app_binary_name.clone())
+            })
+        });
+        set("APP_ID", app_id.unwrap_or_default());
+        set("APP_LICENSE", settings.license.clone().unwrap_or_default());
+        set(
+            "APP_MAINTAINER",
+            settings.maintainer.clone().unwrap_or_default(),
+        );
         set("BUILD_NAME", build_name);
         set("BUILD_NUMBER", build_number);
         set("BUILD_MODE", self.build_mode.clone());
@@ -299,6 +346,8 @@ project:
   display_name: Hello World
   app_id: dev.example.hello
   icon: assets/logo.png
+  license: MIT
+  maintainer: Jane Doe <jane@example.com>
 env:
   SUPPORT: team@example.com
   LEVEL: 3
@@ -315,6 +364,11 @@ stores: {}
         assert_eq!(settings.display_name.as_deref(), Some("Hello World"));
         assert_eq!(settings.app_id.as_deref(), Some("dev.example.hello"));
         assert_eq!(settings.icon.as_deref(), Some("assets/logo.png"));
+        assert_eq!(settings.license.as_deref(), Some("MIT"));
+        assert_eq!(
+            settings.maintainer.as_deref(),
+            Some("Jane Doe <jane@example.com>")
+        );
         assert_eq!(settings.description, None);
         assert_eq!(
             settings.env,
@@ -396,5 +450,54 @@ stores: {}
             ..config
         };
         assert_eq!(unnumbered.package_variables(&settings)["BUILD_NUMBER"], "");
+    }
+
+    #[test]
+    fn linux_app_id_falls_back_to_cmake_then_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let cmake = dir.path().join("CMakeLists.txt");
+        std::fs::write(
+            &cmake,
+            "set(BINARY_NAME \"hola\")\nset(APPLICATION_ID \"dev.example.hola\")\n",
+        )
+        .unwrap();
+        let config = PackageConfig {
+            app_name: "hola".into(),
+            app_binary_name: "hola".into(),
+            app_version: "1.0.0".into(),
+            build_mode: "release".into(),
+            platform: Platform::Linux,
+            flavor: None,
+            channel: None,
+            artifact_name: None,
+            package_format: "deb".into(),
+            is_installer: false,
+            build_output_dir: PathBuf::new(),
+            build_output_files: vec![],
+            output_dir: PathBuf::new(),
+            environment: Default::default(),
+        };
+        let from_cmake = ProjectSettings::default().with_linux_application_id(&cmake);
+        assert_eq!(
+            config.package_variables(&from_cmake)["APP_ID"],
+            "dev.example.hola"
+        );
+        let explicit = ProjectSettings {
+            app_id: Some("dev.example.other".into()),
+            ..from_cmake.clone()
+        };
+        assert_eq!(
+            config.package_variables(&explicit)["APP_ID"],
+            "dev.example.other"
+        );
+        let none =
+            ProjectSettings::default().with_linux_application_id(&dir.path().join("missing"));
+        assert_eq!(config.package_variables(&none)["APP_ID"], "hola");
+        // Other platforms only use `project.app_id`.
+        let android = PackageConfig {
+            platform: Platform::Android,
+            ..config
+        };
+        assert_eq!(android.package_variables(&from_cmake)["APP_ID"], "");
     }
 }

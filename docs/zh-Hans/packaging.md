@@ -82,7 +82,7 @@ fastforge package --platform macos --targets dmg,zip
 
 大多数打包器会读取可选的 `<platform>/packaging/<format>/make_config.yaml`，例如 `macos/packaging/dmg/make_config.yaml` 或 `linux/packaging/deb/make_config.yaml`。文件不存在时使用默认值；文件无法解析时打包失败。只有 `custom` 格式必须提供配置文件。
 
-Linux 的 AppImage、DEB、RPM 和 Pacman 打包器还接受各格式自己的原始文件，例如 Debian 的 `control` 文件或 RPM spec，并用下文的打包变量渲染。原始文件优先于 `make_config.yaml`，详见 [Linux](packagers/linux.md#配置)。
+Linux 的 AppImage、DEB、RPM 和 Pacman 打包器还接受放在 `.fastforge/packaging/linux/` 中的各格式原始文件，例如 Debian 的 `control` 文件或 RPM spec，并用下文的打包变量渲染。原始文件优先于 `make_config.yaml`，详见 [Linux](packagers/linux.md#配置)。
 
 ### 打包变量
 
@@ -94,14 +94,15 @@ Fastforge 在原始打包文件中以 `${NAME}` 的形式提供以下变量，�
 | `APP_VERSION`、`BUILD_NAME`、`BUILD_NUMBER`               | `1.2.3+4`、`1.2.3`、`4`；没有构建号时 `BUILD_NUMBER` 为空                               |
 | `APP_DISPLAY_NAME`                                        | `project.display_name`，其次 `make_config.yaml` 的 `display_name`，最后为 `APP_NAME`    |
 | `APP_DESCRIPTION`、`APP_HOMEPAGE`                         | `project.description` / `project.homepage`，其次取自 `pubspec.yaml`                     |
-| `APP_ID`                                                  | `project.app_id`                                                                       |
+| `APP_ID`                                                  | `project.app_id`；Linux 打包时其次取 `linux/CMakeLists.txt` 的 `APPLICATION_ID`，最后为可执行文件名 |
+| `APP_LICENSE`、`APP_MAINTAINER`                           | `project.license`（SPDX 表达式）和 `project.maintainer`（`姓名 <邮箱>`）                |
 | `BUILD_MODE`、`FLAVOR`、`CHANNEL`、`PLATFORM`、`PACKAGE_FORMAT` | 构建与打包选项                                                                    |
 | `BUILD_OUTPUT_DIRECTORY`、`OUTPUT_DIRECTORY`              | 构建输出目录和产物输出目录的绝对路径                                                   |
-| `PACKAGE_NAME`                                            | 仅 Linux。`make_config.yaml` 的 `package_name`，其次为该格式的默认值                    |
+| `PACKAGE_NAME`、`PACKAGE_VERSION`                         | 仅 Linux。`make_config.yaml` 的 `package_name`，其次 `project.package_name`，最后为该格式的默认值；按该格式语法书写的版本号 |
 | `PACKAGE_ARCH`、`ARCH`                                    | 仅 Linux。该格式的架构名（DEB 为 `amd64`）以及 `x86_64` 或 `aarch64`                    |
-| `INSTALL_DIR`                                             | DEB 和 Pacman 为 `/opt/<binary>`，RPM 为 `/usr/share/<name>`                           |
-| `RPM_RELEASE`                                             | 仅 RPM。构建号的第一段，没有构建号时为 `1`                                              |
-| `PACKAGING_DIRECTORY`、`OUTPUT_ARTIFACT_PATH`             | 仅 Linux。暂存目录（包根目录、RPM 构建目录或 AppDir）和产物路径                        |
+| `INSTALL_DIR`                                             | DEB、RPM 和 Pacman。bundle 的安装位置 `/opt/<binary>`                                  |
+| `RPM_RELEASE`、`RPM_FILE_LIST`、`RPM_PRIVATE_LIBS`        | 仅 RPM。构建号的第一段（没有构建号时为 `1`）、`%files -f` 清单的路径，以及用于 `%__requires_exclude` 的 bundle 库清单 |
+| `PACKAGING_DIRECTORY`、`OUTPUT_ARTIFACT_PATH`             | 仅 Linux。[包根目录](packagers/linux.md#配置)（AppImage 为 AppDir）和产物路径           |
 
 项目元数据和自定义变量来自 `.fastforge/config.yaml`。`env:` 中整个值写成 `${NAME}` 时，从环境变量读取。`env:` 中的键不能与内置变量重名。
 
@@ -111,7 +112,10 @@ project:
   description: A short description
   homepage: https://example.com
   app_id: com.example.hello
+  package_name: hello
   icon: assets/logo.png
+  license: MIT
+  maintainer: Jane Doe <jane@example.com>
 env:
   SUPPORT_EMAIL: team@example.com
   SIGNING_KEY_ID: ${SIGNING_KEY_ID}

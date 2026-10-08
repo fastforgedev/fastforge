@@ -1,24 +1,28 @@
 use std::path::Path;
 use std::process::Command;
 
-use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
+use fastforge_core::{
+    AppPackager, PackageConfig, PackageError, PackageResult, Platform, Variables,
+};
 use serde::Deserialize;
 
-use crate::fs_util::copy_dir_contents;
-
 use super::common::{
-    FormatVariables, Person, RawPackaging, deb_architecture, desktop_list, install_hicolor_icons,
-    install_metainfo, load_make_config, load_pubspec_meta, make_executable, render_desktop_entry,
+    FormatVariables, Person, RawPackaging, deb_architecture, desktop_categories, desktop_list,
+    load_make_config, make_executable, render_desktop_entry, var,
 };
+use super::staging::{self, Contents, Layout};
 
 /// Builds a Debian `.deb` package using `dpkg-deb`, mirroring
 /// Dart's `AppPackageMakerDeb`.
 ///
-/// Raw files in `linux/packaging/deb/` (`control`, maintainer scripts,
-/// `conffiles`, `triggers`, a `.desktop` file and a `files/` overlay) are
-/// rendered with fastforge's variables and win over what would be generated
-/// from `linux/packaging/deb/make_config.yaml` (same schema as Dart's
-/// `MakeDebConfig`), which in turn falls back to sensible defaults.
+/// The package root is staged by [`staging::stage`] (bundle in
+/// `/opt/<binary>`, `/usr/bin/<binary>` link, desktop entry, icons,
+/// metainfo, `files/` overlays). Raw files in `.fastforge/packaging/linux/deb/`
+/// (`control`, maintainer scripts, `conffiles`, `triggers`, ...) are rendered
+/// with fastforge's variables and win over what would be generated from
+/// `linux/packaging/deb/make_config.yaml` (same schema as Dart's
+/// `MakeDebConfig`) or defaults. `Installed-Size`, `md5sums` and the
+/// `/etc` entries of `conffiles` are filled in automatically.
 ///
 /// Requires `dpkg-deb` to be installed on the host (`dpkg-dev` on Debian/Ubuntu).
 pub struct LinuxDebPackager;
@@ -67,27 +71,50 @@ impl DebMakeConfig {
         )
     }
 
-    /// Renders the `DEBIAN/control` file, mirroring Dart's `toJson()['CONTROL']`.
-    fn control_file(&self, config: &PackageConfig) -> String {
-        let meta = load_pubspec_meta();
-        // Dart emits a configured-but-empty list as an empty field
-        // (`Depends: `); only an absent key is omitted.
-        let join = |v: &Option<Vec<String>>| -> Option<String> { v.as_ref().map(|v| v.join(", ")) };
+    /// Renders the default `DEBIAN/control`. Project metadata
+    /// (`APP_MAINTAINER`, `APP_DESCRIPTION`, `APP_HOMEPAGE`) fills what
+    /// `make_config.yaml` leaves out; empty lists are omitted.
+    fn control_file(&self, config: &PackageConfig, variables: &Variables) -> String {
+        let join = |v: &Option<Vec<String>>| -> Option<String> {
+            v.as_ref().filter(|v| !v.is_empty()).map(|v| v.join(", "))
+        };
+        // `Description` is mandatory: the description, else the app's name.
+        let description = var(variables, "APP_DESCRIPTION")
+            .or_else(|| var(variables, "APP_DISPLAY_NAME"))
+            .unwrap_or_else(|| config.app_name.clone());
 
         let entries: Vec<(&str, Option<String>)> = vec![
             (
-                "Maintainer",
-                self.maintainer.as_ref().map(Person::formatted),
-            ),
-            (
                 "Package",
                 Some(
-                    self.package_name
-                        .clone()
+                    var(variables, "PACKAGE_NAME")
                         .unwrap_or_else(|| deb_package_name(&config.app_binary_name)),
                 ),
             ),
-            ("Version", Some(config.app_version.clone())),
+            (
+                "Version",
+                Some(
+                    var(variables, "PACKAGE_VERSION")
+                        .unwrap_or_else(|| deb_version(&config.app_version)),
+                ),
+            ),
+            ("Architecture", Some(deb_architecture().to_string())),
+            (
+                "Maintainer",
+                self.maintainer
+                    .as_ref()
+                    .map(Person::formatted)
+                    .or_else(|| var(variables, "APP_MAINTAINER")),
+            ),
+            (
+                "Uploaders",
+                self.co_authors.as_ref().filter(|v| !v.is_empty()).map(|v| {
+                    v.iter()
+                        .map(Person::formatted)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }),
+            ),
             (
                 "Section",
                 Some(self.section.clone().unwrap_or_else(|| "x11".to_string())),
@@ -100,20 +127,22 @@ impl DebMakeConfig {
                         .unwrap_or_else(|| "optional".to_string()),
                 ),
             ),
-            ("Architecture", Some(deb_architecture().to_string())),
             (
                 "Essential",
                 self.essential
                     .map(|e| (if e { "yes" } else { "no" }).to_string()),
             ),
             ("Installed-Size", self.installed_size.map(|s| s.to_string())),
-            // Omitted when pubspec.yaml has no `description` (like Dart).
-            ("Description", meta.description),
-            ("Homepage", meta.homepage),
-            ("Depends", join(&self.dependencies)),
-            ("Build-Depends-Indep", join(&self.build_dependencies_indep)),
-            ("Build-Depends", join(&self.build_dependencies)),
+            ("Homepage", var(variables, "APP_HOMEPAGE")),
             ("Pre-Depends", join(&self.pre_dependencies)),
+            // A Flutter app needs GTK; an empty list opts out.
+            (
+                "Depends",
+                match &self.dependencies {
+                    None => Some("libgtk-3-0".to_string()),
+                    deps => join(deps),
+                },
+            ),
             ("Recommends", join(&self.recommended_dependencies)),
             ("Suggests", join(&self.suggested_dependencies)),
             ("Enhances", join(&self.enhances)),
@@ -121,15 +150,9 @@ impl DebMakeConfig {
             ("Conflicts", join(&self.conflicts)),
             ("Provides", join(&self.provides)),
             ("Replaces", join(&self.replaces)),
-            (
-                "Uploaders",
-                self.co_authors.as_ref().map(|v| {
-                    v.iter()
-                        .map(Person::formatted)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                }),
-            ),
+            ("Build-Depends", join(&self.build_dependencies)),
+            ("Build-Depends-Indep", join(&self.build_dependencies_indep)),
+            ("Description", Some(description)),
         ];
 
         let mut out = String::new();
@@ -141,8 +164,8 @@ impl DebMakeConfig {
         out
     }
 
-    /// Renders the desktop entry, mirroring Dart's `toJson()['DESKTOP']`.
-    fn desktop_file(&self, config: &PackageConfig) -> String {
+    /// Renders the default desktop entry.
+    fn desktop_file(&self, config: &PackageConfig, icon: &str) -> String {
         let binary_name = &config.app_binary_name;
         render_desktop_entry(&[
             ("Type", Some("Application".to_string())),
@@ -155,11 +178,11 @@ impl DebMakeConfig {
                 ),
             ),
             ("GenericName", self.generic_name.clone()),
-            ("Icon", Some(binary_name.clone())),
+            ("Icon", Some(icon.to_string())),
             ("Exec", Some(format!("{} %U", binary_name))),
             ("Actions", desktop_list(&self.actions)),
             ("MimeType", desktop_list(&self.supported_mime_type)),
-            ("Categories", desktop_list(&self.categories)),
+            ("Categories", desktop_categories(&self.categories)),
             ("Keywords", desktop_list(&self.keywords)),
             // Only written when `startup_notify` is configured (like Dart).
             ("StartupNotify", self.startup_notify.map(|b| b.to_string())),
@@ -167,28 +190,70 @@ impl DebMakeConfig {
         ])
     }
 
-    /// Post-install script, always prefixed with the `/usr/bin` symlink setup
-    /// (mirrors Dart's `postinstallScripts` getter).
-    fn postinst(&self, binary_name: &str) -> String {
-        let mut lines = vec![
-            "#!/usr/bin/env sh".to_string(),
-            format!("ln -s /opt/{n}/{n} /usr/bin/{n}", n = binary_name),
-            format!("chmod +x /usr/bin/{}", binary_name),
-        ];
-        lines.extend(self.postinstall_scripts.clone().unwrap_or_default());
-        lines.push("exit 0".to_string());
-        lines.join("\n")
+    /// `postinst` from `postinstall_scripts`, `None` when there are none (the
+    /// `/usr/bin` link is part of the package, not created by a script).
+    fn postinst(&self) -> Option<String> {
+        maintainer_script(&self.postinstall_scripts)
     }
 
-    /// Post-uninstall script (mirrors Dart's `postuninstallScripts` getter).
-    fn postrm(&self, binary_name: &str) -> String {
-        let mut lines = vec![
-            "#!/usr/bin/env sh".to_string(),
-            format!("rm /usr/bin/{}", binary_name),
-        ];
-        lines.extend(self.postuninstall_scripts.clone().unwrap_or_default());
-        lines.push("exit 0".to_string());
-        lines.join("\n")
+    /// `postrm` from `postuninstall_scripts`, `None` when there are none.
+    fn postrm(&self) -> Option<String> {
+        maintainer_script(&self.postuninstall_scripts)
+    }
+}
+
+fn maintainer_script(lines: &Option<Vec<String>>) -> Option<String> {
+    let lines = lines.as_ref().filter(|lines| !lines.is_empty())?;
+    Some(format!("#!/bin/sh\n{}\nexit 0\n", lines.join("\n")))
+}
+
+/// Adds `Installed-Size` (KiB) to a control file that does not set it, before
+/// `Description` (whose continuation lines must stay last). Also makes sure
+/// the file ends with a newline, as dpkg requires.
+fn with_installed_size(control: &str, kib: u64) -> String {
+    let mut control = control.trim_end_matches('\n').to_string();
+    control.push('\n');
+    let has_field = control
+        .lines()
+        .any(|line| line.to_ascii_lowercase().starts_with("installed-size:"));
+    if has_field {
+        return control;
+    }
+    let field = format!("Installed-Size: {}\n", kib);
+    match control.find("\nDescription:") {
+        Some(pos) => {
+            control.insert_str(pos + 1, &field);
+            control
+        }
+        None if control.starts_with("Description:") => format!("{}{}", field, control),
+        None => control + &field,
+    }
+}
+
+/// `conffiles`: the raw list plus every file under `/etc`, without repeats.
+fn merge_conffiles(raw: Option<&str>, etc_files: &[String]) -> String {
+    let mut entries: Vec<String> = raw
+        .unwrap_or_default()
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect();
+    for file in etc_files {
+        if !entries.contains(file) {
+            entries.push(file.clone());
+        }
+    }
+    entries.iter().map(|e| format!("{}\n", e)).collect()
+}
+
+/// The Debian version of an app version: a pre-release's `-` (the revision
+/// separator in Debian) becomes `~`, which sorts before the release
+/// (`1.2.3-beta.1+4` -> `1.2.3~beta.1+4`).
+fn deb_version(app_version: &str) -> String {
+    match app_version.split_once('+') {
+        Some((name, build)) => format!("{}+{}", name.replace('-', "~"), build),
+        None => app_version.replace('-', "~"),
     }
 }
 
@@ -244,16 +309,16 @@ impl AppPackager for LinuxDebPackager {
         let pkg_dir = config.packaging_dir();
         let output_file = config.output_file();
         let binary_name = &config.app_binary_name;
+        let layout = Layout::system(binary_name);
         let raw = RawPackaging::load(
             config,
             "deb",
             FormatVariables {
-                package_name: make_config
-                    .package_name
-                    .clone()
-                    .unwrap_or_else(|| deb_package_name(binary_name)),
+                package_name: make_config.package_name.clone(),
+                default_package_name: deb_package_name(binary_name),
+                package_version: deb_version(&config.app_version),
                 package_arch: deb_architecture().to_string(),
-                install_dir: Some(format!("/opt/{}", binary_name)),
+                install_dir: Some(layout.install_dir()),
                 display_name: make_config.display_name.clone(),
                 packaging_dir: &pkg_dir,
                 output_file: &output_file,
@@ -261,71 +326,72 @@ impl AppPackager for LinuxDebPackager {
             },
         )?;
 
-        // Create the required directory tree
+        staging::stage(
+            &raw,
+            config,
+            &pkg_dir,
+            &layout,
+            Contents {
+                icon: raw.icon(make_config.icon.as_ref()),
+                metainfo: make_config.metainfo.clone(),
+            },
+            || make_config.desktop_file(config, raw.app_id()),
+        )?;
+
         let debian_dir = pkg_dir.join("DEBIAN");
-        let share_app_dir = pkg_dir.join("opt").join(binary_name);
-        let applications_dir = pkg_dir.join("usr/share/applications");
         std::fs::create_dir_all(&debian_dir)?;
-        std::fs::create_dir_all(&share_app_dir)?;
-        std::fs::create_dir_all(&applications_dir)?;
 
-        // Install the configured icon and metainfo (when provided)
-        if let Some(icon) = raw.icon(make_config.icon.as_ref()) {
-            install_hicolor_icons(&icon, &pkg_dir, binary_name)?;
-        }
-        if let Some(metainfo) = &make_config.metainfo {
-            install_metainfo(metainfo, &pkg_dir, binary_name)?;
-        }
+        // control, with the installed size filled in.
+        let control = match raw.file(&["control"]) {
+            Some(src) => raw.render(&src)?,
+            None => make_config.control_file(config, raw.variables()),
+        };
+        let (_, kib) = staging::installed_size(&pkg_dir, &["DEBIAN"])?;
+        std::fs::write(
+            debian_dir.join("control"),
+            with_installed_size(&control, kib),
+        )?;
 
-        // Copy the flutter build output into /opt/{binary_name}/
-        copy_dir_contents(&config.build_output_dir, &share_app_dir)?;
-
-        // DEBIAN/control
-        raw.write_or_generate(raw.file(&["control"]), &debian_dir.join("control"), || {
-            make_config.control_file(config)
-        })?;
-
-        // DEBIAN/postinst + DEBIAN/postrm (generated unless provided)
-        let postinst_path = debian_dir.join("postinst");
-        raw.write_or_generate(raw.file(&["postinst"]), &postinst_path, || {
-            make_config.postinst(binary_name)
-        })?;
-        make_executable(&postinst_path)?;
-        let postrm_path = debian_dir.join("postrm");
-        raw.write_or_generate(raw.file(&["postrm"]), &postrm_path, || {
-            make_config.postrm(binary_name)
-        })?;
-        make_executable(&postrm_path)?;
-
-        // Other control files are only written when provided.
-        for (name, executable) in [
-            ("preinst", true),
-            ("prerm", true),
-            ("config", true),
-            ("conffiles", false),
-            ("triggers", false),
-            ("templates", false),
-            ("shlibs", false),
-            ("symbols", false),
+        // Maintainer scripts: raw, else generated from make_config.yaml.
+        for (name, generated) in [
+            ("postinst", make_config.postinst()),
+            ("postrm", make_config.postrm()),
+            ("preinst", None),
+            ("prerm", None),
+            ("config", None),
         ] {
-            if let Some(src) = raw.file(&[name]) {
+            let content = match raw.file(&[name]) {
+                Some(src) => Some(raw.render(&src)?),
+                None => generated,
+            };
+            if let Some(content) = content {
                 let dest = debian_dir.join(name);
-                std::fs::write(&dest, raw.render(&src)?)?;
-                if executable {
-                    make_executable(&dest)?;
-                }
+                std::fs::write(&dest, content)?;
+                make_executable(&dest)?;
             }
         }
 
-        // usr/share/applications/{binary_name}.desktop
-        raw.write_or_generate(
-            raw.file_with_extension("desktop")?,
-            &applications_dir.join(format!("{}.desktop", binary_name)),
-            || make_config.desktop_file(config),
-        )?;
+        // Other control files are only written when provided.
+        for name in ["triggers", "templates", "shlibs", "symbols"] {
+            if let Some(src) = raw.file(&[name]) {
+                std::fs::write(debian_dir.join(name), raw.render(&src)?)?;
+            }
+        }
 
-        // files/ overlay into the package root
-        raw.install_overlay(&pkg_dir)?;
+        // conffiles (the raw list plus /etc) and md5sums.
+        let raw_conffiles = match raw.file(&["conffiles"]) {
+            Some(src) => Some(raw.render(&src)?),
+            None => None,
+        };
+        let conffiles =
+            merge_conffiles(raw_conffiles.as_deref(), &staging::config_files(&pkg_dir)?);
+        if !conffiles.is_empty() {
+            std::fs::write(debian_dir.join("conffiles"), conffiles)?;
+        }
+        std::fs::write(
+            debian_dir.join("md5sums"),
+            staging::md5sums(&pkg_dir, &["DEBIAN"])?,
+        )?;
 
         let mut cmd = Command::new("dpkg-deb");
         cmd.args([
@@ -404,9 +470,16 @@ startup_notify: true
         .unwrap()
     }
 
+    fn variables(entries: &[(&str, &str)]) -> Variables {
+        entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
     #[test]
     fn control_file_contains_all_fields() {
-        let control = full_make_config().control_file(&test_config());
+        let control = full_make_config().control_file(&test_config(), &Variables::new());
         assert!(control.contains("Maintainer: Gamer Boy 69 <rickastley@gmail.lol>"));
         assert!(control.contains("Package: hola-amigos"));
         assert!(control.contains("Version: 1.2.3+4"));
@@ -420,7 +493,7 @@ startup_notify: true
 
     #[test]
     fn desktop_file_contains_lists() {
-        let desktop = full_make_config().desktop_file(&test_config());
+        let desktop = full_make_config().desktop_file(&test_config(), "hola_amigos");
         assert!(desktop.contains("Name=Hola Amigos"));
         assert!(desktop.contains("GenericName=Hobby Application"));
         assert!(desktop.contains("Exec=hola_amigos %U"));
@@ -432,15 +505,46 @@ startup_notify: true
     }
 
     #[test]
-    fn scripts_include_symlink_setup_and_custom_lines() {
+    fn scripts_only_run_configured_lines() {
         let mc = full_make_config();
-        let postinst = mc.postinst("hola_amigos");
-        assert!(postinst.contains("ln -s /opt/hola_amigos/hola_amigos /usr/bin/hola_amigos"));
-        assert!(postinst.contains("echo Installed"));
-        assert!(postinst.ends_with("exit 0"));
-        let postrm = mc.postrm("hola_amigos");
-        assert!(postrm.contains("rm /usr/bin/hola_amigos"));
-        assert!(postrm.contains("echo Removed"));
+        let postinst = mc.postinst().unwrap();
+        assert_eq!(postinst, "#!/bin/sh\necho Installed\nexit 0\n");
+        assert!(!postinst.contains("/usr/bin"));
+        assert_eq!(mc.postrm().unwrap(), "#!/bin/sh\necho Removed\nexit 0\n");
+        assert_eq!(DebMakeConfig::default().postinst(), None);
+        assert_eq!(DebMakeConfig::default().postrm(), None);
+    }
+
+    #[test]
+    fn installed_size_is_added_before_the_description() {
+        let control = "Package: x\nVersion: 1\nDescription: short\n long\n";
+        assert_eq!(
+            with_installed_size(control, 42),
+            "Package: x\nVersion: 1\nInstalled-Size: 42\nDescription: short\n long\n"
+        );
+        assert_eq!(
+            with_installed_size("Package: x", 7),
+            "Package: x\nInstalled-Size: 7\n"
+        );
+        let set = "Package: x\nInstalled-Size: 1\n";
+        assert_eq!(with_installed_size(set, 42), set);
+    }
+
+    #[test]
+    fn conffiles_merge_raw_entries_and_etc() {
+        let etc = vec!["/etc/x/a.conf".to_string(), "/etc/x/b.conf".to_string()];
+        assert_eq!(
+            merge_conffiles(Some("/etc/x/b.conf\n/etc/y.conf\n"), &etc),
+            "/etc/x/b.conf\n/etc/y.conf\n/etc/x/a.conf\n"
+        );
+        assert_eq!(merge_conffiles(None, &[]), "");
+    }
+
+    #[test]
+    fn versions_follow_debian_rules() {
+        assert_eq!(deb_version("1.2.3+4"), "1.2.3+4");
+        assert_eq!(deb_version("1.2.3-beta.1+4"), "1.2.3~beta.1+4");
+        assert_eq!(deb_version("1.2.3-rc.1"), "1.2.3~rc.1");
     }
 
     #[test]
@@ -452,26 +556,44 @@ startup_notify: true
     #[test]
     fn defaults_without_make_config() {
         let mc = DebMakeConfig::default();
-        let control = mc.control_file(&test_config());
+        let control = mc.control_file(&test_config(), &Variables::new());
         assert!(control.contains("Package: hola-amigos"));
+        assert!(control.contains("Depends: libgtk-3-0\n"));
         assert!(control.contains("Section: x11"));
         assert!(control.contains("Priority: optional"));
-        let desktop = mc.desktop_file(&test_config());
+        // Description is mandatory: the app name stands in for it.
+        assert!(control.ends_with("Description: hola_amigos\n"));
+        assert!(!control.contains("Maintainer"));
+
+        // Project metadata fills the gaps.
+        let control = mc.control_file(
+            &test_config(),
+            &variables(&[
+                ("APP_MAINTAINER", "Jane <jane@example.com>"),
+                ("APP_DESCRIPTION", "A demo"),
+                ("APP_HOMEPAGE", "https://example.com"),
+            ]),
+        );
+        assert!(control.contains("Maintainer: Jane <jane@example.com>\n"));
+        assert!(control.contains("Homepage: https://example.com\n"));
+        assert!(control.ends_with("Description: A demo\n"));
+        let desktop = mc.desktop_file(&test_config(), "hola_amigos");
         assert!(desktop.contains("Name=hola_amigos"));
         // Dart omits StartupNotify when `startup_notify` is not configured.
         assert!(!desktop.contains("StartupNotify"));
+        assert!(desktop.contains("Categories=Utility;"));
     }
 
     #[test]
-    fn empty_lists_are_written_as_empty_fields() {
+    fn empty_lists_are_omitted() {
         let mc: DebMakeConfig =
             serde_yaml::from_str("dependencies: []\nco_authors: []\nstartup_notify: false\n")
                 .unwrap();
-        let control = mc.control_file(&test_config());
-        assert!(control.contains("Depends: \n"));
-        assert!(control.contains("Uploaders: \n"));
+        let control = mc.control_file(&test_config(), &Variables::new());
+        assert!(!control.contains("Depends"));
+        assert!(!control.contains("Uploaders"));
         assert!(!control.contains("Recommends"));
-        let desktop = mc.desktop_file(&test_config());
+        let desktop = mc.desktop_file(&test_config(), "hola_amigos");
         assert!(desktop.contains("StartupNotify=false"));
     }
 }
