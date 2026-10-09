@@ -1,38 +1,16 @@
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
 use serde::{Deserialize, Deserializer};
 
-use crate::fs_util::copy_dir_contents;
+use super::common::{RawPackaging, architecture, find_executable};
 
-/// Builds a Windows `.msix` package, mirroring Dart's `AppPackageMakerMsix`.
-///
-/// Dart hands every `make_config.yaml` key to the `msix` pub package
-/// (`Msix(args).create()`), which signs with its bundled test certificate by
-/// default, generates every logo asset (with optional trimming), merges
-/// `msix_config:` from `pubspec.yaml` and supports
-/// `store`/`debug`/`install_certificate`. To get exactly that behavior:
-///
-/// * **When the Flutter project depends on `msix`** (in `dependencies` or
-///   `dev_dependencies`), packaging is delegated to
-///   `dart run msix:create --build-windows false ...` with the
-///   `make_config.yaml` keys mapped to the msix CLI flags (see
-///   [`msix_cli_args`]) and the output pointed at the artifact path.
-/// * **Otherwise** a native fallback uses the Windows SDK tools (`makeappx`,
-///   `signtool`). It merges `pubspec.yaml`'s `msix_config:` under
-///   `make_config.yaml` (make_config wins, like msix CLI args), applies the
-///   msix package's defaults, and always ships the logo files it references:
-///   `logo_path` when set, else the PNG embedded in
-///   `windows/runner/resources/app_icon.ico`, else a generated placeholder
-///   PNG. It cannot resize/trim logos (`trim_logo` is ignored), install
-///   certificates (`install_certificate` is ignored) or sign with the msix
-///   test certificate — without `certificate_path`/`signtool_options` the
-///   package is left **unsigned** and a warning is printed.
-///
-/// Reads `windows/packaging/msix/make_config.yaml` when present (same schema
-/// as Dart's `MakeMsixConfig`).
+/// Builds MSIX packages with the Windows SDK, from a staged application.
+/// Raw AppxManifest.xml and file overlays live in `.fastforge/packaging/windows`.
+/// Legacy make_config.yaml and pubspec msix_config remain readable, regardless
+/// of whether the Flutter project depends on the Dart msix package.
 #[derive(Default)]
 pub struct WindowsMsixPackager {
     /// Optional path to a PFX certificate for signing (overrides make_config).
@@ -76,7 +54,7 @@ macro_rules! msix_make_config {
 
         impl MsixMakeConfig {
             /// Field-wise merge: values in `self` win, `fallback` fills the
-            /// gaps (msix CLI args override `pubspec.yaml`'s `msix_config`).
+            /// gaps (make_config overrides `pubspec.yaml`'s `msix_config`).
             pub fn or(self, fallback: MsixMakeConfig) -> MsixMakeConfig {
                 MsixMakeConfig {
                     $($field: self.$field.or(fallback.$field),)*
@@ -92,7 +70,7 @@ msix_make_config! {
     identity_name,
     msix_version,
     logo_path,
-    /// If `false`, don't trim the logo image (msix package only).
+    /// Legacy Dart option, accepted but not applied by the native packager.
     trim_logo,
     /// Comma-separated capability list, e.g. `"internetClient,microphone"`.
     capabilities,
@@ -162,9 +140,6 @@ impl MsixMakeConfig {
 /// The parts of `pubspec.yaml` the msix packager cares about.
 #[derive(Debug, Default)]
 struct PubspecMsix {
-    /// `msix` is listed in `dependencies` or `dev_dependencies`.
-    has_msix_dependency: bool,
-    description: Option<String>,
     msix_config: MsixMakeConfig,
 }
 
@@ -178,18 +153,7 @@ impl PubspecMsix {
     }
 
     fn from_value(pubspec: &serde_yaml::Value) -> Self {
-        let has_dep = |section: &str| {
-            pubspec
-                .get(section)
-                .and_then(serde_yaml::Value::as_mapping)
-                .is_some_and(|deps| deps.contains_key("msix"))
-        };
         Self {
-            has_msix_dependency: has_dep("dependencies") || has_dep("dev_dependencies"),
-            description: pubspec
-                .get("description")
-                .and_then(serde_yaml::Value::as_str)
-                .map(str::to_string),
             msix_config: pubspec
                 .get("msix_config")
                 .cloned()
@@ -244,143 +208,7 @@ fn msix_version_from(app_version: &str) -> String {
 /// (mirrors Dart's `_detectArchitecture`): Flutter 3.22+ uses
 /// `build/windows/{x64,arm64}/runner/Release`.
 fn detect_architecture(build_output_dir: &Path) -> &'static str {
-    if build_output_dir
-        .to_string_lossy()
-        .to_lowercase()
-        .contains("arm64")
-    {
-        "arm64"
-    } else {
-        "x64"
-    }
-}
-
-/// Maps make_config keys to `dart run msix:create` arguments.
-///
-/// Mirrors Dart's `AppPackageMakerMsix`, which forces `output_path` /
-/// `output_name` to the artifact location, `build_windows` to `false` and
-/// defaults `architecture` from the build directory — but uses the msix
-/// package's real CLI names: `msix_version` → `--version`,
-/// `add_execution_alias`/`execution_alias` → `--execution-alias`, and
-/// `store`/`debug`/`enable_at_startup` are boolean flags (only passed when
-/// `true`).
-pub fn msix_cli_args(
-    make_config: &MsixMakeConfig,
-    config: &PackageConfig,
-    output_file: &Path,
-) -> Vec<String> {
-    let mut args: Vec<String> = Vec::new();
-    let mut option = |flag: &str, value: Option<&str>| {
-        if let Some(value) = value {
-            args.push(format!("--{}", flag));
-            args.push(value.to_string());
-        }
-    };
-    let mc = make_config;
-    option("display-name", mc.display_name.as_deref());
-    option(
-        "publisher-display-name",
-        mc.publisher_display_name.as_deref(),
-    );
-    option("identity-name", mc.identity_name.as_deref());
-    option("version", mc.msix_version.as_deref());
-    option("logo-path", mc.logo_path.as_deref());
-    option("trim-logo", mc.trim_logo.as_deref());
-    option("capabilities", mc.capabilities.as_deref());
-    option("languages", mc.languages.as_deref());
-    option("file-extension", mc.file_extension.as_deref());
-    option("protocol-activation", mc.protocol_activation.as_deref());
-    option(
-        "execution-alias",
-        mc.resolved_execution_alias(&config.app_name).as_deref(),
-    );
-
-    let output_dir = output_file
-        .parent()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| ".".to_string());
-    let output_name = output_file
-        .file_stem()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
-    option("output-path", Some(&output_dir));
-    option("output-name", Some(&output_name));
-    let architecture = mc
-        .architecture
-        .clone()
-        .unwrap_or_else(|| detect_architecture(&config.build_output_dir).to_string());
-    option("architecture", Some(&architecture));
-    option("build-windows", Some("false"));
-    option("certificate-path", mc.certificate_path.as_deref());
-    option("certificate-password", mc.certificate_password.as_deref());
-    option("publisher", mc.publisher.as_deref());
-    option("signtool-options", mc.signtool_options.as_deref());
-    option("sign-msix", mc.sign_msix.as_deref());
-    option("install-certificate", mc.install_certificate.as_deref());
-
-    for (flag, value) in [
-        ("store", &mc.store),
-        ("debug", &mc.debug),
-        ("enable-at-startup", &mc.enable_at_startup),
-    ] {
-        if is_true(value) {
-            args.push(format!("--{}", flag));
-        }
-    }
-    args
-}
-
-/// Candidate `dart` executables: `$FLUTTER_ROOT/bin/dart(.bat)` first, then
-/// the `PATH` (`dart.bat` from Flutter's `bin`, or a standalone `dart.exe`).
-fn dart_executables(config: &PackageConfig) -> Vec<PathBuf> {
-    let name = if cfg!(windows) { "dart.bat" } else { "dart" };
-    let mut candidates = Vec::new();
-    if let Some(root) = config.env_var("FLUTTER_ROOT") {
-        candidates.push(Path::new(&root).join("bin").join(name));
-    }
-    candidates.push(PathBuf::from(name));
-    if cfg!(windows) {
-        candidates.push(PathBuf::from("dart"));
-    }
-    candidates
-}
-
-/// Runs `dart run msix:create` with the mapped arguments.
-fn create_with_msix_package(
-    make_config: &MsixMakeConfig,
-    config: &PackageConfig,
-    output_file: &Path,
-) -> Result<(), PackageError> {
-    let output_file = std::path::absolute(output_file)?;
-    let args = msix_cli_args(make_config, config, &output_file);
-    let mut last_err = None;
-    for dart in dart_executables(config) {
-        let mut cmd = Command::new(&dart);
-        cmd.args(["run", "msix:create"]).args(&args);
-        for (key, value) in &config.environment {
-            cmd.env(key, value);
-        }
-        match cmd.output() {
-            Ok(out) if out.status.success() => return Ok(()),
-            Ok(out) => {
-                return Err(PackageError::CommandFailed {
-                    command: "dart run msix:create".into(),
-                    stderr: format!(
-                        "{}{}",
-                        String::from_utf8_lossy(&out.stdout),
-                        String::from_utf8_lossy(&out.stderr)
-                    ),
-                });
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => last_err = Some(e),
-            Err(e) => return Err(PackageError::MissingTool(format!("dart: {}", e))),
-        }
-    }
-    Err(PackageError::MissingTool(format!(
-        "dart (needed to run `dart run msix:create`): {}",
-        last_err.map(|e| e.to_string()).unwrap_or_default()
-    )))
+    architecture(build_output_dir)
 }
 
 fn xml_escape(value: &str) -> String {
@@ -391,7 +219,7 @@ fn xml_escape(value: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// Fully resolved manifest values for the native fallback, with the msix
+/// Fully resolved manifest values for the native packager, with the msix
 /// pub package's defaults applied.
 #[derive(Debug, Clone, PartialEq)]
 struct MsixManifest {
@@ -672,7 +500,7 @@ fn solid_png(size: u32, rgba: [u8; 4]) -> Vec<u8> {
     png
 }
 
-/// Resolves the logo PNG for the native fallback: `logo_path` (must exist),
+/// Resolves the logo PNG for the native packager: `logo_path` (must exist),
 /// else the PNG embedded in the Flutter runner icon
 /// (`windows/runner/resources/app_icon.ico`), else a generated placeholder.
 fn resolve_logo(logo_path: Option<&str>, runner_icon: &Path) -> Result<Vec<u8>, PackageError> {
@@ -686,10 +514,9 @@ fn resolve_logo(logo_path: Option<&str>, runner_icon: &Path) -> Result<Vec<u8>, 
         }
         return Ok(std::fs::read(logo)?);
     }
-    if let Some(png) = std::fs::read(runner_icon)
-        .ok()
-        .and_then(|data| png_from_ico(&data))
-    {
+    if let Some(png) = std::fs::read(runner_icon).ok().and_then(|data| {
+        png_from_ico(&data).or_else(|| image::load_from_memory(&data).ok().map(|_| data))
+    }) {
         return Ok(png);
     }
     eprintln!(
@@ -699,23 +526,57 @@ fn resolve_logo(logo_path: Option<&str>, runner_icon: &Path) -> Result<Vec<u8>, 
     Ok(solid_png(256, [0x02, 0x56, 0x9B, 0xFF]))
 }
 
-/// The app executable inside the packaging directory: `<binary>.exe` when
-/// present, otherwise the first `.exe` found.
-fn find_executable(pkg_dir: &Path, binary_name: &str) -> String {
-    let preferred = format!("{}.exe", binary_name);
-    if pkg_dir.join(&preferred).is_file() {
-        return preferred;
+/// Windows-style quoted arguments, without invoking a shell or expanding
+/// environment variables. Backslashes are literal unless before a quote.
+fn split_signing_options(input: &str) -> Result<Vec<String>, PackageError> {
+    let mut chars = input.chars().peekable();
+    let mut args = Vec::new();
+    while chars.peek().is_some() {
+        while chars.peek().is_some_and(|c| c.is_whitespace()) {
+            chars.next();
+        }
+        if chars.peek().is_none() {
+            break;
+        }
+        let mut arg = String::new();
+        let mut quoted = false;
+        while let Some(&c) = chars.peek() {
+            if c.is_whitespace() && !quoted {
+                break;
+            }
+            if c == '\\' {
+                let mut count = 0;
+                while chars.peek() == Some(&'\\') {
+                    count += 1;
+                    chars.next();
+                }
+                if chars.peek() == Some(&'"') {
+                    arg.extend(std::iter::repeat_n('\\', count / 2));
+                    chars.next();
+                    if count % 2 == 0 {
+                        quoted = !quoted;
+                    } else {
+                        arg.push('"');
+                    }
+                } else {
+                    arg.extend(std::iter::repeat_n('\\', count));
+                }
+            } else if c == '"' {
+                chars.next();
+                quoted = !quoted;
+            } else {
+                arg.push(c);
+                chars.next();
+            }
+        }
+        if quoted {
+            return Err(PackageError::General(
+                "Unclosed quote in signtool_options".into(),
+            ));
+        }
+        args.push(arg);
     }
-    let mut exes: Vec<String> = std::fs::read_dir(pkg_dir)
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe")))
-        .filter_map(|p| p.file_name().map(|f| f.to_string_lossy().into_owned()))
-        .collect();
-    exes.sort();
-    exes.into_iter().next().unwrap_or(preferred)
+    Ok(args)
 }
 
 fn run(cmd: &mut Command) -> Result<(), PackageError> {
@@ -735,63 +596,143 @@ fn run(cmd: &mut Command) -> Result<(), PackageError> {
     Ok(())
 }
 
+/// Stage the bundle and resolve the native metadata before invoking SDK tools.
+fn prepare_package(
+    mc: &MsixMakeConfig,
+    config: &PackageConfig,
+    raw: &mut RawPackaging,
+    root: &Path,
+) -> Result<(), PackageError> {
+    let mut mc = mc.clone();
+    mc.display_name = mc
+        .display_name
+        .or_else(|| raw.settings.display_name.clone());
+    mc.identity_name = mc.identity_name.or_else(|| raw.settings.app_id.clone());
+    let publisher = raw
+        .value("MSIX_PUBLISHER")
+        .or_else(|| config.env_var("MSIX_PUBLISHER"))
+        .or_else(|| mc.publisher.clone())
+        .unwrap_or_else(|| "CN=Publisher".into());
+    let manifest = MsixManifest::resolve(
+        &mc,
+        config,
+        publisher,
+        raw.settings.description.clone(),
+        find_executable(&config.build_output_dir, &config.app_binary_name),
+    );
+    for (key, value) in [
+        ("APP_ID", &manifest.identity_name),
+        ("APP_DISPLAY_NAME", &manifest.display_name),
+        ("PACKAGE_VERSION", &manifest.version),
+        ("PACKAGE_ARCH", &manifest.architecture),
+        ("EXECUTABLE_NAME", &manifest.executable),
+        ("MSIX_PUBLISHER", &manifest.publisher),
+    ] {
+        raw.variables.insert(key.into(), value.clone());
+    }
+    raw.stage(config, root)?;
+    let assets = root.join("Assets");
+    if LOGO_ASSETS.iter().any(|name| !assets.join(name).is_file()) {
+        let logo_path = mc.logo_path.as_deref().or(raw.settings.icon.as_deref());
+        let logo = resolve_logo(
+            logo_path,
+            Path::new("windows/runner/resources/app_icon.ico"),
+        )?;
+        install_logo_assets(&logo, &assets)?;
+    }
+    let manifest_path = root.join("AppxManifest.xml");
+    if let Some(template) = raw.template(&["AppxManifest.xml"])? {
+        // Escape substitutions, preserving XML markup and namespace syntax.
+        let variables = raw
+            .variables
+            .iter()
+            .map(|(k, v)| (k.clone(), xml_escape(v)))
+            .collect();
+        let text = std::fs::read_to_string(template)?;
+        std::fs::write(
+            manifest_path,
+            fastforge_core::render_variables(&text, &variables),
+        )?;
+    } else if !manifest_path.is_file() {
+        std::fs::write(manifest_path, manifest.render())?;
+    }
+    Ok(())
+}
+
+/// Generate only assets not supplied by the bundle or an overlay. Resize
+/// without stretching and center the image on a transparent canvas.
+fn install_logo_assets(logo: &[u8], assets: &Path) -> Result<(), PackageError> {
+    let image = image::load_from_memory(logo)
+        .map_err(|e| PackageError::General(format!("MSIX logo must be a valid PNG or ICO: {e}")))?;
+    std::fs::create_dir_all(assets)?;
+    for (name, width, height) in [
+        (LOGO_ASSETS[0], 50, 50),
+        (LOGO_ASSETS[1], 150, 150),
+        (LOGO_ASSETS[2], 44, 44),
+        (LOGO_ASSETS[3], 620, 300),
+    ] {
+        let path = assets.join(name);
+        if path.is_file() {
+            continue;
+        }
+        let resized = image.resize(width, height, image::imageops::FilterType::Lanczos3);
+        let mut canvas = image::RgbaImage::new(width, height);
+        image::imageops::overlay(
+            &mut canvas,
+            &resized.to_rgba8(),
+            i64::from((width - resized.width()) / 2),
+            i64::from((height - resized.height()) / 2),
+        );
+        canvas
+            .save_with_format(&path, image::ImageFormat::Png)
+            .map_err(|e| {
+                PackageError::General(format!("Failed to write {}: {e}", path.display()))
+            })?;
+    }
+    Ok(())
+}
+
 impl WindowsMsixPackager {
-    /// Native fallback used when the project does not depend on `msix`.
     fn create_natively(
         &self,
-        make_config: MsixMakeConfig,
-        pubspec: PubspecMsix,
+        mc: MsixMakeConfig,
         config: &PackageConfig,
         output_file: &Path,
     ) -> Result<(), PackageError> {
-        // make_config.yaml wins over pubspec.yaml's msix_config (msix CLI
-        // arguments take precedence over pubspec values).
-        let mc = make_config.or(pubspec.msix_config);
         let pkg_dir = config.packaging_dir();
+        let mut raw = RawPackaging::load(config, &pkg_dir)?;
+        if let Some(publisher) = &self.publisher {
+            raw.variables
+                .insert("MSIX_PUBLISHER".into(), publisher.clone());
+        }
         let result = (|| {
-            copy_dir_contents(&config.build_output_dir, &pkg_dir)?;
-
-            let logo = resolve_logo(
-                mc.logo_path.as_deref(),
-                Path::new("windows/runner/resources/app_icon.ico"),
-            )?;
-            let assets_dir = pkg_dir.join("Assets");
-            std::fs::create_dir_all(&assets_dir)?;
-            for name in LOGO_ASSETS {
-                std::fs::write(assets_dir.join(name), &logo)?;
-            }
-
-            let publisher = self
-                .publisher
-                .clone()
-                .or_else(|| mc.publisher.clone())
-                .unwrap_or_else(|| "CN=Publisher".to_string());
-            let manifest = MsixManifest::resolve(
-                &mc,
-                config,
-                publisher,
-                pubspec.description.clone(),
-                find_executable(&pkg_dir, &config.app_binary_name),
-            );
-            std::fs::write(pkg_dir.join("AppxManifest.xml"), manifest.render())?;
-
-            run(Command::new("makeappx").args([
+            prepare_package(&mc, config, &mut raw, &pkg_dir)?;
+            let mut command = Command::new("makeappx");
+            command.args([
                 "pack".as_ref(),
                 "/d".as_ref(),
                 pkg_dir.as_os_str(),
                 "/p".as_ref(),
                 output_file.as_os_str(),
-                "/nv".as_ref(),
                 "/o".as_ref(),
-            ]))?;
-
-            self.sign_natively(&mc, output_file)
+            ]);
+            raw.apply_env(&mut command, config);
+            run(&mut command)?;
+            self.sign_natively(&mc, config, &raw, output_file)
         })();
-        std::fs::remove_dir_all(&pkg_dir).ok();
+        if result.is_ok() {
+            std::fs::remove_dir_all(&pkg_dir).ok();
+        }
         result
     }
 
-    fn sign_natively(&self, mc: &MsixMakeConfig, output_file: &Path) -> Result<(), PackageError> {
+    fn sign_natively(
+        &self,
+        mc: &MsixMakeConfig,
+        config: &PackageConfig,
+        raw: &RawPackaging,
+        output_file: &Path,
+    ) -> Result<(), PackageError> {
         if is_true(&mc.store) {
             // Like the msix package: Store submissions are signed by the
             // Microsoft Store.
@@ -807,17 +748,24 @@ impl WindowsMsixPackager {
         let certificate_path = self
             .certificate_path
             .clone()
+            .or_else(|| raw.value("MSIX_CERTIFICATE_PATH"))
+            .or_else(|| config.env_var("MSIX_CERTIFICATE_PATH"))
             .or_else(|| mc.certificate_path.clone());
         let certificate_password = self
             .certificate_password
             .clone()
+            .or_else(|| raw.value("MSIX_CERTIFICATE_PASSWORD"))
+            .or_else(|| config.env_var("MSIX_CERTIFICATE_PASSWORD"))
             .or_else(|| mc.certificate_password.clone());
 
         if let Some(signtool_options) = &mc.signtool_options {
             let mut args: Vec<String> = vec!["sign".to_string()];
-            args.extend(signtool_options.split_whitespace().map(String::from));
+            args.extend(split_signing_options(signtool_options)?);
             args.push(output_file.display().to_string());
-            run(Command::new("signtool").args(&args))
+            let mut command = Command::new("signtool");
+            command.args(&args);
+            raw.apply_env(&mut command, config);
+            run(&mut command)
         } else if let Some(cert) = &certificate_path {
             if !Path::new(cert).is_file() {
                 return Err(PackageError::NotFound(format!(
@@ -838,15 +786,17 @@ impl WindowsMsixPackager {
                 args.push(pwd.clone());
             }
             args.push(output_file.display().to_string());
-            run(Command::new("signtool").args(&args))
+            let mut command = Command::new("signtool");
+            command.args(&args);
+            raw.apply_env(&mut command, config);
+            run(&mut command)
         } else {
             eprintln!(
                 "[fastforge] warning: msix package left UNSIGNED: {}\n  \
                  Windows will refuse to install it until it is signed. Configure \
                  `certificate_path`/`certificate_password` (or `signtool_options`) in \
-                 windows/packaging/msix/make_config.yaml, or add `msix` to your \
-                 dev_dependencies so fastforge delegates to `dart run msix:create` \
-                 (which signs with its test certificate by default).",
+                 windows/packaging/msix/make_config.yaml, or set MSIX_CERTIFICATE_PATH \
+                 and MSIX_CERTIFICATE_PASSWORD in the environment.",
                 output_file.display()
             );
             Ok(())
@@ -886,19 +836,130 @@ impl AppPackager for WindowsMsixPackager {
         }
 
         let pubspec = PubspecMsix::load();
-        let output_file = config.output_file();
-        if pubspec.has_msix_dependency {
-            create_with_msix_package(&make_config, config, &output_file)?;
-        } else {
-            self.create_natively(make_config, pubspec, config, &output_file)?;
+        let make_config = make_config.or(pubspec.msix_config);
+        if is_true(&make_config.install_certificate) || is_true(&make_config.debug) {
+            eprintln!(
+                "[fastforge] msix: debug/install_certificate are Dart-only options; install certificates separately for native packaging."
+            );
         }
+        let output_file = config.output_file();
+        self.create_natively(make_config, config, &output_file)?;
         config.resolve_result(output_file)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::common::tests::{config, write};
     use super::*;
+    use fastforge_core::ProjectSettings;
+    use std::path::PathBuf;
+
+    #[test]
+    fn raw_manifest_escapes_values_and_preserves_supplied_assets() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = config(tmp.path(), "msix");
+        write(&config.build_output_dir.join("runner.exe"), "runner");
+        let dir = tmp.path().join("packaging/msix");
+        write(
+            &dir.join("AppxManifest.xml"),
+            "<Package><Identity Name=\"${APP_ID}\" Version=\"${PACKAGE_VERSION}\" ProcessorArchitecture=\"${PACKAGE_ARCH}\" Publisher=\"${MSIX_PUBLISHER}\"/><Name>${APP_DISPLAY_NAME}</Name><Exe>${EXECUTABLE_NAME}</Exe></Package>",
+        );
+        write(
+            &dir.parent()
+                .unwrap()
+                .join("shared/files/Assets/StoreLogo.png"),
+            b"shared\0",
+        );
+        write(&dir.join("files/Assets/StoreLogo.png"), b"own\0");
+        let root = tmp.path().join("stage");
+        let mut raw = RawPackaging::new(
+            dir,
+            ProjectSettings {
+                app_id: Some("dev.example.demo".into()),
+                display_name: Some("Demo & Friends".into()),
+                ..Default::default()
+            },
+            &config,
+            &root,
+        );
+        let mc = MsixMakeConfig {
+            publisher: Some("CN=Demo & Co".into()),
+            ..Default::default()
+        };
+        // Keep this rendering test independent of the caller's signing env.
+        raw.variables
+            .insert("MSIX_PUBLISHER".into(), "CN=Demo & Co".into());
+        prepare_package(&mc, &config, &mut raw, &root).unwrap();
+        let xml = std::fs::read_to_string(root.join("AppxManifest.xml")).unwrap();
+        assert!(xml.contains(
+            "Name=\"dev.example.demo\" Version=\"1.2.3.0\" ProcessorArchitecture=\"arm64\""
+        ));
+        assert!(xml.contains("Publisher=\"CN=Demo &amp; Co\""));
+        assert!(xml.contains("<Name>Demo &amp; Friends</Name><Exe>runner.exe</Exe>"));
+        assert_eq!(
+            std::fs::read(root.join("Assets/StoreLogo.png")).unwrap(),
+            b"own\0"
+        );
+        for (name, width, height) in [
+            (LOGO_ASSETS[1], 150, 150),
+            (LOGO_ASSETS[2], 44, 44),
+            (LOGO_ASSETS[3], 620, 300),
+        ] {
+            let image = image::open(root.join("Assets").join(name)).unwrap();
+            assert_eq!((image.width(), image.height()), (width, height));
+        }
+    }
+
+    #[test]
+    fn generated_manifest_uses_project_metadata_and_legacy_overrides() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = config(tmp.path(), "msix");
+        write(&config.build_output_dir.join("runner.exe"), "runner");
+        let root = tmp.path().join("stage");
+        let mut raw = RawPackaging::new(
+            tmp.path().join("msix"),
+            ProjectSettings {
+                app_id: Some("dev.example.demo".into()),
+                display_name: Some("Project Name".into()),
+                description: Some("Project description".into()),
+                ..Default::default()
+            },
+            &config,
+            &root,
+        );
+        prepare_package(&MsixMakeConfig::default(), &config, &mut raw, &root).unwrap();
+        let xml = std::fs::read_to_string(root.join("AppxManifest.xml")).unwrap();
+        assert!(xml.contains("<DisplayName>Project Name</DisplayName>"));
+        assert!(xml.contains("<Description>Project description</Description>"));
+        assert!(xml.contains("Name=\"dev.example.demo\""));
+        std::fs::remove_dir_all(&root).unwrap();
+        let mc = MsixMakeConfig {
+            display_name: Some("Legacy Name".into()),
+            identity_name: Some("dev.legacy.demo".into()),
+            ..Default::default()
+        };
+        prepare_package(&mc, &config, &mut raw, &root).unwrap();
+        let xml = std::fs::read_to_string(root.join("AppxManifest.xml")).unwrap();
+        assert!(xml.contains("<DisplayName>Legacy Name</DisplayName>"));
+        assert!(xml.contains("Name=\"dev.legacy.demo\""));
+    }
+
+    #[test]
+    fn signing_options_preserve_quoted_paths_and_backslashes() {
+        assert_eq!(
+            split_signing_options(r#"/fd SHA256 /f "C:\My Certs\app.pfx" /p "pass word""#).unwrap(),
+            [
+                "/fd",
+                "SHA256",
+                "/f",
+                r"C:\My Certs\app.pfx",
+                "/p",
+                "pass word"
+            ]
+        );
+        assert!(split_signing_options("/f \"unclosed").is_err());
+    }
 
     fn test_config() -> PackageConfig {
         PackageConfig {
@@ -982,79 +1043,6 @@ install_certificate: false
     }
 
     #[test]
-    fn cli_args_mapping() {
-        let args = msix_cli_args(
-            &full_make_config(),
-            &test_config(),
-            Path::new("C:/proj/dist/1.2.3+4/hola_amigos-1.2.3+4-windows.msix"),
-        );
-        let pairs: Vec<(String, String)> = args
-            .windows(2)
-            .filter(|w| w[0].starts_with("--") && !w[1].starts_with("--"))
-            .map(|w| (w[0].clone(), w[1].clone()))
-            .collect();
-        let get = |flag: &str| {
-            pairs
-                .iter()
-                .find(|(f, _)| f == flag)
-                .map(|(_, v)| v.as_str())
-        };
-        assert_eq!(get("--display-name"), Some("Hola Amigos"));
-        assert_eq!(get("--publisher-display-name"), Some("ACME Corp"));
-        assert_eq!(get("--identity-name"), Some("com.acme.hola"));
-        assert_eq!(get("--version"), Some("2.0.1.0"));
-        assert_eq!(get("--logo-path"), Some("assets/logo.png"));
-        assert_eq!(get("--trim-logo"), Some("false"));
-        assert_eq!(get("--capabilities"), Some("internetClient,microphone"));
-        assert_eq!(get("--languages"), Some("en-us, zh-cn"));
-        assert_eq!(get("--file-extension"), Some(".txt,.md"));
-        assert_eq!(get("--protocol-activation"), Some("holaamigos://"));
-        assert_eq!(get("--execution-alias"), Some("hola"));
-        assert_eq!(get("--output-path"), Some("C:/proj/dist/1.2.3+4"));
-        assert_eq!(get("--output-name"), Some("hola_amigos-1.2.3+4-windows"));
-        assert_eq!(get("--architecture"), Some("arm64"));
-        assert_eq!(get("--build-windows"), Some("false"));
-        assert_eq!(get("--certificate-path"), Some("C:\\certs\\cert.pfx"));
-        assert_eq!(get("--certificate-password"), Some("1234"));
-        assert_eq!(get("--publisher"), Some("CN=ACME"));
-        assert_eq!(get("--signtool-options"), Some("/v /fd SHA256"));
-        assert_eq!(get("--sign-msix"), Some("true"));
-        assert_eq!(get("--install-certificate"), Some("false"));
-        // Boolean flags take no value; `store: false` is not passed.
-        assert!(args.contains(&"--debug".to_string()));
-        assert!(args.contains(&"--enable-at-startup".to_string()));
-        assert!(!args.contains(&"--store".to_string()));
-        // Dart's key names that the msix CLI doesn't know are never emitted.
-        assert!(
-            !args
-                .iter()
-                .any(|a| a == "--add-execution-alias" || a == "--msix-version")
-        );
-    }
-
-    #[test]
-    fn cli_args_defaults() {
-        let args = msix_cli_args(
-            &MsixMakeConfig::default(),
-            &test_config(),
-            Path::new("dist/1.2.3+4/app.msix"),
-        );
-        assert_eq!(
-            args,
-            vec![
-                "--output-path",
-                "dist/1.2.3+4",
-                "--output-name",
-                "app",
-                "--architecture",
-                "x64",
-                "--build-windows",
-                "false",
-            ]
-        );
-    }
-
-    #[test]
     fn execution_alias_resolution() {
         let alias = |yaml: &str| {
             serde_yaml::from_str::<MsixMakeConfig>(yaml)
@@ -1090,21 +1078,12 @@ msix_config:
         )
         .unwrap();
         let info = PubspecMsix::from_value(&pubspec);
-        assert!(info.has_msix_dependency);
-        assert_eq!(info.description.as_deref(), Some("A friendly app"));
         let make_config: MsixMakeConfig =
             serde_yaml::from_str("display_name: From MakeConfig\n").unwrap();
         let merged = make_config.or(info.msix_config);
         assert_eq!(merged.display_name.as_deref(), Some("From MakeConfig"));
         assert_eq!(merged.publisher.as_deref(), Some("CN=Pubspec"));
         assert_eq!(merged.store.as_deref(), Some("true"));
-
-        let without: serde_yaml::Value =
-            serde_yaml::from_str("name: x\ndependencies:\n  flutter:\n    sdk: flutter\n").unwrap();
-        assert!(!PubspecMsix::from_value(&without).has_msix_dependency);
-        let regular: serde_yaml::Value =
-            serde_yaml::from_str("name: x\ndependencies:\n  msix: any\n").unwrap();
-        assert!(PubspecMsix::from_value(&regular).has_msix_dependency);
     }
 
     #[test]

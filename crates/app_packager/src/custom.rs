@@ -146,6 +146,7 @@ impl AppPackager for CustomPackager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::collections::HashMap;
 
     fn write_config(dir: &Path, platform: &str, yaml: &str) -> std::path::PathBuf {

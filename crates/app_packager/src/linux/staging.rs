@@ -65,7 +65,7 @@ impl Layout {
 
     /// The bundle's installed path (`/opt/<binary>`).
     pub fn install_dir(&self) -> String {
-        format!("/{}", self.bundle_dir.display())
+        format!("/{}", slash_path(&self.bundle_dir))
     }
 }
 
@@ -406,6 +406,7 @@ pub(crate) fn build_date() -> u64 {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn write(root: &Path, rel: &str, content: &[u8]) {
         let path = root.join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();

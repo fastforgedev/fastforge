@@ -1,8 +1,0 @@
-app_id: 15F38A1C-4C4B-4477-99C3-1205BC28C4CC
-publisher_name: LiJianying
-publisher_url: https://github.com/fastforgedev/fastforge
-display_name: Hello World
-create_desktop_icon: true
-launch_at_startup: true
-locales:
-  - en

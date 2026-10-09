@@ -82,7 +82,7 @@ When a channel is set, `{{channel}}` replaces the flavor segment. Available vari
 
 Most packagers read an optional `<platform>/packaging/<format>/make_config.yaml`, such as `macos/packaging/dmg/make_config.yaml` or `linux/packaging/deb/make_config.yaml`. A missing file means defaults; a file that cannot be parsed fails packaging. Only the `custom` format requires its configuration file.
 
-The Linux AppImage, DEB, RPM, and Pacman packagers also accept the format's own raw files in `.fastforge/packaging/linux/`, such as a Debian `control` file or an RPM spec, rendered with the packaging variables below. Raw files take precedence over `make_config.yaml`. See [Linux](packagers/linux.md#configuration).
+The Linux AppImage, DEB, RPM, and Pacman packagers also accept the format's own raw files in `.fastforge/packaging/linux/`, such as a Debian `control` file or an RPM spec, rendered with the packaging variables below. Raw files take precedence over `make_config.yaml`. See [Linux](packagers/linux.md#configuration). Windows EXE and MSIX use the same model in `.fastforge/packaging/windows/`, with a native Inno Setup script, an MSIX manifest, and shared file overlays; see [Windows](packagers/windows.md#configuration).
 
 ### Packaging Variables
 
@@ -94,15 +94,17 @@ Fastforge provides these variables to raw packaging files as `${NAME}`. It also 
 | `APP_VERSION`, `BUILD_NAME`, `BUILD_NUMBER`               | `1.2.3+4`, `1.2.3`, `4`; `BUILD_NUMBER` is empty without a build number                             |
 | `APP_DISPLAY_NAME`                                        | `project.display_name`, else `display_name` from `make_config.yaml`, else `APP_NAME`                |
 | `APP_DESCRIPTION`, `APP_HOMEPAGE`                         | `project.description` / `project.homepage`, else `pubspec.yaml`                                    |
-| `APP_ID`                                                  | `project.app_id`; for Linux packaging, else `APPLICATION_ID` from `linux/CMakeLists.txt`, else the binary name |
+| `APP_ID`                                                  | `project.app_id`; Linux falls back to `APPLICATION_ID` from `linux/CMakeLists.txt`, then the binary name. Windows EXE/MSIX use the resolved installer/manifest identity |
 | `APP_LICENSE`, `APP_MAINTAINER`                           | `project.license` (an SPDX expression) and `project.maintainer` (`Name <email>`)                    |
 | `BUILD_MODE`, `FLAVOR`, `CHANNEL`, `PLATFORM`, `PACKAGE_FORMAT` | The build and packaging options                                                               |
 | `BUILD_OUTPUT_DIRECTORY`, `OUTPUT_DIRECTORY`              | Absolute paths of the build output and of the output directory                                     |
-| `PACKAGE_NAME`, `PACKAGE_VERSION`                         | Linux only. `package_name` from `make_config.yaml`, else `project.package_name`, else the format's default; the version in the format's syntax |
-| `PACKAGE_ARCH`, `ARCH`                                    | Linux only. The format's architecture name (`amd64` for DEB) and `x86_64` or `aarch64`              |
-| `INSTALL_DIR`                                             | DEB, RPM and Pacman. Where the bundle is installed, `/opt/<binary>`                                 |
+| `PACKAGE_NAME`, `PACKAGE_VERSION`                         | `package_name` from `make_config.yaml` (Linux), else `project.package_name`, else the format default; the format's version. Windows uses the build name for EXE and `a.b.c.d` for MSIX |
+| `PACKAGE_ARCH`, `ARCH`                                    | The format's architecture (`amd64` for DEB, `x64`/`arm64` for Windows) and `x86_64` or `aarch64`              |
+| `INSTALL_DIR`                                             | DEB, RPM and Pacman: `/opt/<binary>`. Windows EXE: the Inno installation directory                                 |
 | `RPM_RELEASE`, `RPM_FILE_LIST`, `RPM_PRIVATE_LIBS`        | RPM only. The first part of the build number (`1` without one), the path of the `%files -f` list, and the bundle's libraries for `%__requires_exclude` |
-| `PACKAGING_DIRECTORY`, `OUTPUT_ARTIFACT_PATH`             | Linux only. The [package root](packagers/linux.md#configuration) (the AppDir for an AppImage) and the artifact path |
+| `PACKAGING_DIRECTORY`, `OUTPUT_ARTIFACT_PATH`             | Linux/Windows native packages: the staged package root (the AppDir for AppImage) and the artifact path |
+
+Windows EXE/MSIX also provide `EXECUTABLE_NAME`. EXE adds `OUTPUT_BASE_FILENAME`; MSIX resolves `MSIX_PUBLISHER` from your environment or legacy settings (default `CN=Publisher`). Windows legacy fields override `project:` defaults for generated metadata; see [Windows](packagers/windows.md#configuration).
 
 Project metadata and your own variables come from `.fastforge/config.yaml`. An `env:` value written exactly as `${NAME}` is read from the environment. `env:` entries may not reuse a built-in name.
 

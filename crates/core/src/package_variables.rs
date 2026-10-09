@@ -46,6 +46,8 @@ pub const BUILTIN_VARIABLES: &[&str] = &[
     "OUTPUT_DIRECTORY",
     "OUTPUT_ARTIFACT_PATH",
     "PACKAGING_DIRECTORY",
+    "EXECUTABLE_NAME",
+    "OUTPUT_BASE_FILENAME",
 ];
 
 /// Replaces `${NAME}` with the value of `NAME` when it is defined in
@@ -412,6 +414,7 @@ stores: {}
 
     #[test]
     fn package_variables_cover_app_and_build() {
+        let directory = tempfile::tempdir().unwrap();
         let config = PackageConfig {
             app_name: "hello_world".into(),
             app_binary_name: "hello-world".into(),
@@ -423,9 +426,9 @@ stores: {}
             artifact_name: None,
             package_format: "deb".into(),
             is_installer: false,
-            build_output_dir: PathBuf::from("/tmp/bundle"),
+            build_output_dir: directory.path().join("bundle"),
             build_output_files: vec![],
-            output_dir: PathBuf::from("/tmp/dist"),
+            output_dir: directory.path().join("dist"),
             environment: Default::default(),
         };
         let settings = ProjectSettings {
@@ -442,7 +445,10 @@ stores: {}
         assert_eq!(v["CHANNEL"], "beta");
         assert_eq!(v["PLATFORM"], "linux");
         assert_eq!(v["PACKAGE_FORMAT"], "deb");
-        assert_eq!(v["BUILD_OUTPUT_DIRECTORY"], "/tmp/bundle");
+        assert_eq!(
+            Path::new(&v["BUILD_OUTPUT_DIRECTORY"]),
+            config.build_output_dir
+        );
         assert_eq!(v["SUPPORT"], "team@example.com");
 
         let unnumbered = PackageConfig {

@@ -16,7 +16,7 @@ liquid = "0.26"
 zip = "2.2"
 flate2 = "1"
 crc32fast = "1"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["ico", "png"] }
 md-5 = "0.10"
 
 [dev-dependencies]

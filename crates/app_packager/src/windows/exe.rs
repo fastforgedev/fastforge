@@ -4,27 +4,11 @@ use std::process::Command;
 use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
 use serde::Deserialize;
 
-use crate::fs_util::copy_dir_contents;
+use super::common::{RawPackaging, absolute, architecture, find_executable};
 
-/// Builds a Windows `.exe` installer using Inno Setup (`iscc`), mirroring
-/// Dart's `AppPackageMakerExe`.
-///
-/// Reads `windows/packaging/exe/make_config.yaml` when present (same schema
-/// as Dart's `MakeExeConfig`); falls back to sensible defaults otherwise.
-///
-/// The Inno Setup script — Dart's default template or a custom
-/// `script_template` — is rendered with Liquid using the same variables as
-/// Dart (`APP_ID`, `APP_NAME`, `APP_VERSION`, `EXECUTABLE_NAME`,
-/// `DISPLAY_NAME`, `PUBLISHER_NAME`, `PUBLISHER_URL`, `CREATE_DESKTOP_ICON`,
-/// `LAUNCH_AT_STARTUP`, `INSTALL_DIR_NAME`, `SOURCE_DIR`,
-/// `OUTPUT_BASE_FILENAME`, `LOCALES`, `SETUP_ICON_FILE`,
-/// `PRIVILEGES_REQUIRED`, `ARCHITECTURES_ALLOWED`,
-/// `ARCHITECTURES_INSTALL_IN_64BIT_MODE`), so a template copied from the Dart
-/// implementation renders identically. Undefined variables render empty.
-///
-/// Requires Inno Setup (`iscc`) to be on `%PATH%`, in the default install
-/// location, or pointed to by the `INNO_SETUP_PATH` variable (process
-/// environment or `distribute_options.yaml` variables; Windows only).
+/// Builds a Windows installer from a staged application using Inno Setup.
+/// A raw `.fastforge/packaging/windows/exe/*.iss` file replaces the generated
+/// script. Legacy make_config.yaml and Liquid script_template remain supported.
 pub struct WindowsExePackager;
 
 /// Dart's default Inno Setup script template (`inno_setup_script.dart`),
@@ -425,122 +409,27 @@ impl AppPackager for WindowsExePackager {
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
         let make_config = ExeMakeConfig::load()?;
         let pkg_dir = config.packaging_dir();
-
-        // Copy the flutter build output into the packaging directory
-        // (Dart's `copyPathSync`; includes hidden/system files).
-        copy_dir_contents(&config.build_output_dir, &pkg_dir)?;
-
         let output_file = config.output_file();
-
-        // Default executable: the first .exe in the packaging directory
-        // (mirrors Dart's `defaultExecutableName`).
-        let executable_name = match &make_config.executable_name {
-            Some(name) => name.clone(),
-            None => {
-                let mut exes: Vec<PathBuf> = std::fs::read_dir(&pkg_dir)?
-                    .filter_map(|e| e.ok())
-                    .map(|e| e.path())
-                    .filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "exe"))
-                    .collect();
-                exes.sort();
-                exes.first()
-                    .and_then(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
-                    .unwrap_or_else(|| format!("{}.exe", config.app_binary_name))
-            }
-        };
-
-        // Absolute setup icon path (mirrors Dart, which joins with cwd);
-        // empty when not configured.
-        let setup_icon_file = make_config
-            .setup_icon_file
-            .as_ref()
-            .map(|icon| {
-                std::env::current_dir()
-                    .map(|cwd| cwd.join(icon).display().to_string())
-                    .unwrap_or_else(|_| icon.clone())
-            })
-            .unwrap_or_default();
-
-        let iscc_path = resolve_iscc_path(config.env_var(INNO_SETUP_ENV_VAR).as_deref());
-        let locales = available_locales(
-            &make_config
-                .locales
-                .clone()
-                .filter(|l| !l.is_empty())
-                .unwrap_or_else(|| vec!["en".to_string()]),
-            &iscc_path,
+        let mut raw = RawPackaging::load(config, &pkg_dir)?;
+        let iscc_path = resolve_iscc_path(
+            raw.value(INNO_SETUP_ENV_VAR)
+                .or_else(|| config.env_var(INNO_SETUP_ENV_VAR))
+                .as_deref(),
         );
-
-        let variables = IssVariables {
-            // Dart requires `app_id`; fall back to the app name.
-            app_id: make_config
-                .app_id
-                .clone()
-                .unwrap_or_else(|| config.app_name.clone()),
-            app_name: config.app_name.clone(),
-            app_version: config.app_version.clone(),
-            executable_name,
-            // Inno Setup requires AppName; fall back to the app name instead
-            // of rendering it empty.
-            display_name: Some(
-                make_config
-                    .display_name
-                    .clone()
-                    .unwrap_or_else(|| config.app_name.clone()),
-            ),
-            publisher_name: make_config.publisher_name.clone(),
-            publisher_url: make_config.publisher_url.clone(),
-            create_desktop_icon: make_config.create_desktop_icon,
-            launch_at_startup: make_config.launch_at_startup,
-            install_dir_name: make_config
-                .install_dir_name
-                .clone()
-                .unwrap_or_else(|| format!("{{autopf64}}\\{}", config.app_name)),
-            source_dir: pkg_dir
-                .file_name()
-                .map(|f| f.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            output_base_filename: output_base_filename(&output_file),
-            locales,
-            setup_icon_file,
-            privileges_required: make_config
-                .privileges_required
-                .clone()
-                .unwrap_or_else(|| "none".to_string()),
-            architectures_allowed: make_config
-                .architectures_allowed
-                .clone()
-                .unwrap_or_else(|| "x64compatible".to_string()),
-            architectures_install_in_64bit_mode: make_config
-                .architectures_install_in_64bit_mode
-                .clone()
-                .unwrap_or_else(|| "x64compatible".to_string()),
-        };
-
-        // Render the script (custom template when configured, mirroring
-        // Dart's `script_template` support).
-        let template = match &make_config.script_template {
-            Some(template_name) => {
-                let template_path = Path::new("windows/packaging/exe").join(template_name);
-                std::fs::read_to_string(&template_path).map_err(|e| {
-                    PackageError::General(format!(
-                        "Failed to read script template {}: {}",
-                        template_path.display(),
-                        e
-                    ))
-                })?
-            }
-            None => DEFAULT_TEMPLATE.to_string(),
-        };
-        let content = variables.render(&template)?;
-
-        // The .iss file sits next to the packaging directory (in the version
-        // output dir), so `OutputDir=.` and `SOURCE_DIR\*` resolve correctly.
-        // A UTF-8 BOM is prepended, mirroring Dart.
+        let content = prepare_script(config, &make_config, &mut raw, &pkg_dir, &iscc_path)?;
         let iss_path = iss_path_for(&pkg_dir);
         std::fs::write(&iss_path, format!("\u{FEFF}{}", content))?;
 
-        let out = Command::new(&iscc_path).arg(&iss_path).output();
+        let mut command = Command::new(&iscc_path);
+        command
+            .arg(format!(
+                "/O{}",
+                absolute(output_file.parent().unwrap_or(Path::new(".")))
+            ))
+            .arg(format!("/F{}", output_base_filename(&output_file)))
+            .arg(&iss_path);
+        raw.apply_env(&mut command, config);
+        let out = command.output();
         let out = match out {
             Ok(out) => out,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -558,16 +447,260 @@ impl AppPackager for WindowsExePackager {
                 ),
             });
         }
-
-        std::fs::remove_file(&iss_path).ok();
-        std::fs::remove_dir_all(&pkg_dir).ok();
-        config.resolve_result(output_file)
+        let result = config.resolve_result(output_file);
+        if result.is_ok() {
+            std::fs::remove_file(&iss_path).ok();
+            std::fs::remove_file(setup_icon_path_for(&pkg_dir)).ok();
+            std::fs::remove_dir_all(&pkg_dir).ok();
+        }
+        result
     }
+}
+
+/// Resolve defaults once for both generated and raw scripts.
+fn prepare_script(
+    config: &PackageConfig,
+    make_config: &ExeMakeConfig,
+    raw: &mut RawPackaging,
+    pkg_dir: &Path,
+    iscc_path: &str,
+) -> Result<String, PackageError> {
+    let output_file = config.output_file();
+    // Absolute setup icon path (mirrors Dart, which joins with cwd);
+    // empty when not configured.
+    let setup_icon_file = make_config
+        .setup_icon_file
+        .as_ref()
+        .map(|icon| {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(icon).display().to_string())
+                .unwrap_or_else(|_| icon.clone())
+        })
+        .unwrap_or_default();
+
+    let locales = available_locales(
+        &make_config
+            .locales
+            .clone()
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| vec!["en".to_string()]),
+        iscc_path,
+    );
+
+    let mut variables = IssVariables {
+        // Dart requires `app_id`; fall back to the app name.
+        app_id: make_config
+            .app_id
+            .clone()
+            .or_else(|| raw.value("APP_ID"))
+            .unwrap_or_else(|| config.app_name.clone()),
+        app_name: config.app_name.clone(),
+        app_version: config.app_version.clone(),
+        executable_name: make_config
+            .executable_name
+            .clone()
+            .unwrap_or_else(|| find_executable(&config.build_output_dir, &config.app_binary_name)),
+        // Inno Setup requires AppName; fall back to the app name instead
+        // of rendering it empty.
+        display_name: Some(
+            make_config
+                .display_name
+                .clone()
+                .or_else(|| raw.value("APP_DISPLAY_NAME"))
+                .unwrap_or_else(|| config.app_name.clone()),
+        ),
+        publisher_name: make_config.publisher_name.clone(),
+        publisher_url: make_config
+            .publisher_url
+            .clone()
+            .or_else(|| raw.value("APP_HOMEPAGE")),
+        create_desktop_icon: make_config.create_desktop_icon,
+        launch_at_startup: make_config.launch_at_startup,
+        install_dir_name: make_config
+            .install_dir_name
+            .clone()
+            .unwrap_or_else(|| format!("{{autopf64}}\\{}", config.app_name)),
+        source_dir: pkg_dir
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        output_base_filename: output_base_filename(&output_file),
+        locales,
+        setup_icon_file,
+        privileges_required: make_config
+            .privileges_required
+            .clone()
+            .unwrap_or_else(|| "none".to_string()),
+        architectures_allowed: make_config
+            .architectures_allowed
+            .clone()
+            .unwrap_or_else(|| {
+                if architecture(&config.build_output_dir) == "arm64" {
+                    "arm64"
+                } else {
+                    "x64compatible"
+                }
+                .to_string()
+            }),
+        architectures_install_in_64bit_mode: make_config
+            .architectures_install_in_64bit_mode
+            .clone()
+            .unwrap_or_else(|| {
+                if architecture(&config.build_output_dir) == "arm64" {
+                    "arm64"
+                } else {
+                    "x64compatible"
+                }
+                .to_string()
+            }),
+    };
+
+    raw.variables
+        .insert("APP_ID".into(), variables.app_id.clone());
+    raw.variables.insert(
+        "APP_DISPLAY_NAME".into(),
+        variables.display_name.clone().unwrap_or_default(),
+    );
+    raw.variables
+        .insert("EXECUTABLE_NAME".into(), variables.executable_name.clone());
+    raw.variables
+        .insert("INSTALL_DIR".into(), variables.install_dir_name.clone());
+    raw.variables.insert(
+        "OUTPUT_BASE_FILENAME".into(),
+        variables.output_base_filename.clone(),
+    );
+    raw.stage(config, pkg_dir)?;
+    if let Some(template) = raw.template(&[".iss"])? {
+        return raw.render(&template);
+    }
+    let template = match &make_config.script_template {
+        Some(name) => std::fs::read_to_string(Path::new("windows/packaging/exe").join(name))?,
+        None => DEFAULT_TEMPLATE.to_string(),
+    };
+    if variables.setup_icon_file.is_empty() {
+        variables.setup_icon_file = prepare_setup_icon(raw.settings.icon.as_deref(), pkg_dir)?;
+    }
+    variables.render(&template)
+}
+
+fn prepare_setup_icon(icon: Option<&str>, root: &Path) -> Result<String, PackageError> {
+    let Some(icon) = icon else {
+        let runner = Path::new("windows/runner/resources/app_icon.ico");
+        return Ok(if runner.is_file() {
+            absolute(runner)
+        } else {
+            String::new()
+        });
+    };
+    let path = Path::new(icon);
+    if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("ico"))
+    {
+        if !path.is_file() {
+            return Err(PackageError::NotFound(format!("Icon not found: {icon}")));
+        }
+        return Ok(absolute(path));
+    }
+    let image = image::open(path).map_err(|e| {
+        PackageError::General(format!("Windows icon must be a PNG or ICO ({icon}): {e}"))
+    })?;
+    let resized = image.resize(256, 256, image::imageops::FilterType::Lanczos3);
+    let mut canvas = image::RgbaImage::new(256, 256);
+    image::imageops::overlay(
+        &mut canvas,
+        &resized.to_rgba8(),
+        i64::from((256 - resized.width()) / 2),
+        i64::from((256 - resized.height()) / 2),
+    );
+    // Keep compiler resources outside the installed application directory.
+    let output = setup_icon_path_for(root);
+    canvas
+        .save_with_format(&output, image::ImageFormat::Ico)
+        .map_err(|e| PackageError::General(format!("Failed to write setup icon: {e}")))?;
+    Ok(absolute(&output))
+}
+
+fn setup_icon_path_for(root: &Path) -> PathBuf {
+    let mut path = root.as_os_str().to_owned();
+    path.push(".ico");
+    PathBuf::from(path)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::common::tests::{config, write};
     use super::*;
+    use fastforge_core::ProjectSettings;
+
+    #[test]
+    fn raw_script_wins_over_legacy_template_and_stages_resolved_variables() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = config(tmp.path(), "exe");
+        write(&config.build_output_dir.join("runner.exe"), "runner");
+        write(&config.build_output_dir.join("aaa_helper.exe"), "helper");
+        let dir = tmp.path().join("packaging/exe");
+        write(
+            &dir.join("setup.iss"),
+            "AppId=${APP_ID}\nAppName=${APP_DISPLAY_NAME}\nSource: \"${PACKAGING_DIRECTORY}\\*\"; DestDir: \"{app}\"\nExe=${EXECUTABLE_NAME}\n$${APP_NAME} ${UNKNOWN}",
+        );
+        write(&dir.join("files/${APP_ID}.txt"), "${EXECUTABLE_NAME}");
+        let root = tmp.path().join("stage");
+        let mut raw = RawPackaging::new(
+            dir,
+            ProjectSettings {
+                app_id: Some("dev.example.demo".into()),
+                display_name: Some("Demo App".into()),
+                ..Default::default()
+            },
+            &config,
+            &root,
+        );
+        let mc = ExeMakeConfig {
+            script_template: Some("does-not-exist.iss".into()),
+            ..Default::default()
+        };
+        let script = prepare_script(&config, &mc, &mut raw, &root, "iscc").unwrap();
+        assert!(script.contains("AppId=dev.example.demo\nAppName=Demo App"));
+        assert!(script.contains("Exe=runner.exe"));
+        assert!(script.contains("DestDir: \"{app}\""));
+        assert!(script.contains("${APP_NAME} ${UNKNOWN}"));
+        assert_eq!(
+            std::fs::read_to_string(root.join("dev.example.demo.txt")).unwrap(),
+            "runner.exe"
+        );
+    }
+
+    #[test]
+    fn generated_script_uses_project_metadata_arm64_and_converts_icon() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = config(tmp.path(), "exe");
+        write(&config.build_output_dir.join("runner.exe"), "runner");
+        let icon = tmp.path().join("logo.png");
+        image::RgbaImage::new(300, 100).save(&icon).unwrap();
+        let root = tmp.path().join("stage");
+        let mut raw = RawPackaging::new(
+            tmp.path().join("exe"),
+            ProjectSettings {
+                display_name: Some("Demo App".into()),
+                app_id: Some("dev.example.demo".into()),
+                homepage: Some("https://example.com".into()),
+                icon: Some(icon.display().to_string()),
+                ..Default::default()
+            },
+            &config,
+            &root,
+        );
+        let script =
+            prepare_script(&config, &ExeMakeConfig::default(), &mut raw, &root, "iscc").unwrap();
+        assert!(script.contains("AppName=Demo App\n"));
+        assert!(script.contains("AppId=dev.example.demo\n"));
+        assert!(script.contains("AppPublisherURL=https://example.com\n"));
+        assert!(script.contains("ArchitecturesAllowed=arm64\n"));
+        assert!(script.contains("ArchitecturesInstallIn64BitMode=arm64\n"));
+        let ico = image::open(setup_icon_path_for(&root)).unwrap();
+        assert_eq!((ico.width(), ico.height()), (256, 256));
+    }
 
     fn test_variables() -> IssVariables {
         IssVariables {
