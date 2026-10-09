@@ -2,8 +2,9 @@
 //!
 //! Each test packages a small fake bundle (an ELF binary and a shared
 //! library copied from the host) with the generated defaults plus shared
-//! templates, inspects the package with the format's own tools, and, when
-//! the host allows unprivileged user namespaces (`unshare -r`), installs,
+//! templates (named freely: they are installed under the app ID), inspects
+//! the package with the format's own tools, and, when the host allows
+//! unprivileged user namespaces (`unshare -r`), installs,
 //! upgrades and removes it in a temporary root to check what the package
 //! manager does with it (files, the `/usr/bin` link, configuration files).
 //!
@@ -58,13 +59,13 @@ fn project() -> Project {
     );
     let linux = root.join(".fastforge/packaging/linux/shared");
     write(
-        &linux.join("app.desktop"),
+        &linux.join("hola.desktop"),
         "[Desktop Entry]\nType=Application\nName=${APP_DISPLAY_NAME}\n\
          Comment=${APP_DESCRIPTION}\nExec=${APP_BINARY_NAME}\nIcon=${APP_ID}\n\
          Categories=Development;\n",
     );
     write(
-        &linux.join("app.metainfo.xml"),
+        &linux.join("${APP_ID}.metainfo.xml"),
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<component type=\"desktop-application\">\n  \
          <id>${APP_ID}</id>\n  <name>${APP_DISPLAY_NAME}</name>\n  \
          <launchable type=\"desktop-id\">${APP_ID}.desktop</launchable>\n</component>\n",

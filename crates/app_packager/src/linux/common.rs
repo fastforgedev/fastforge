@@ -128,12 +128,14 @@ pub(crate) const RAW_PACKAGING_DIR: &str = ".fastforge/packaging/linux";
 /// shares.
 pub(crate) const SHARED_DIR: &str = "shared";
 
-/// The desktop entry template; installed as `${APP_ID}.desktop`.
-pub(crate) const DESKTOP_TEMPLATE: &str = "app.desktop";
+/// A desktop entry template: one `*.desktop` file, under any name; installed
+/// as `${APP_ID}.desktop`.
+pub(crate) const DESKTOP_TEMPLATE: &[&str] = &[".desktop"];
 
-/// The AppStream metainfo template; installed as
+/// An AppStream metainfo template: one `*.metainfo.xml` (or the older
+/// `*.appdata.xml`) file, under any name; installed as
 /// `usr/share/metainfo/${APP_ID}.metainfo.xml`.
-pub(crate) const METAINFO_TEMPLATE: &str = "app.metainfo.xml";
+pub(crate) const METAINFO_TEMPLATE: &[&str] = &[".metainfo.xml", ".appdata.xml"];
 
 /// `.fastforge/packaging/linux/shared/` for a format directory.
 fn shared_dir(format_dir: &Path) -> Option<PathBuf> {
@@ -208,7 +210,7 @@ impl RawPackaging {
         for (key, value) in facts.extra {
             set(key, value);
         }
-        // Templates have fixed names; catch a misnamed one early.
+        // Catch an ambiguous desktop template (several files) early.
         let raw = Self {
             dir,
             settings,
@@ -256,35 +258,20 @@ impl RawPackaging {
     /// The only file in the format directory with extension `ext`; an error
     /// when there are several, since fastforge could not tell which to use.
     pub fn file_with_extension(&self, ext: &str) -> Result<Option<PathBuf>, PackageError> {
-        single_file_with_extension(&self.dir, ext)
+        single_file_with_suffix(&self.dir, &[&format!(".{}", ext)])
     }
 
-    /// A template with a fixed name (`app.desktop`, `app.metainfo.xml`): the
-    /// format directory's, else the shared one. Another file with the same
-    /// extension next to it is an error, as it would silently be ignored.
-    pub fn template(&self, name: &str) -> Result<Option<PathBuf>, PackageError> {
-        let ext = name.split_once('.').map(|(_, ext)| ext).unwrap_or(name);
-        let dirs = [Some(self.dir.clone()), shared_dir(&self.dir)];
-        for dir in dirs.iter().flatten() {
-            let Ok(entries) = std::fs::read_dir(dir) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                let file_name = entry.file_name().to_string_lossy().to_string();
-                if file_name != name && file_name.ends_with(&format!(".{}", ext)) {
-                    return Err(PackageError::General(format!(
-                        "{} is not used: name the template {}",
-                        entry.path().display(),
-                        dir.join(name).display()
-                    )));
-                }
-            }
-        }
-        Ok(dirs
-            .into_iter()
-            .flatten()
-            .map(|dir| dir.join(name))
-            .find(|path| path.is_file()))
+    /// The template ending with one of `suffixes` (see [`DESKTOP_TEMPLATE`],
+    /// [`METAINFO_TEMPLATE`]), whatever its name: the format directory's,
+    /// else the shared one. Several in one directory are an error, since
+    /// fastforge could not tell which to use.
+    pub fn template(&self, suffixes: &[&str]) -> Result<Option<PathBuf>, PackageError> {
+        let own = single_file_with_suffix(&self.dir, suffixes)?;
+        let shared = match shared_dir(&self.dir) {
+            Some(dir) => single_file_with_suffix(&dir, suffixes)?,
+            None => None,
+        };
+        Ok(own.or(shared))
     }
 
     pub fn render(&self, path: &Path) -> Result<String, PackageError> {
@@ -333,21 +320,34 @@ impl RawPackaging {
     }
 }
 
-fn single_file_with_extension(dir: &Path, ext: &str) -> Result<Option<PathBuf>, PackageError> {
+/// The only file directly in `dir` whose name ends with one of `suffixes`;
+/// an error when there are several.
+fn single_file_with_suffix(dir: &Path, suffixes: &[&str]) -> Result<Option<PathBuf>, PackageError> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Ok(None);
     };
     let mut found: Vec<PathBuf> = entries
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| path.is_file() && path.extension().is_some_and(|e| e == ext))
+        .filter(|path| {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            path.is_file() && suffixes.iter().any(|suffix| name.ends_with(suffix))
+        })
         .collect();
     found.sort();
     if found.len() > 1 {
+        let names: Vec<String> = found
+            .iter()
+            .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+            .collect();
         return Err(PackageError::General(format!(
-            "{} contains several .{} files; keep only one",
+            "{} has several {} files ({}); keep only one",
             dir.display(),
-            ext
+            suffixes.join(" or "),
+            names.join(", ")
         )));
     }
     Ok(found.pop())
@@ -629,15 +629,15 @@ mod tests {
     }
 
     #[test]
-    fn templates_have_fixed_names() {
+    fn templates_are_found_under_any_name() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("deb")).unwrap();
         std::fs::create_dir_all(tmp.path().join("shared")).unwrap();
         let r = raw(tmp.path(), ProjectSettings::default(), None);
         assert_eq!(r.template(DESKTOP_TEMPLATE).unwrap(), None);
 
-        // The shared template ...
-        let shared = tmp.path().join("shared/app.desktop");
+        // The shared template, whatever its name ...
+        let shared = tmp.path().join("shared/${APP_ID}.desktop");
         std::fs::write(&shared, "Exec=${APP_BINARY_NAME} %U\nIcon=${APP_ID}\n").unwrap();
         let r = raw(tmp.path(), ProjectSettings::default(), None);
         assert_eq!(r.template(DESKTOP_TEMPLATE).unwrap(), Some(shared.clone()));
@@ -647,19 +647,21 @@ mod tests {
         );
 
         // ... is overridden by the format's own.
-        let own = tmp.path().join("deb/app.desktop");
+        let own = tmp.path().join("deb/hola.desktop");
         std::fs::write(&own, "").unwrap();
         assert_eq!(r.template(DESKTOP_TEMPLATE).unwrap(), Some(own));
 
-        // A misnamed template would be silently ignored: refuse it.
-        std::fs::write(tmp.path().join("shared/${APP_ID}.desktop"), "").unwrap();
+        // Metainfo: `*.metainfo.xml` or the older `*.appdata.xml`.
+        let appdata = tmp.path().join("shared/hola.appdata.xml");
+        std::fs::write(&appdata, "").unwrap();
+        assert_eq!(r.template(METAINFO_TEMPLATE).unwrap(), Some(appdata));
+
+        // Two templates in one directory are ambiguous.
+        std::fs::write(tmp.path().join("shared/other.desktop"), "").unwrap();
         let err = try_raw(tmp.path(), ProjectSettings::default(), None)
             .err()
             .unwrap();
-        assert!(err.to_string().contains("name the template"));
-        let metainfo = tmp.path().join("shared/app.metainfo.xml");
-        std::fs::write(&metainfo, "").unwrap();
-        assert_eq!(r.template(METAINFO_TEMPLATE).unwrap(), Some(metainfo));
+        assert!(err.to_string().contains("keep only one"), "{}", err);
     }
 
     #[test]

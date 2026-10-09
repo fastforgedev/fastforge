@@ -32,23 +32,23 @@ Fastforge 分两步构建每个 Linux 包。第一步按安装后的路径搭好
 
 | 目录        | 原始文件                                                                                                    |
 | ----------- | ----------------------------------------------------------------------------------------------------------- |
-| `shared/`   | `app.desktop`、`app.metainfo.xml` 和 `files/` 覆盖树，所有格式共用                                          |
+| `shared/`   | 一个 `*.desktop` 文件、一个 `*.metainfo.xml` 文件和 `files/` 覆盖树，所有格式共用                          |
 | `deb/`      | `control`、`preinst`、`postinst`、`prerm`、`postrm`、`config`、`conffiles`、`triggers`、`templates`、`shlibs`、`symbols` |
 | `rpm/`      | 一个 `*.spec` 文件，文件名不限                                                                              |
 | `pacman/`   | `PKGINFO`、`INSTALL`（也可以使用 `.PKGINFO`、`.INSTALL`）                                                    |
 | `appimage/` | `AppRun`                                                                                                    |
 
-每个格式目录也可以有自己的 `app.desktop`、`app.metainfo.xml` 和 `files/` 覆盖树，优先于共用的版本。
+每个格式目录也可以有自己的 `*.desktop` 文件、`*.metainfo.xml` 文件和 `files/` 覆盖树，优先于共用的版本。
 
 ```text
 .fastforge/packaging/linux/
 ├── shared/
-│   ├── app.desktop
-│   └── app.metainfo.xml
+│   ├── ${APP_ID}.desktop
+│   └── ${APP_ID}.metainfo.xml
 ├── deb/
 │   ├── control
 │   └── files/usr/share/doc/${PACKAGE_NAME}/copyright
-├── rpm/app.spec
+├── rpm/${PACKAGE_NAME}.spec
 ├── pacman/PKGINFO
 └── appimage/AppRun
 ```
@@ -72,11 +72,11 @@ project:
 - **渲染规则。** 只有 `NAME` 是打包变量时，`${NAME}` 才会被替换，其余内容保持原样。因此 `$1`、`${HOME}` 等 shell 展开、`%{buildroot}` 等 RPM 宏以及 `%U` 等桌面文件字段代码都无需转义。需要字面量 `${` 时写 `$${`。覆盖树中的文件名和目录名同样会被渲染，例如 `files/usr/share/doc/${PACKAGE_NAME}/copyright`。
 - **覆盖树。** 先把共用的 `files/` 复制到包根目录，再复制格式目录中的，同名文件以后者为准。AppImage 不会安装 `/etc` 或 `/opt` 下的文件，因此只接收共用覆盖树中的 `usr/`。文本文件会被渲染，二进制文件原样复制，权限和符号链接保持不变。
 - **自动补全。** DEB：control 中没有 `Installed-Size` 时自动补上，生成 `md5sums`，并把所有 `/etc` 文件登记到 `conffiles`。Pacman：补上 `size`、`builddate`，并为每个 `/etc` 文件添加 `backup` 条目。RPM：把 `/etc` 文件列为 `%config(noreplace)`。你自己写的值会保留。
-- **桌面文件和 metainfo。** 模板使用固定文件名 `app.desktop` 和 `app.metainfo.xml`，安装为 `${APP_ID}.desktop` 和 `usr/share/metainfo/${APP_ID}.metainfo.xml`，这是桌面文件规范和 AppStream 的要求。模板旁边还有其他 `*.desktop` 或 `*.metainfo.xml` 文件时打包失败，因为它们会被忽略。桌面文件中启动命令写作 `${APP_BINARY_NAME}`，图标写作 `${APP_ID}`。在 Linux 上 `APP_ID` 总有值：优先取 `project.app_id`，其次取 `linux/CMakeLists.txt` 中的 `APPLICATION_ID`，最后为可执行文件名。
+- **桌面文件和 metainfo。** 模板的文件名不限：一个 `*.desktop` 文件和一个 `*.metainfo.xml`（或 `*.appdata.xml`）文件。无论叫什么，都会安装为 `${APP_ID}.desktop` 和 `usr/share/metainfo/${APP_ID}.metainfo.xml`，这是桌面文件规范和 AppStream 的要求。桌面文件中启动命令写作 `${APP_BINARY_NAME}`，图标写作 `${APP_ID}`。在 Linux 上 `APP_ID` 总有值：优先取 `project.app_id`，其次取 `linux/CMakeLists.txt` 中的 `APPLICATION_ID`，最后为可执行文件名。
 - **Wayland。** 桌面文件按窗口的 app id 匹配，而 GTK 把程序名作为 app id 上报。请让 `linux/CMakeLists.txt` 中的 `APPLICATION_ID` 与 `project.app_id` 一致，或不设置 `project.app_id`。还要像新版 Flutter 模板那样在 `my_application_new()` 中调用 `g_set_prgname(APPLICATION_ID)`，否则窗口上报的是可执行文件名。
 - **图标。** 图标取自 `project.icon`；`make_config.yaml` 设置了 `icon` 时以它为准。SVG 安装为 scalable 图标。PNG 会先补成正方形，再缩放到不超过原图的各个标准尺寸（16 到 512 像素）。其他格式会导致打包失败。如果想提供手工绘制的各尺寸图标，请放进 `files/` 覆盖树。
 - **包名和版本号。** `PACKAGE_NAME` 优先取 `make_config.yaml` 的 `package_name`，其次取 `project.package_name`，最后为该格式的默认值。`PACKAGE_VERSION` 是按该格式语法书写的版本号，`1.2.3-beta.1` 这类预发布版本会排在正式版之前。
-- `rpm/` 中有**多个 `*.spec` 文件**时打包失败，因为 Fastforge 无法判断应使用哪一个。
+- 同一目录中有**多个同类模板**（例如两个 `*.desktop` 文件或两个 `*.spec` 文件）时打包失败，因为 Fastforge 无法判断应使用哪一个。
 
 同时使用 Dart CLI 的项目仍可保留 `linux/packaging/<format>/make_config.yaml`，Fastforge 会用它生成没有原始文件的那些文件；新项目不需要它。常用键包括 `display_name`、`package_name`、`icon`、`metainfo`、`categories`、`keywords`、`generic_name` 和 `startup_notify`。文件不存在时使用默认值；文件无法解析时打包失败。既没有原始文件也没有 `make_config.yaml` 时，生成的元数据取自 `project:`，未设置许可证时写为 `LicenseRef-Unknown`。
 

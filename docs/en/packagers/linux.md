@@ -32,23 +32,23 @@ Then it adds the format's metadata: `DEBIAN/control`, the RPM spec, `.PKGINFO`, 
 
 | Directory  | Raw files                                                                                                   |
 | ---------- | ----------------------------------------------------------------------------------------------------------- |
-| `shared/`  | `app.desktop`, `app.metainfo.xml`, and a `files/` overlay, used by every format                             |
+| `shared/`  | one `*.desktop` file, one `*.metainfo.xml` file, and a `files/` overlay, used by every format              |
 | `deb/`     | `control`, `preinst`, `postinst`, `prerm`, `postrm`, `config`, `conffiles`, `triggers`, `templates`, `shlibs`, `symbols` |
 | `rpm/`     | one `*.spec` file, under any name                                                                           |
 | `pacman/`  | `PKGINFO`, `INSTALL` (`.PKGINFO` and `.INSTALL` work too)                                                    |
 | `appimage/` | `AppRun`                                                                                                   |
 
-Every format directory may also hold its own `app.desktop`, `app.metainfo.xml`, and `files/` overlay, which win over the shared ones.
+Every format directory may also hold its own `*.desktop` file, `*.metainfo.xml` file, and `files/` overlay, which win over the shared ones.
 
 ```text
 .fastforge/packaging/linux/
 ├── shared/
-│   ├── app.desktop
-│   └── app.metainfo.xml
+│   ├── ${APP_ID}.desktop
+│   └── ${APP_ID}.metainfo.xml
 ├── deb/
 │   ├── control
 │   └── files/usr/share/doc/${PACKAGE_NAME}/copyright
-├── rpm/app.spec
+├── rpm/${PACKAGE_NAME}.spec
 ├── pacman/PKGINFO
 └── appimage/AppRun
 ```
@@ -72,11 +72,11 @@ project:
 - **Rendering.** `${NAME}` is replaced only when `NAME` is a packaging variable. Everything else is kept, so shell expansions such as `$1` or `${HOME}`, RPM macros such as `%{buildroot}`, and desktop field codes such as `%U` need no escaping. Write `$${` for a literal `${`. Overlay file and directory names are rendered too, such as `files/usr/share/doc/${PACKAGE_NAME}/copyright`.
 - **Overlays.** The shared `files/` is copied into the package root first, then the format's own, whose files win. An AppImage only takes the shared overlay's `usr/`, since it installs nothing in `/etc` or `/opt`. Text files are rendered; binary files are copied unchanged. Permissions and symlinks are kept.
 - **Filled in automatically.** DEB gets `Installed-Size` when the control file has none, `md5sums`, and every `/etc` file in `conffiles`. Pacman gets `size`, `builddate`, and a `backup` entry for every `/etc` file. RPM lists `/etc` files as `%config(noreplace)`. Values you write yourself are kept.
-- **Desktop entry and metainfo.** The templates have fixed names, `app.desktop` and `app.metainfo.xml`, and are installed as `${APP_ID}.desktop` and `usr/share/metainfo/${APP_ID}.metainfo.xml`, as the desktop entry and AppStream specifications expect. Another `*.desktop` or `*.metainfo.xml` file next to a template fails packaging, since it would be ignored. In the desktop entry, refer to the program as `${APP_BINARY_NAME}` and to the icon as `${APP_ID}`. On Linux `APP_ID` always has a value: `project.app_id`, else `APPLICATION_ID` from `linux/CMakeLists.txt`, else the binary name.
+- **Desktop entry and metainfo.** The templates can have any name: one `*.desktop` file and one `*.metainfo.xml` (or `*.appdata.xml`) file. Whatever their names, they are installed as `${APP_ID}.desktop` and `usr/share/metainfo/${APP_ID}.metainfo.xml`, as the desktop entry and AppStream specifications expect. In the desktop entry, refer to the program as `${APP_BINARY_NAME}` and to the icon as `${APP_ID}`. On Linux `APP_ID` always has a value: `project.app_id`, else `APPLICATION_ID` from `linux/CMakeLists.txt`, else the binary name.
 - **Wayland.** The desktop file is matched to the window's app ID, and GTK reports the program name as the app ID. Keep `APPLICATION_ID` in `linux/CMakeLists.txt` equal to `project.app_id`, or leave `project.app_id` unset. Also call `g_set_prgname(APPLICATION_ID)` in `my_application_new()`, as current Flutter templates do; otherwise the window reports the binary name.
 - **Icon.** The icon is `project.icon`, unless a `make_config.yaml` sets `icon`. An SVG is installed as scalable. A PNG is padded to a square and resized to every standard size up to its own, from 16 to 512 px. Other formats fail packaging. To ship hand-drawn sizes, put them in a `files/` overlay instead.
 - **Package name and version.** `PACKAGE_NAME` is `package_name` from `make_config.yaml`, else `project.package_name`, else the format's default. `PACKAGE_VERSION` is the version in the format's syntax, with pre-releases such as `1.2.3-beta.1` ordered before the release.
-- **Several `*.spec` files** in `rpm/` fail packaging, since Fastforge cannot tell which one to use.
+- **Several templates of one kind** in one directory, such as two `*.desktop` files or two `*.spec` files, fail packaging, since Fastforge cannot tell which one to use.
 
 For projects that also use the Dart CLI, `linux/packaging/<format>/make_config.yaml` is still read and generates every file that has no raw counterpart; new projects do not need it. Common keys include `display_name`, `package_name`, `icon`, `metainfo`, `categories`, `keywords`, `generic_name`, and `startup_notify`. A missing file means defaults; a file that cannot be parsed fails packaging. Without a raw file or `make_config.yaml`, the generated metadata comes from `project:`, and a missing license is written as `LicenseRef-Unknown`.
 

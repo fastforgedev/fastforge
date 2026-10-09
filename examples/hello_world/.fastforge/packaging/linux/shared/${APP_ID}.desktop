@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=${APP_DISPLAY_NAME}
+GenericName=Counter Demo
+Comment=${APP_DESCRIPTION}
+Exec=${APP_BINARY_NAME}
+Icon=${APP_ID}
+Categories=Development;
+Keywords=Hello;World;Counter;Flutter;fastforge;
+StartupNotify=true
