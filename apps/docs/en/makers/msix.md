@@ -11,6 +11,8 @@ Build your Flutter app as a Windows MSIX package. MSIX is Microsoft's modern app
 
 Add `make_config.yaml` to your project `windows/packaging/msix` directory.
 
+You can also add `make_config.yaml` to your project `windows/packaging` directory to inherit common configuration.
+
 ```yaml
 display_name: HelloWorld
 msix_version: 1.0.0.0

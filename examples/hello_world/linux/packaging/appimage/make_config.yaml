@@ -1,20 +1,6 @@
-display_name: Hello World
-
-icon: assets/logo.png
-
-keywords:
-  - Hello
-  - World
-  - Test
-  - Application
-
-generic_name: Cool Application
-
 # supported mime types that can be opened using this application
 # supported_mime_type:
 #   - audio/mpeg
-
-metainfo: linux/packaging/helloworld.appdata.xml
 
 actions:
   - name: Say Hi
@@ -27,11 +13,6 @@ actions:
     arguments:
       - --say
       - bye
-
-categories:
-  - Music
-
-startup_notify: true
 
 # You can specify the shared libraries that you want to bundle with your app
 #

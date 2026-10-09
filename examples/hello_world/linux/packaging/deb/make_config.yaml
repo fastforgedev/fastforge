@@ -1,7 +1,3 @@
-# the name used to display in the OS. Specifically desktop
-# entry name
-display_name: Hello World
-
 # package name for debian/apt repository
 # the name should be all lowercase with -+.
 package_name: hello-world
@@ -79,36 +75,14 @@ postinstall_scripts:
 postuninstall_scripts:
   - echo `Surprised Pickachu face`
 
-# application icon path relative to project url
-icon: assets/logo.png
-
-keywords:
-  - Hello
-  - World
-  - Test
-  - Application
-
-# a name to categorize the app into a section of application
+# a name to categorize the app into a section of application (overrides common generic_name)
 generic_name: Music Application
 
 # supported mime types that can be opened using this application
 # supported_mime_type:
 #   - audio/mpeg
 
-metainfo: linux/packaging/helloworld.appdata.xml
-
 # shown when right clicked the desktop entry icons
 # actions:
 #   - Gallery
 #   - Create
-
-# the categories the application belong to
-# refer: https://specifications.freedesktop.org/menu-spec/latest/
-categories:
-  - Music
-  - Media
-
-# let OS know if the application can be run on start_up. If it's false
-# the application will deny to the OS if it was added as a start_up
-# application
-startup_notify: true

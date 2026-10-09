@@ -29,6 +29,8 @@ Build your Flutter app as a Linux AppImage — a portable application format tha
 
 Add `make_config.yaml` to your project `linux/packaging/appimage` directory.
 
+You can also add `make_config.yaml` to your project `linux/packaging` directory to inherit common configuration.
+
 ```yaml
 display_name: Hello World
 
