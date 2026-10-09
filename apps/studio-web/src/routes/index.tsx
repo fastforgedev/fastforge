@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { Button } from 'studio-ui/components/button'
+import { Button } from '@dazzlabs/dazzui'
 import { api } from 'studio-api-client'
 import { AlertTriangleIcon, PlusIcon } from 'lucide-react'
 
@@ -39,7 +39,7 @@ function ProjectsIndex() {
           <h2 className="font-semibold">{t('Projects')}</h2>
           {/* Registering from the browser needs the directory picker, which
               lands with the rest of the local filesystem surface. */}
-          <Button size="sm" disabled>
+          <Button size="small" variant="filled" disabled>
             <PlusIcon data-icon="inline-start" />
             {capabilities.mode === 'local'
               ? t('Add local project')

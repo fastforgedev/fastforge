@@ -5,6 +5,8 @@ packages:
   - "packages/studio-*"
 
 allowBuilds:
+  # DazzUI is built from this pinned Git revision during installation.
+  "@dazzlabs/dazzui@git+https://github.com/dazzlabs/dazzui.git#ec9bc09e7aaaab12896bb934c2bcb75ea7d4ffd6&path:/packages/js/dazzui": true
   esbuild: true
   sharp: true
   workerd: true

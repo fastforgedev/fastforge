@@ -1,4 +1,4 @@
-import { cn } from 'studio-ui/lib/utils'
+import { cx } from '@dazzlabs/dazzui'
 
 import type { AuthStatus } from 'studio-api-client'
 import { useI18n } from '#/lib/i18n'
@@ -16,7 +16,7 @@ export function AuthStatusBadge({ status }: { status: AuthStatus }) {
 
   return (
     <span
-      className={cn(
+      className={cx(
         'shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium',
         tone,
       )}

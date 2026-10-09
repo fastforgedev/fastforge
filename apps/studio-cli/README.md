@@ -13,8 +13,6 @@ binary on your machine or by a hosted Worker.
 | `apps/studio-api/openapi.yaml` | The contract. Both hosts serve it; the TS client is generated from it |
 | `apps/studio-web`            | TanStack Start client, built as a static SPA                       |
 | `packages/studio-api-client` | `studio-api-client` — generated types plus a thin fetch client    |
-| `packages/studio-ui`         | `studio-ui` — shared React components and Tailwind theme |
-| `apps/studio-storybook` | `studio-storybook` — component explorer |
 
 ## Development
 

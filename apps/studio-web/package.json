@@ -17,10 +17,10 @@
     "check": "prettier --check ."
   },
   "dependencies": {
+    "@dazzlabs/dazzui": "github:dazzlabs/dazzui#ec9bc09e7aaaab12896bb934c2bcb75ea7d4ffd6&path:/packages/js/dazzui",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
     "studio-api-client": "workspace:*",
-    "studio-ui": "workspace:*",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "latest",
     "@tanstack/react-router": "latest",

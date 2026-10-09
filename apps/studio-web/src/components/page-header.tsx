@@ -1,15 +1,7 @@
 import * as React from 'react'
-import { Link } from '@tanstack/react-router'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from 'studio-ui/components/breadcrumb'
-import { Separator } from 'studio-ui/components/separator'
-import { SidebarTrigger } from 'studio-ui/components/sidebar'
+import { Divider, SidebarTrigger } from '@dazzlabs/dazzui'
+import { ChevronRightIcon } from 'lucide-react'
+import { RouterLink } from '#/components/router-link'
 
 import { LocaleMenu } from '#/components/locale-menu'
 import { ThemeToggle } from '#/components/theme-toggle'
@@ -33,35 +25,43 @@ export function PageHeader({
     <header className="flex h-16 shrink-0 items-center gap-2 border-b">
       <div className="flex min-w-0 flex-1 items-center gap-2 px-4">
         <SidebarTrigger className="-ml-1" />
-        <Separator
+        <Divider
           orientation="vertical"
           className="mr-2 data-vertical:h-4 data-vertical:self-auto"
         />
-        <Breadcrumb>
-          <BreadcrumbList>
+        <nav aria-label="breadcrumb">
+          <ol className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
             {crumbs.map((crumb, index) => {
               const isLast = index === crumbs.length - 1
               return (
                 <React.Fragment key={crumb.label}>
-                  <BreadcrumbItem className={isLast ? undefined : 'hidden md:block'}>
+                  <li
+                    className={isLast ? 'text-foreground' : 'hidden md:block'}
+                  >
                     {isLast ? (
-                      <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                      <span aria-current="page">{crumb.label}</span>
                     ) : crumb.link ? (
-                      <BreadcrumbLink asChild>
-                        <Link {...crumb.link}>{crumb.label}</Link>
-                      </BreadcrumbLink>
+                      <RouterLink
+                        {...crumb.link}
+                        tint="neutral"
+                        underline="none"
+                      >
+                        {crumb.label}
+                      </RouterLink>
                     ) : (
                       <span>{crumb.label}</span>
                     )}
-                  </BreadcrumbItem>
+                  </li>
                   {isLast ? null : (
-                    <BreadcrumbSeparator className="hidden md:block" />
+                    <li aria-hidden className="hidden md:block">
+                      <ChevronRightIcon className="size-3.5" />
+                    </li>
                   )}
                 </React.Fragment>
               )
             })}
-          </BreadcrumbList>
-        </Breadcrumb>
+          </ol>
+        </nav>
       </div>
       {actions ? (
         <div className="flex shrink-0 items-center gap-2 px-4">{actions}</div>

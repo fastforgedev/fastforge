@@ -1,5 +1,5 @@
-import { Link, Outlet, createFileRoute, notFound } from '@tanstack/react-router'
-import { Button } from 'studio-ui/components/button'
+import { Outlet, createFileRoute, notFound } from '@tanstack/react-router'
+import { RouterLink } from '#/components/router-link'
 import { ApiError, api } from 'studio-api-client'
 import { useI18n } from '#/lib/i18n'
 
@@ -42,9 +42,7 @@ function ProjectNotFound({ data }: { data?: unknown }) {
           )}
         </p>
       </div>
-      <Button asChild variant="outline">
-        <Link to="/">{t('Back to projects')}</Link>
-      </Button>
+      <RouterLink to="/">{t('Back to projects')}</RouterLink>
     </div>
   )
 }

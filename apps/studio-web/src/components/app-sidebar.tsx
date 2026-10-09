@@ -1,8 +1,9 @@
 'use client'
 
+import { StudioSidebar } from '#/components/studio-sidebar'
+
 import { Link } from '@tanstack/react-router'
 import {
-  Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
@@ -11,10 +12,10 @@ import {
   SidebarMenuItem,
   SidebarRail,
   SidebarSeparator,
-} from 'studio-ui/components/sidebar'
+} from '@dazzlabs/dazzui'
 import { CloudIcon, HardDriveIcon, Settings2Icon } from 'lucide-react'
 
-import { NavMain, navActiveStyles } from '#/components/nav-main'
+import { NavMain } from '#/components/nav-main'
 import { NavDoc } from '#/components/nav-doc'
 import { ProjectSwitcher } from '#/components/project-switcher'
 import { useCapabilities } from '#/lib/capabilities'
@@ -34,12 +35,12 @@ export function AppSidebar({
   project: Project
   stores: Array<StoreConnection>
   projects: Array<ProjectSummary>
-} & React.ComponentProps<typeof Sidebar>) {
+} & React.ComponentProps<typeof StudioSidebar>) {
   const capabilities = useCapabilities()
   const { t } = useI18n()
 
   return (
-    <Sidebar variant="inset" collapsible="icon" {...props}>
+    <StudioSidebar variant="inset" collapsible="icon" {...props}>
       <SidebarHeader>
         <ProjectSwitcher project={project} projects={projects} />
       </SidebarHeader>
@@ -55,17 +56,16 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              asChild
+              render={
+                <Link
+                  to="/p/$projectId/settings"
+                  params={{ projectId: project.id }}
+                />
+              }
+              icon={<Settings2Icon />}
               tooltip={t('Project Settings')}
-              className={navActiveStyles}
             >
-              <Link
-                to="/p/$projectId/settings"
-                params={{ projectId: project.id }}
-              >
-                <Settings2Icon />
-                <span>{t('Project Settings')}</span>
-              </Link>
+              <span>{t('Project Settings')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -74,7 +74,7 @@ export function AppSidebar({
       </SidebarFooter>
 
       <SidebarRail />
-    </Sidebar>
+    </StudioSidebar>
   )
 }
 
@@ -85,7 +85,7 @@ function ModeIndicator({ project }: { project: Project }) {
   const Icon = mode === 'local' ? HardDriveIcon : CloudIcon
 
   return (
-    <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+    <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground studio-mode-indicator">
       <Icon className="size-3.5 shrink-0" />
       <span className="truncate">
         {mode === 'local'

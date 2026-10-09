@@ -1,8 +1,105 @@
-@import 'studio-ui/globals.css';
-@import 'studio-ui/themes/maple.css';
-/* Geist faces the Maple theme references (tokens live in themes/maple.css). */
+@import 'tailwindcss';
+@import '@dazzlabs/dazzui/style.css';
+@import '@dazzlabs/dazzui/components.css';
 @import '@fontsource-variable/geist-mono';
 @import '@fontsource-variable/geist';
+
+@source "./**/*.{ts,tsx}";
+
+@custom-variant dark (&:is(.dark *, [data-theme$="-dark"] *));
+
+/* Bridge Studio's layout utilities to DazzUI's semantic tokens. Components
+   themselves use DazzUI's styles, including its control and focus recipes. */
+@theme inline {
+  --font-sans: var(--base-font-ui);
+  --font-mono: var(--base-font-mono);
+  --color-background: var(--color-surface);
+  --color-foreground: var(--color-content);
+  --color-card: var(--color-surface-raised);
+  --color-card-foreground: var(--color-content);
+  --color-popover: var(--color-surface-overlay);
+  --color-popover-foreground: var(--color-content);
+  --color-primary: var(--color-primary-500);
+  --color-primary-foreground: var(--color-on-accent);
+  --color-secondary: var(--color-surface-muted);
+  --color-secondary-foreground: var(--color-content-secondary);
+  --color-muted: var(--color-surface-muted);
+  --color-muted-foreground: var(--color-content-muted);
+  --color-accent: var(--color-surface-subtle);
+  --color-accent-foreground: var(--color-content);
+  --color-destructive: var(--color-danger-500);
+  --color-destructive-foreground: var(--color-on-accent);
+  --color-input: var(--color-border-strong);
+  --color-ring: var(--color-primary-500);
+  --color-sidebar: var(--color-surface-column);
+  --color-sidebar-foreground: var(--color-content-nav);
+  --color-sidebar-primary: var(--color-primary-500);
+  --color-sidebar-primary-foreground: var(--color-on-accent);
+  --color-sidebar-accent: var(--color-surface-subtle);
+  --color-sidebar-accent-foreground: var(--color-content);
+  --color-sidebar-border: var(--color-border-strong);
+  --color-sidebar-ring: var(--color-primary-500);
+  --radius-sm: var(--radius-small);
+  --radius-md: var(--radius-medium);
+  --radius-lg: var(--radius-large);
+  --radius-xl: var(--radius-big);
+}
+
+/* Register the existing DazzUI token without redefining it. */
+@theme {
+  --color-border: initial;
+}
+@utility border-border {
+  border-color: var(--color-border);
+}
+@utility bg-border {
+  background-color: var(--color-border);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background: var(--color-surface);
+    color: var(--color-content);
+    font-family: var(--base-font-ui);
+  }
+}
+
+.dz-sidebar[data-collapsible='icon'] .studio-mode-indicator {
+  display: none;
+}
+.dz-button > svg,
+.dz-icon-button > svg {
+  width: var(--icon-medium);
+  height: var(--icon-medium);
+  flex-shrink: 0;
+}
+.studio-mobile-sidebar .dz-drawer__header {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.studio-mobile-sidebar .dz-drawer__body {
+  display: flex;
+  padding: 0;
+}
+.studio-mobile-sidebar .dz-sidebar[data-collapsible='none'] {
+  --sidebar-width: 100%;
+  border: 0;
+}
+.studio-mobile-sidebar .dz-sidebar__rail {
+  display: none;
+}
+@media (max-width: 767px) {
+  .dz-sidebar-inset {
+    margin: 0;
+    border-radius: 0;
+  }
+}
 
 * {
   box-sizing: border-box;

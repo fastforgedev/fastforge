@@ -1,5 +1,6 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
-import { Button } from 'studio-ui/components/button'
+import { RouterLink } from '#/components/router-link'
+import { createFileRoute } from '@tanstack/react-router'
+import { Button } from '@dazzlabs/dazzui'
 import {
   ActivityIcon,
   PackageIcon,
@@ -32,7 +33,7 @@ function Overview() {
             'What this project has shipped, and what is on the way.',
           )}
           actions={
-            <Button>
+            <Button variant="filled">
               <PlayIcon data-icon="inline-start" />
               {t('Run workflow')}
             </Button>
@@ -70,11 +71,13 @@ function Overview() {
                 </div>
               ))}
             </div>
-            <Button asChild variant="outline" size="sm" className="mt-4">
-              <Link to="/p/$projectId/releases" params={{ projectId }}>
-                {t('All releases')}
-              </Link>
-            </Button>
+            <RouterLink
+              className="mt-4 inline-flex"
+              to="/p/$projectId/releases"
+              params={{ projectId }}
+            >
+              {t('All releases')}
+            </RouterLink>
           </Panel>
 
           <Panel title={t('Recent runs')}>
@@ -84,11 +87,13 @@ function Overview() {
                 {t('Trigger a workflow to see it appear here.')}
               </p>
             </div>
-            <Button asChild variant="outline" size="sm" className="mt-4">
-              <Link to="/p/$projectId/runs" params={{ projectId }}>
-                {t('All runs')}
-              </Link>
-            </Button>
+            <RouterLink
+              className="mt-4 inline-flex"
+              to="/p/$projectId/runs"
+              params={{ projectId }}
+            >
+              {t('All runs')}
+            </RouterLink>
           </Panel>
         </div>
       </PageBody>

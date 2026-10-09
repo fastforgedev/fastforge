@@ -1,18 +1,8 @@
-import { Link, createFileRoute, notFound } from '@tanstack/react-router'
+import { createFileRoute, notFound } from '@tanstack/react-router'
 import { ApiError, api } from 'studio-api-client'
-import { Button } from 'studio-ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from 'studio-ui/components/dropdown-menu'
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  DownloadIcon,
-  StoreIcon,
-} from 'lucide-react'
+import { Button, Menu } from '@dazzlabs/dazzui'
+import { RouterLink } from '#/components/router-link'
+import { ChevronDownIcon, DownloadIcon, StoreIcon } from 'lucide-react'
 
 import { AuthFieldList, AuthStatusBadge } from '#/components/auth-status-badge'
 import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
@@ -90,7 +80,7 @@ function StoreDetail() {
           // Pulling needs fastforge's store clients, which are not wired into
           // the server yet. The button stays visible so the page shows what it
           // is for, and the empty state says what to run instead.
-          <Button size="sm" variant="outline" disabled>
+          <Button size="small" variant="outlined" disabled>
             <DownloadIcon data-icon="inline-start" />
             {t('Pull catalog')}
           </Button>
@@ -152,16 +142,17 @@ function AppPicker({
   return (
     <div className="flex flex-wrap gap-2">
       {apps.map((app) => (
-        <Button
+        <RouterLink
           key={app.id}
-          asChild
-          size="sm"
-          variant={app.id === selected.id ? 'secondary' : 'ghost'}
+          from={Route.fullPath}
+          search={{ app: app.id }}
+          tint={app.id === selected.id ? 'primary' : 'neutral'}
+          underline="none"
+          className="rounded-md px-3 py-1.5"
+          aria-current={app.id === selected.id ? 'page' : undefined}
         >
-          <Link from={Route.fullPath} search={{ app: app.id }}>
-            {app.name ?? app.identifier}
-          </Link>
-        </Button>
+          {app.name ?? app.identifier}
+        </RouterLink>
       ))}
     </div>
   )
@@ -385,6 +376,7 @@ function Picker({
   format?: (option: string) => string
   toSearch: (option: string) => Search
 }) {
+  const navigate = Route.useNavigate()
   if (options.length === 0) {
     return null
   }
@@ -399,29 +391,25 @@ function Picker({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button size="sm" variant="outline">
+    <Menu
+      align="end"
+      className="max-h-80 overflow-auto"
+      trigger={
+        <Button size="small" variant="outlined">
           {label}: {format(value ?? options[0])}
-          <ChevronDownIcon data-icon="inline-end" />
+          <ChevronDownIcon />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-80 overflow-auto">
-        {options.map((option) => (
-          <DropdownMenuItem key={option} asChild>
-            <Link
-              from={Route.fullPath}
-              search={(prev) => ({ ...prev, ...toSearch(option) })}
-            >
-              <span className="flex-1">{format(option)}</span>
-              {option === value ? (
-                <CheckIcon className="text-muted-foreground" />
-              ) : null}
-            </Link>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      }
+      items={options.map((option) => ({
+        label: format(option),
+        checked: option === (value ?? options[0]),
+        onSelect: () => {
+          void navigate({
+            search: (prev) => ({ ...prev, ...toSearch(option) }),
+          })
+        },
+      }))}
+    />
   )
 }
 

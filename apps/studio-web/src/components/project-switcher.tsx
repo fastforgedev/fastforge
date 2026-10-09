@@ -1,29 +1,18 @@
-'use client'
-
-import * as React from 'react'
+import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from 'studio-ui/components/dropdown-menu'
-import { Input } from 'studio-ui/components/input'
-import {
+  Divider,
+  Popover,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
-} from 'studio-ui/components/sidebar'
+  TextField,
+} from '@dazzlabs/dazzui'
 import { CheckIcon, ChevronsUpDownIcon, LayoutGridIcon } from 'lucide-react'
-
 import { BrandIcon } from '#/components/brand-icon'
+import { useStudioSidebar } from '#/components/studio-sidebar'
 import { useI18n } from '#/lib/i18n'
-
-import type { ProjectSummary } from 'studio-api-client'
-import type { Project } from '#/lib/workspace'
+import type { ProjectSummary, Project } from 'studio-api-client'
 
 export function ProjectSwitcher({
   project,
@@ -32,88 +21,88 @@ export function ProjectSwitcher({
   project: Project
   projects: Array<ProjectSummary>
 }) {
-  const { isMobile } = useSidebar()
+  const { isMobile } = useStudioSidebar()
   const { t } = useI18n()
-  const [query, setQuery] = React.useState('')
-
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
   const matches = projects.filter((candidate) =>
     candidate.name.toLowerCase().includes(query.trim().toLowerCase()),
   )
-
-  // There is no workspace above a project yet, so the second line shows where
-  // the project actually lives instead.
-  const subtitle = project.path ?? project.repo
-
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu onOpenChange={() => setQuery('')}>
-          <DropdownMenuTrigger asChild>
+        <Popover
+          open={open}
+          onOpenChange={(next) => {
+            setOpen(next)
+            setQuery('')
+          }}
+          title={t('Projects')}
+          width="18rem"
+          align="start"
+          side={isMobile ? 'bottom' : 'right'}
+          trigger={
             <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              size="large"
+              variant="normal"
+              icon={<BrandIcon className="size-8!" />}
             >
-              <BrandIcon className="size-8! shrink-0" />
-              <div className="grid flex-1 text-left text-sm leading-tight">
+              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{project.name}</span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {subtitle}
+                  {project.path ?? project.repo}
                 </span>
               </div>
-              <ChevronsUpDownIcon className="ml-auto" />
+              <ChevronsUpDownIcon className="ml-auto size-4 shrink-0" />
             </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-64"
-            align="start"
-            side={isMobile ? 'bottom' : 'right'}
-            sideOffset={4}
+          }
+        >
+          <TextField
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label={t('Search projects…')}
+            placeholder={t('Search projects…')}
+            size="small"
+            className="w-full"
+          />
+          <nav
+            aria-label={t('Projects')}
+            className="my-2 max-h-72 overflow-auto"
           >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">
-              {t('Projects')}
-            </DropdownMenuLabel>
-            <div className="px-1 pb-1">
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                // Radix runs its own typeahead on menu content; without this the
-                // first keystroke jumps focus to a matching item. Arrow keys are
-                // left alone so they still move into the filtered list.
-                onKeyDown={(event) => {
-                  if (!event.key.startsWith('Arrow')) {
-                    event.stopPropagation()
-                  }
-                }}
-                placeholder={t('Search projects…')}
-                className="h-8"
-              />
-            </div>
             {matches.length === 0 ? (
               <p className="px-2 py-3 text-center text-sm text-muted-foreground">
                 {t('No matching project')}
               </p>
             ) : (
               matches.map((candidate) => (
-                <DropdownMenuItem key={candidate.id} asChild>
-                  <Link to="/p/$projectId" params={{ projectId: candidate.id }}>
-                    <span className="flex-1 truncate">{candidate.name}</span>
-                    {candidate.id === project.id ? (
-                      <CheckIcon className="text-muted-foreground" />
-                    ) : null}
-                  </Link>
-                </DropdownMenuItem>
+                <Link
+                  key={candidate.id}
+                  to="/p/$projectId"
+                  params={{ projectId: candidate.id }}
+                  onClick={() => setOpen(false)}
+                  aria-current={
+                    candidate.id === project.id ? 'page' : undefined
+                  }
+                  className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  <span className="flex-1 truncate">{candidate.name}</span>
+                  {candidate.id === project.id ? (
+                    <CheckIcon className="size-4 text-muted-foreground" />
+                  ) : null}
+                </Link>
               ))
             )}
-
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/">
-                <LayoutGridIcon className="text-muted-foreground" />
-                <span>{t('All projects')}</span>
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </nav>
+          <Divider />
+          <Link
+            to="/"
+            onClick={() => setOpen(false)}
+            className="mt-2 flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            <LayoutGridIcon className="size-4 text-muted-foreground" />
+            <span>{t('All projects')}</span>
+          </Link>
+        </Popover>
       </SidebarMenuItem>
     </SidebarMenu>
   )

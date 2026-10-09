@@ -1,48 +1,29 @@
-'use client'
-
-import { Button } from 'studio-ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from 'studio-ui/components/dropdown-menu'
+import { IconButton, Menu } from '@dazzlabs/dazzui'
 import { LanguagesIcon } from 'lucide-react'
-
 import { useI18n } from '#/lib/i18n'
 
-/** Language picker for the top-right header. Nothing about a user's account. */
+/** Language picker for the header. */
 export function LocaleMenu() {
   const { locale, setLocale, t } = useI18n()
-
+  const languages = [
+    { value: 'en', label: 'English' },
+    { value: 'zh-CN', label: '简体中文' },
+    { value: 'ja', label: '日本語' },
+    { value: 'ko', label: '한국어' },
+  ] as const
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t('Language')}
-          title={t('Language')}
-        >
+    <Menu
+      align="end"
+      trigger={
+        <IconButton label={t('Language')} size="small">
           <LanguagesIcon />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-40">
-        <DropdownMenuRadioGroup
-          value={locale}
-          onValueChange={(value) =>
-            setLocale(value as 'en' | 'zh-CN' | 'ja' | 'ko')
-          }
-        >
-          <DropdownMenuRadioItem value="en">{t('English')}</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="zh-CN">
-            {t('简体中文')}
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="ja">{t('日本語')}</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="ko">{t('한국어')}</DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </IconButton>
+      }
+      items={languages.map((language) => ({
+        label: t(language.label),
+        checked: locale === language.value,
+        onSelect: () => setLocale(language.value),
+      }))}
+    />
   )
 }

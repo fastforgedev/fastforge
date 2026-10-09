@@ -17,8 +17,6 @@
     "studio:build": "pnpm --filter studio-web build",
     "studio:lint": "turbo lint --filter=studio-*",
     "studio:typecheck": "turbo typecheck --filter=studio-*",
-    "studio:test": "pnpm --filter studio-web test && cargo test -p studio-core -p studio-cli",
-    "studio:storybook": "pnpm --filter studio-storybook dev",
-    "studio:storybook:build": "pnpm --filter studio-storybook build"
+    "studio:test": "pnpm --filter studio-web test && cargo test -p studio-core -p studio-cli"
   }
 }

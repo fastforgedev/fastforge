@@ -1,8 +1,8 @@
-import { cn } from "studio-ui/lib/utils"
+import { cx } from '@dazzlabs/dazzui'
 
 export function BrandIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 128 128" className={cn(className)} aria-hidden="true">
+    <svg viewBox="0 0 128 128" className={cx(className)} aria-hidden="true">
       <defs>
         <linearGradient id="ff-gradient" x1="0" y1="0" x2="1" y2="1">
           <stop stopColor="#1E40B0" />

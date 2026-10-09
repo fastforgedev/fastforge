@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Button } from 'studio-ui/components/button'
+import { Button } from '@dazzlabs/dazzui'
 import { PlusIcon } from 'lucide-react'
 
 import type { LinkComponentProps } from '@tanstack/react-router'
@@ -71,7 +71,7 @@ export function TargetList({
                   {t(target.description)}
                 </p>
               </div>
-              <Button variant="outline" size="sm" className="shrink-0">
+              <Button variant="outlined" size="small" className="shrink-0">
                 <PlusIcon data-icon="inline-start" />
                 {t('Connect')}
               </Button>

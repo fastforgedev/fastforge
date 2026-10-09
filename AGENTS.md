@@ -19,8 +19,7 @@ Fastforge 用于构建、打包和发布应用，目前正在将核心实现从 
 | `apps/studio-cli/` | 本地 Studio 服务，二进制名 `fastforge-studio` |
 | `apps/studio-api/` | Cloudflare Workers 上的 Rust API、D1 迁移及 OpenAPI 契约 |
 | `apps/studio-web/` | React / TanStack Start 前端 |
-| `packages/studio-ui/`、`packages/studio-api-client/` | 共享 UI 和 TypeScript API 客户端 |
-| `apps/studio-storybook/` | 共享 UI 的 Storybook |
+| `packages/studio-api-client/` | TypeScript API 客户端 |
 | `packages/` 中的 Dart 包 | 现有 Dart CLI、构建器、打包器、发布器及辅助库 |
 | `docs/en/`、`docs/zh-Hans/` | Rust 原生 CLI 的英文和简体中文文档 |
 | `apps/docs/` | 现有文档网站（VitePress） |
@@ -62,8 +61,6 @@ pnpm studio:lint
 pnpm studio:typecheck
 pnpm studio:test
 pnpm studio:build
-pnpm studio:storybook
-pnpm studio:storybook:build
 pnpm --filter docs build
 ```
 
@@ -89,7 +86,7 @@ dart run melos run test
 - `distribute_options.yaml`（含 `release` 命令）已废弃：只为兼容 Dart 版保留现有行为和缺陷修复，不新增字段或功能；新配置放到 `.fastforge/`（项目）或 `~/.fastforge/`（本机），新的自动化能力放到工作流。
 - Studio 的本地服务和 Worker 共享 `apps/studio-api/openapi.yaml` 契约。API 改动需核对两端实现、能力声明和客户端，保持行为一致。
 - 修改 OpenAPI 后，运行 `pnpm --filter studio-api-client codegen` 更新类型，再运行 `pnpm --filter studio-api-client codegen:check` 验证。不要直接手改生成的 `src/schema.d.ts`；其他生成代码也应优先修改生成来源。
-- Studio 可复用组件优先放入 `packages/studio-ui/`，前端通过 `studio-ui` workspace 包引用；组件变化同步检查相关 Storybook 展示。
+- Studio 前端直接使用 `@dazzlabs/dazzui` 组件和样式；业务组件放在 `apps/studio-web/src/components/`，避免添加仅转发 DazzUI 的封装。
 - 依赖调整使用对应生态的包管理工具，只保留与改动相关的锁文件变化。不要提交构建产物、缓存、令牌、签名材料或机器专属配置。
 - 行为变更补充能覆盖实际回归的测试；纯文档改动只需检查内容、路径及差异，无需运行整套构建。未能执行的检查应注明原因，不声称通过。
 - 完成时简要说明修改内容、实际执行的验证和仍存在的限制。

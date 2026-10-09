@@ -2,7 +2,7 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 
-import { TooltipProvider } from 'studio-ui/components/tooltip'
+import { TooltipProvider } from '@dazzlabs/dazzui'
 import { CapabilitiesProvider } from '#/lib/capabilities'
 import { I18nProvider } from '#/lib/i18n'
 

@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { Button } from 'studio-ui/components/button'
+import { Button } from '@dazzlabs/dazzui'
 import { PlayIcon, PlusIcon } from 'lucide-react'
 
 import { PageBody, PageTitle } from '#/components/page-body'
@@ -40,7 +40,7 @@ function Workflows() {
             'The YAML under .fastforge/workflows. These are definitions — each execution shows up under Runs.',
           )}
           actions={
-            <Button size="sm">
+            <Button size="small" variant="filled">
               <PlusIcon data-icon="inline-start" />
               {t('New workflow')}
             </Button>
@@ -63,7 +63,7 @@ function Workflows() {
               <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
                 {workflow.trigger}
               </span>
-              <Button variant="outline" size="sm" className="shrink-0">
+              <Button variant="outlined" size="small" className="shrink-0">
                 <PlayIcon data-icon="inline-start" />
                 {t('Run')}
               </Button>
