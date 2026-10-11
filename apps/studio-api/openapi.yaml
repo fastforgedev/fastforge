@@ -140,6 +140,71 @@ paths:
         "204": { description: Removed }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/projects/{projectId}/packaging/{format}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: format
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/PackagingFormat" }
+    get:
+      tags: [Local]
+      operationId: getPackagingFile
+      summary: Read a native packaging template
+      description: |
+        Requires capabilities.localFs. Returns exists=false and empty content
+        when absent. Desktop selects the single shared *.desktop file (409
+        if ambiguous), falling back to ${APP_ID}.desktop. Pacman prefers
+        PKGINFO over .PKGINFO. Template variables are never expanded.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/PackagingFile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Ambiguous packaging file
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    put:
+      tags: [Local]
+      operationId: putPackagingFile
+      summary: Save or create a native packaging template
+      description: |
+        Requires capabilities.localFs. Writes only the selected native file
+        under .fastforge/packaging/linux; symlinks are rejected. Content is
+        UTF-8 text up to 256 KiB without NUL bytes. The required etag from GET
+        protects against external changes, including creation or renames.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PutPackagingFileRequest" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/PackagingFile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: File changed since it was read, or ambiguous file selection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
   /v1/projects/{projectId}/stores:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -639,6 +704,23 @@ components:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
 
   schemas:
+    PackagingFormat:
+      type: string
+      enum: [deb, pacman, desktop]
+    PackagingFile:
+      type: object
+      required: [path, exists, content, etag]
+      properties:
+        path: { type: string }
+        exists: { type: boolean }
+        content: { type: string }
+        etag: { type: string }
+    PutPackagingFileRequest:
+      type: object
+      required: [content, etag]
+      properties:
+        content: { type: string, maxLength: 262144 }
+        etag: { type: string }
     ErrorEnvelope:
       type: object
       required: [error]

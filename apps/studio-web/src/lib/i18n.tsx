@@ -12,6 +12,76 @@ const STORAGE_KEY = 'fastforge-studio-locale'
 type Entry = Partial<Record<Locale, string>>
 
 const messages: { [key: string]: Entry | undefined } = {
+  'Configure native packaging files for your application.': {
+    'zh-CN': '配置应用的原生打包文件。',
+  },
+  'Local packaging files': { 'zh-CN': '本地打包文件' },
+  'Open this project in local Studio to edit its packaging files.': {
+    'zh-CN': '在本地 Studio 中打开项目，即可编辑打包文件。',
+  },
+  'Package format': { 'zh-CN': '打包格式' },
+  'Saved directly to your project': { 'zh-CN': '直接保存到项目目录' },
+  'Debian / Ubuntu': { 'zh-CN': 'Debian / Ubuntu' },
+  'Package metadata and dependencies for .deb installers.': {
+    'zh-CN': '配置 .deb 安装包的元数据和依赖。',
+  },
+  'Arch Linux': { 'zh-CN': 'Arch Linux' },
+  'Package metadata and dependencies for Pacman packages.': {
+    'zh-CN': '配置 Pacman 软件包的元数据和依赖。',
+  },
+  'Linux desktop': { 'zh-CN': 'Linux 桌面启动器' },
+  'Launcher shared by Linux package formats, including DEB, RPM, Pacman and AppImage.':
+    {
+      'zh-CN':
+        'DEB、RPM、Pacman 和 AppImage 等 Linux 打包格式共用的桌面启动器。',
+    },
+  'Package name': { 'zh-CN': '软件包名称' },
+  Architecture: { 'zh-CN': '架构' },
+  Maintainer: { 'zh-CN': '维护者' },
+  Section: { 'zh-CN': '分区' },
+  Priority: { 'zh-CN': '优先级' },
+  Homepage: { 'zh-CN': '主页' },
+  Dependencies: { 'zh-CN': '依赖' },
+  'Separate dependencies with commas.': { 'zh-CN': '多个依赖以逗号分隔。' },
+  'First line: summary. Remaining lines: full description.': {
+    'zh-CN': '第一行填写摘要，其余行填写详细描述。',
+  },
+  'Package base': { 'zh-CN': '基础包名称' },
+  Licenses: { 'zh-CN': '许可证' },
+  'Optional dependencies': { 'zh-CN': '可选依赖' },
+  Groups: { 'zh-CN': '分组' },
+  'One value per line.': { 'zh-CN': '每行填写一个值。' },
+  'Entry type': { 'zh-CN': '启动器类型' },
+  'Display name': { 'zh-CN': '显示名称' },
+  'Generic name': { 'zh-CN': '通用名称' },
+  'Launch command': { 'zh-CN': '启动命令' },
+  Icon: { 'zh-CN': '图标' },
+  'Separate values with semicolons, ending with a semicolon.': {
+    'zh-CN': '多个值以分号分隔，并以分号结尾。',
+  },
+  'Startup notification': { 'zh-CN': '启动通知' },
+  'Run in terminal': { 'zh-CN': '在终端运行' },
+  'true, false, or a template variable.': {
+    'zh-CN': '填写 true、false 或模板变量。',
+  },
+  'New file': { 'zh-CN': '新文件' },
+  'Unsaved changes': { 'zh-CN': '未保存的更改' },
+  'On disk': { 'zh-CN': '已保存到磁盘' },
+  'Discard changes and reload': { 'zh-CN': '放弃更改并重新加载' },
+  Reload: { 'zh-CN': '重新加载' },
+  'Loading packaging file…': { 'zh-CN': '正在加载打包文件…' },
+  'File preview': { 'zh-CN': '文件预览' },
+  'Template variables, comments and other fields are preserved. Variables resolve when packaging.':
+    { 'zh-CN': '保留模板变量、注释和其他字段，变量将在打包时替换。' },
+  'Changes apply to future packages.': { 'zh-CN': '更改将在下次打包时生效。' },
+  Saved: { 'zh-CN': '已保存' },
+  'Saving…': { 'zh-CN': '正在保存…' },
+  'Save changes': { 'zh-CN': '保存更改' },
+  'Create file': { 'zh-CN': '创建文件' },
+  'The file changed on disk. Copy your changes from the preview, then reload before saving.':
+    {
+      'zh-CN': '文件已被外部修改。请先从预览中复制你的更改，再重新加载后保存。',
+    },
   'Build, package, and publish your apps with Fastforge Studio.': {
     'zh-CN': '使用 Fastforge Studio 构建、打包和发布应用。',
     ja: 'Fastforge Studio でアプリのビルド、パッケージ化、公開を行いましょう。',

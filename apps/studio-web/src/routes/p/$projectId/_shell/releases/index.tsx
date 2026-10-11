@@ -1,7 +1,8 @@
+import { PreferenceGroup, EmptyState } from '@dazzlabs/dazzui'
 import { createFileRoute } from '@tanstack/react-router'
 import { RocketIcon } from 'lucide-react'
 
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { PageHeader } from '#/components/page-header'
 import { useI18n } from '#/lib/i18n'
 
@@ -15,18 +16,30 @@ function Releases() {
     <>
       <PageHeader crumbs={[{ label: t('Releases') }]} />
       <PageBody>
-        <PageTitle
-          title={t('Releases')}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {t('Releases')}
+            </span>
+          }
           description={t(
             'One row per version, showing where that version currently stands on each channel.',
           )}
         />
         <EmptyState
-          icon={RocketIcon}
-          title={t('No releases yet')}
-          description={t(
-            'A release groups the artifacts of one version and tracks their status across every store and publisher.',
-          )}
+          title={
+            <>
+              <RocketIcon aria-hidden />
+              <span role="heading" aria-level={2}>
+                {t('No releases yet')}
+              </span>
+              <p>
+                {t(
+                  'A release groups the artifacts of one version and tracks their status across every store and publisher.',
+                )}
+              </p>
+            </>
+          }
         />
       </PageBody>
     </>

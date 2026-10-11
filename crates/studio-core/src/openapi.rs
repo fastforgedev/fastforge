@@ -104,6 +104,26 @@ mod tests {
     }
 
     #[test]
+    fn packaging_formats_match_the_contract() {
+        use crate::model::PackagingFormat;
+        let actual: Vec<String> = [
+            PackagingFormat::Deb,
+            PackagingFormat::Pacman,
+            PackagingFormat::Desktop,
+        ]
+        .iter()
+        .map(|format| {
+            serde_json::to_value(format)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+        assert_eq!(schema_enum(&document(), "PackagingFormat"), actual);
+    }
+
+    #[test]
     fn run_kind_and_status_match_the_contract() {
         let document = document();
         assert_eq!(

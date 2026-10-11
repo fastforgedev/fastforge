@@ -64,6 +64,39 @@ export interface paths {
         patch: operations["updateProject"];
         trace?: never;
     };
+    "/v1/projects/{projectId}/packaging/{format}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                format: components["schemas"]["PackagingFormat"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a native packaging template
+         * @description Requires capabilities.localFs. Returns exists=false and empty content
+         *     when absent. Desktop selects the single shared *.desktop file (409
+         *     if ambiguous), falling back to ${APP_ID}.desktop. Pacman prefers
+         *     PKGINFO over .PKGINFO. Template variables are never expanded.
+         */
+        get: operations["getPackagingFile"];
+        /**
+         * Save or create a native packaging template
+         * @description Requires capabilities.localFs. Writes only the selected native file
+         *     under .fastforge/packaging/linux; symlinks are rejected. Content is
+         *     UTF-8 text up to 256 KiB without NUL bytes. The required etag from GET
+         *     protects against external changes, including creation or renames.
+         */
+        put: operations["putPackagingFile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{projectId}/stores": {
         parameters: {
             query?: never;
@@ -439,6 +472,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        PackagingFormat: "deb" | "pacman" | "desktop";
+        PackagingFile: {
+            path: string;
+            exists: boolean;
+            content: string;
+            etag: string;
+        };
+        PutPackagingFileRequest: {
+            content: string;
+            etag: string;
+        };
         ErrorEnvelope: {
             error: {
                 /**
@@ -945,6 +990,82 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getPackagingFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                format: components["schemas"]["PackagingFormat"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PackagingFile"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            /** @description Ambiguous packaging file */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putPackagingFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                format: components["schemas"]["PackagingFormat"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutPackagingFileRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PackagingFile"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            /** @description File changed since it was read, or ambiguous file selection */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     listStores: {

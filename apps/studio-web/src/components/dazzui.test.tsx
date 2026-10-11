@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderUI,
   screen,
   waitFor,
 } from '@testing-library/react'
@@ -17,6 +18,15 @@ import { StudioSidebar, StudioSidebarProvider } from './studio-sidebar'
 import { LocaleMenu } from './locale-menu'
 import { I18nProvider } from '#/lib/i18n'
 import { ThemeToggle } from './theme-toggle'
+import { ThemeProvider, themeNames } from '#/lib/theme'
+
+function render(node: ReactNode) {
+  return renderUI(
+    <I18nProvider>
+      <ThemeProvider>{node}</ThemeProvider>
+    </I18nProvider>,
+  )
+}
 
 function mockViewport(mobile: boolean) {
   vi.stubGlobal(
@@ -142,5 +152,28 @@ describe('DazzUI integration', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: '语言' })).toBeTruthy(),
     )
+  })
+})
+
+describe('DazzUI theme catalogue', () => {
+  it.each(
+    themeNames.flatMap((name) => ['light', 'dark'].map((mode) => [name, mode])),
+  )('restores %s %s on pages without an appearance control', (theme, mode) => {
+    window.localStorage.setItem('fastforge-studio-theme-name', theme)
+    window.localStorage.setItem('fastforge-studio-theme', mode)
+    render(<p>Project list</p>)
+    expect(document.documentElement.dataset.theme).toBe(`${theme}-${mode}`)
+    expect(document.documentElement.style.colorScheme).toBe(mode)
+  })
+
+  it('exposes every DazzUI theme in the appearance menu', async () => {
+    render(<ThemeToggle />)
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle theme' }))
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Theme' }))
+    const options = await screen.findAllByRole('option')
+    expect(options).toHaveLength(themeNames.length)
+    expect(screen.getByRole('option', { name: 'Windows 11' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'macOS 27' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'Tokyo Night' })).toBeTruthy()
   })
 })

@@ -1,7 +1,8 @@
+import { PreferenceGroup, EmptyState } from '@dazzlabs/dazzui'
 import { createFileRoute } from '@tanstack/react-router'
 import { CloudUploadIcon } from 'lucide-react'
 
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { useI18n } from '#/lib/i18n'
 
 export const Route = createFileRoute(
@@ -17,18 +18,30 @@ function PublisherDetail() {
   return (
     <>
       <PageBody>
-        <PageTitle
-          title={publisherId}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {publisherId}
+            </span>
+          }
           description={t(
             'Credentials and target options for this publisher, plus what has been uploaded to it.',
           )}
         />
         <EmptyState
-          icon={CloudUploadIcon}
-          title={t('Publisher target')}
-          description={t(
-            'Target options, the credential it authenticates with, and its upload history.',
-          )}
+          title={
+            <>
+              <CloudUploadIcon aria-hidden />
+              <span role="heading" aria-level={2}>
+                {t('Publisher target')}
+              </span>
+              <p>
+                {t(
+                  'Target options, the credential it authenticates with, and its upload history.',
+                )}
+              </p>
+            </>
+          }
         />
       </PageBody>
     </>

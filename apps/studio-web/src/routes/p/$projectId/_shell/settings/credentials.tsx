@@ -1,10 +1,13 @@
+import { PreferenceGroup, EmptyState } from '@dazzlabs/dazzui'
 import { createFileRoute } from '@tanstack/react-router'
 import { KeyIcon } from 'lucide-react'
 
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { useI18n } from '#/lib/i18n'
 
-export const Route = createFileRoute('/p/$projectId/_shell/settings/credentials')({
+export const Route = createFileRoute(
+  '/p/$projectId/_shell/settings/credentials',
+)({
   component: SettingsCredentials,
 })
 
@@ -13,18 +16,30 @@ function SettingsCredentials() {
   return (
     <>
       <PageBody>
-        <PageTitle
-          title={t('Credentials')}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {t('Credentials')}
+            </span>
+          }
           description={t(
             'Signing keys and the API credentials stores and publishers authenticate with.',
           )}
         />
         <EmptyState
-          icon={KeyIcon}
-          title={t('No credentials stored')}
-          description={t(
-            'Keystores, App Store Connect keys and service accounts are referenced by name from the configuration.',
-          )}
+          title={
+            <>
+              <KeyIcon aria-hidden />
+              <span role="heading" aria-level={2}>
+                {t('No credentials stored')}
+              </span>
+              <p>
+                {t(
+                  'Keystores, App Store Connect keys and service accounts are referenced by name from the configuration.',
+                )}
+              </p>
+            </>
+          }
         />
       </PageBody>
     </>

@@ -1,7 +1,8 @@
+import { PreferenceGroup, EmptyState } from '@dazzlabs/dazzui'
 import { createFileRoute } from '@tanstack/react-router'
 import { WorkflowIcon } from 'lucide-react'
 
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { PageHeader } from '#/components/page-header'
 import { useI18n } from '#/lib/i18n'
 
@@ -27,18 +28,26 @@ function WorkflowDetail() {
         ]}
       />
       <PageBody>
-        <PageTitle
-          title={`${workflowId}`}
+        <PreferenceGroup
+          title={<span role="heading" aria-level={1}>{`${workflowId}`}</span>}
           description={t(
             'Definition, dispatch inputs and run history for this workflow.',
           )}
         />
         <EmptyState
-          icon={WorkflowIcon}
-          title={t('Workflow definition')}
-          description={t(
-            'The YAML source, its workflow_dispatch inputs and a manual trigger will live here.',
-          )}
+          title={
+            <>
+              <WorkflowIcon aria-hidden />
+              <span role="heading" aria-level={2}>
+                {t('Workflow definition')}
+              </span>
+              <p>
+                {t(
+                  'The YAML source, its workflow_dispatch inputs and a manual trigger will live here.',
+                )}
+              </p>
+            </>
+          }
         />
       </PageBody>
     </>

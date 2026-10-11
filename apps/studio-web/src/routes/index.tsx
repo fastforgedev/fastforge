@@ -1,5 +1,16 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
-import { Button } from '@dazzlabs/dazzui'
+import { createFileRoute } from '@tanstack/react-router'
+import {
+  Badge,
+  Button,
+  Card,
+  Code,
+  EmptyState,
+  PreferenceGroup,
+  SectionLabel,
+} from '@dazzlabs/dazzui'
+import { RouterLink } from '#/components/router-link'
+import { ThemeToggle } from '#/components/theme-toggle'
+import { LocaleMenu } from '#/components/locale-menu'
 import { api } from 'studio-api-client'
 import { AlertTriangleIcon, PlusIcon } from 'lucide-react'
 
@@ -32,11 +43,13 @@ function ProjectsIndex() {
             {capabilities.mode === 'local' ? t('On this machine') : t('Hosted')}
           </p>
         </div>
+        <ThemeToggle />
+        <LocaleMenu />
       </header>
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">{t('Projects')}</h2>
+          <SectionLabel>{t('Projects')}</SectionLabel>
           {/* Registering from the browser needs the directory picker, which
               lands with the rest of the local filesystem surface. */}
           <Button size="small" variant="filled" disabled>
@@ -48,40 +61,46 @@ function ProjectsIndex() {
         </div>
 
         {projects.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-            {t('No projects yet. Register one by running')}{' '}
-            <code className="font-mono text-xs">fastforge-studio serve</code>{' '}
-            {t('from a project directory.')}
-          </p>
+          <EmptyState
+            title={
+              <>
+                {t('No projects yet. Register one by running')}{' '}
+                <Code>fastforge-studio serve</Code>{' '}
+                {t('from a project directory.')}
+              </>
+            }
+          />
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2">
             {projects.map((project) => (
               <li key={project.id}>
-                <Link
-                  to="/p/$projectId"
-                  params={{ projectId: project.id }}
-                  className="block rounded-xl border bg-card p-5 transition-colors hover:border-foreground/20 hover:bg-muted/40"
-                >
-                  <p className="flex items-center gap-2 font-medium">
-                    {project.name}
-                    {/* A registered directory that has moved or been deleted:
+                <Card>
+                  <PreferenceGroup
+                    title={
+                      <RouterLink
+                        to="/p/$projectId"
+                        params={{ projectId: project.id }}
+                      >
+                        {project.name}
+                      </RouterLink>
+                    }
+                    description={project.path}
+                  />
+                  {/* A registered directory that has moved or been deleted:
                         still listed so it can be removed, but nothing inside it
                         can be read. */}
-                    {project.missing ? (
-                      <AlertTriangleIcon className="size-4 text-muted-foreground" />
-                    ) : null}
-                  </p>
-                  {project.path ? (
-                    <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                      {project.path}
-                    </p>
+                  {project.missing ? (
+                    <Badge tint="warning">
+                      <AlertTriangleIcon />
+                      {t('Directory not found')}
+                    </Badge>
                   ) : null}
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {project.missing
-                      ? t('Directory not found')
-                      : formatPlatforms(project.platforms)}
-                  </p>
-                </Link>
+                  {!project.missing && (
+                    <Badge tint="neutral">
+                      {formatPlatforms(project.platforms)}
+                    </Badge>
+                  )}
+                </Card>
               </li>
             ))}
           </ul>

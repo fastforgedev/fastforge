@@ -1,4 +1,5 @@
-import { cx } from '@dazzlabs/dazzui'
+import { Badge, Code } from '@dazzlabs/dazzui'
+import type { Tint } from '@dazzlabs/dazzui'
 
 import type { AuthStatus } from 'studio-api-client'
 import { useI18n } from '#/lib/i18n'
@@ -12,34 +13,29 @@ import { useI18n } from '#/lib/i18n'
  */
 export function AuthStatusBadge({ status }: { status: AuthStatus }) {
   const { t } = useI18n()
-  const { label, tone } = describe(status, t)
+  const { label, tint } = describe(status, t)
 
   return (
-    <span
-      className={cx(
-        'shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium',
-        tone,
-      )}
-    >
+    <Badge tint={tint} size="small">
       {label}
-    </span>
+    </Badge>
   )
 }
 
 function describe(
   status: AuthStatus,
   t: (key: string) => string,
-): { label: string; tone: string } {
+): { label: string; tint: Tint } {
   switch (status.state) {
     case 'ready':
-      return { label: t('Ready'), tone: '' }
+      return { label: t('Ready'), tint: 'success' }
     case 'incomplete':
       return {
         label: t('Credentials missing'),
-        tone: 'border-amber-500/40 text-amber-600 dark:text-amber-400',
+        tint: 'warning',
       }
     case 'notConfigured':
-      return { label: t('Not configured'), tone: 'text-muted-foreground' }
+      return { label: t('Not configured'), tint: 'neutral' }
   }
 }
 
@@ -67,11 +63,11 @@ export function AuthFieldList({ status }: { status: AuthStatus }) {
             {status.state === 'ready' ? (
               field.source
             ) : (
-              <span className="text-amber-600 dark:text-amber-400">
+              <Code>
                 {field.candidates?.length
                   ? t('set {names}', { names: field.candidates.join(' / ') })
                   : t('unset')}
-              </span>
+              </Code>
             )}
           </dd>
         </div>

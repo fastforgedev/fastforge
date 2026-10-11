@@ -1,3 +1,4 @@
+import { Callout, Code, EmptyState } from '@dazzlabs/dazzui'
 import * as React from 'react'
 import { api } from 'studio-api-client'
 import { useI18n } from '#/lib/i18n'
@@ -85,21 +86,20 @@ function ServerUnreachable({ error }: { error: Error }) {
   const { t } = useI18n()
   return (
     <main className="flex min-h-svh flex-col items-center justify-center gap-4 p-6 text-center">
-      <div className="max-w-md space-y-2">
-        <p className="text-lg font-medium">
-          {t('Can’t reach the Studio server')}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          {t('Start it with')}{' '}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-            fastforge-studio serve
-          </code>{' '}
-          {t('and reload.')}
-        </p>
-        <p className="font-mono text-xs text-muted-foreground">
-          {error.message}
-        </p>
-      </div>
+      <EmptyState
+        title={
+          <>
+            {t('Can’t reach the Studio server')}
+            <p>
+              {t('Start it with')} <Code>fastforge-studio serve</Code>{' '}
+              {t('and reload.')}
+            </p>
+          </>
+        }
+      />
+      <Callout tint="danger" role="alert">
+        {error.message}
+      </Callout>
     </main>
   )
 }

@@ -1,9 +1,21 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import {
+  Card,
+  Callout,
+  Code,
+  EmptyState,
+  Table,
+  TableRow,
+  TableCell,
+  Badge,
+  PreferenceGroup,
+} from '@dazzlabs/dazzui'
+import { RouterLink } from '#/components/router-link'
+import { createFileRoute } from '@tanstack/react-router'
 import { api } from 'studio-api-client'
 import { PackageIcon } from 'lucide-react'
 
 import { AuthFieldList, AuthStatusBadge } from '#/components/auth-status-badge'
-import { PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { PageHeader } from '#/components/page-header'
 import { useI18n } from '#/lib/i18n'
 
@@ -29,8 +41,12 @@ function Stores() {
     <>
       <PageHeader crumbs={[{ label: t('Stores') }]} />
       <PageBody>
-        <PageTitle
-          title={t('Stores')}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {t('Stores')}
+            </span>
+          }
           description={t(
             'Storefronts that own the listing: versions, tracks, review state and catalog metadata.',
           )}
@@ -69,67 +85,61 @@ function StoreCard({
 }) {
   const { t } = useI18n()
   return (
-    <section className="rounded-xl border bg-card">
-      <header className="flex items-start gap-4 p-4">
-        <div className="min-w-0 flex-1">
-          <Link
+    <Card>
+      <PreferenceGroup
+        title={
+          <RouterLink
             to="/p/$projectId/stores/$storeId"
             params={{ projectId, storeId: connection.store }}
-            className="font-medium hover:underline"
           >
             {connection.name}
-          </Link>
-          <p className="text-sm text-muted-foreground">
-            {connection.description}
-          </p>
-          <AuthFieldList status={connection.authStatus} />
-        </div>
-        <AuthStatusBadge status={connection.authStatus} />
-      </header>
-
+          </RouterLink>
+        }
+        description={connection.description}
+        action={<AuthStatusBadge status={connection.authStatus} />}
+      />
+      <AuthFieldList status={connection.authStatus} />
       {!connection.configured ? (
-        <p className="border-t px-4 py-3 text-sm text-muted-foreground">
-          Add a <code className="font-mono">{connection.store}</code> section to{' '}
-          <code className="font-mono">.fastforge/config.yaml</code> to connect
-          this store.
-        </p>
+        <Callout>
+          Add a <Code>{connection.store}</Code> section to{' '}
+          <Code>.fastforge/config.yaml</Code> to connect this store.
+        </Callout>
       ) : apps.length === 0 ? (
-        <p className="border-t px-4 py-3 text-sm text-muted-foreground">
-          {t('No apps registered under this store.')}
-        </p>
+        <EmptyState title={t('No apps registered under this store.')} />
       ) : (
-        <ul className="divide-y border-t">
+        <Table>
           {apps.map((app) => (
-            <li key={app.id}>
-              <Link
-                to="/p/$projectId/stores/$storeId"
-                params={{ projectId, storeId: app.store }}
-                search={{ app: app.id }}
-                className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-muted/40"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">
-                    {app.name ?? app.identifier}
-                  </p>
-                  <p className="truncate font-mono text-xs text-muted-foreground">
+            <TableRow key={app.id}>
+              <TableCell className="min-w-0 flex-1">
+                <RouterLink
+                  to="/p/$projectId/stores/$storeId"
+                  params={{ projectId, storeId: app.store }}
+                  search={{ app: app.id }}
+                >
+                  {app.name ?? app.identifier}
+                </RouterLink>
+                <p>
+                  <Code>
                     {app.identifier}
                     {app.appId ? ` · ${app.appId}` : ''}
                     {app.track ? ` · ${app.track}` : ''}
-                  </p>
-                </div>
-                <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                  <PackageIcon className="size-3.5" />
+                  </Code>
+                </p>
+              </TableCell>
+              <TableCell>
+                <Badge tint="neutral">
+                  <PackageIcon />
                   {app.catalog.exists
                     ? t('{count} catalog files', {
                         count: app.catalog.fileCount,
                       })
                     : t('Not pulled')}
-                </span>
-              </Link>
-            </li>
+                </Badge>
+              </TableCell>
+            </TableRow>
           ))}
-        </ul>
+        </Table>
       )}
-    </section>
+    </Card>
   )
 }

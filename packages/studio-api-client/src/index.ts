@@ -20,6 +20,8 @@ export type ListingMediaItem = components['schemas']['ListingMediaItem']
 export type ListingTrack = components['schemas']['ListingTrack']
 export type Run = components['schemas']['Run']
 export type DirectoryListing = components['schemas']['DirectoryListing']
+export type PackagingFile = components['schemas']['PackagingFile']
+export type PackagingFormat = components['schemas']['PackagingFormat']
 
 /**
  * A failure the server described. `code` is the stable half — branch on it —
@@ -131,6 +133,24 @@ export function createClient(options: ClientOptions = {}) {
 
     deleteProject: (projectId: string) =>
       request<void>(`/v1/projects/${segment(projectId)}`, { method: 'DELETE' }),
+
+    getPackagingFile: (projectId: string, format: PackagingFormat) =>
+      request<PackagingFile>(
+        `/v1/projects/${segment(projectId)}/packaging/${segment(format)}`,
+      ),
+
+    putPackagingFile: (
+      projectId: string,
+      format: PackagingFormat,
+      body: components['schemas']['PutPackagingFileRequest'],
+    ) =>
+      request<PackagingFile>(
+        `/v1/projects/${segment(projectId)}/packaging/${segment(format)}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(body),
+        },
+      ),
 
     listStores: (projectId: string) =>
       request<Array<StoreConnection>>(`/v1/projects/${segment(projectId)}/stores`),

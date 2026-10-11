@@ -20,6 +20,10 @@ pub fn router(state: AppState, web_root: Option<PathBuf>) -> Router {
     let api = Router::new()
         .route("/v1/capabilities", get(routes::meta::capabilities))
         .route(
+            "/v1/projects/{projectId}/packaging/{format}",
+            get(routes::packaging::read).put(routes::packaging::write),
+        )
+        .route(
             "/v1/projects",
             get(routes::projects::list).post(routes::projects::create),
         )

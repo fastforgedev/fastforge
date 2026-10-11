@@ -112,6 +112,17 @@ Requires `bsdtar` with zstd support; `makepkg` is not used. The artifact is a `.
 
 The legacy Pacman `installed_size` and `options` settings now produce migration warnings. `size` is measured from the staged payload in bytes; `options` belongs to makepkg and cannot be represented in PKGINFO. Move required preprocessing to hooks or workflows.
 
+## Studio forms
+
+Local Studio offers forms under **Settings → Build & Package** for
+`.fastforge/packaging/linux/deb/control`, Pacman `PKGINFO` (or an existing
+`.PKGINFO`), and the single shared `*.desktop` file. You can edit metadata,
+dependencies and launcher fields, preview the native file, and create missing
+files from templates. Variables, comments, unknown fields and other desktop
+groups are preserved; changes on disk since loading block a save until you
+reload. These forms target the Rust native packagers and do not change Dart's
+legacy configuration files.
+
 ## ZIP and direct
 
 `zip` archives the bundle directory; `direct` copies it to `dist/<version>/` without an archive. Both need no extra tools.

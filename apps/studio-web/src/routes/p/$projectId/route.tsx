@@ -1,3 +1,4 @@
+import { Code, EmptyState } from '@dazzlabs/dazzui'
 import { Outlet, createFileRoute, notFound } from '@tanstack/react-router'
 import { RouterLink } from '#/components/router-link'
 import { ApiError, api } from 'studio-api-client'
@@ -30,19 +31,23 @@ function ProjectNotFound({ data }: { data?: unknown }) {
 
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-4 p-6 text-center">
-      <div className="space-y-1">
-        <p className="text-lg font-medium">{t('Project not found')}</p>
-        <p className="text-sm text-muted-foreground">
-          {typeof data === 'string' ? (
-            data
-          ) : (
-            <>
-              No project <code className="font-mono">{projectId}</code>.
-            </>
-          )}
-        </p>
-      </div>
-      <RouterLink to="/">{t('Back to projects')}</RouterLink>
+      <EmptyState
+        title={
+          <>
+            {t('Project not found')}
+            <p>
+              {typeof data === 'string' ? (
+                data
+              ) : (
+                <>
+                  No project <Code>{projectId}</Code>.
+                </>
+              )}
+            </p>
+          </>
+        }
+        action={<RouterLink to="/">{t('Back to projects')}</RouterLink>}
+      />
     </div>
   )
 }

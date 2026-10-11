@@ -1,5 +1,6 @@
 mod catalog;
 mod listing;
+mod packaging;
 mod project;
 mod run;
 mod store;
@@ -12,6 +13,7 @@ pub use listing::{
     ListingMediaGroup, ListingMediaItem, ListingSource, ListingTrack, ListingTrackRelease,
     StoreListing, build_listing, media_group_label,
 };
+pub use packaging::{PackagingFile, PackagingFormat};
 pub use project::{Platform, Project, ProjectSummary, project_id_for_path};
 pub use run::{LogLevel, Progress, Run, RunEvent, RunKind, RunStatus};
 pub use store::{

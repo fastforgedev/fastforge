@@ -7,6 +7,7 @@ pub mod catalog;
 pub mod config;
 pub mod env;
 pub mod listing;
+pub mod packaging;
 pub mod paths;
 pub mod project;
 pub mod registry;

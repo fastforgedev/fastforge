@@ -10,8 +10,8 @@ use crate::local::registry::{RegisteredProject, Registry};
 
 /// Everything the handlers share.
 ///
-/// The registry is the only mutable state. Nothing about a project's *contents*
-/// is cached: stores, catalogs and platforms are read from the checkout on
+/// The registry is cached; packaging writes share a lock. No project *contents*
+/// are cached: stores, catalogs and platforms are read from the checkout on
 /// every request, so Studio can never disagree with what `fastforge` would see.
 #[derive(Clone)]
 pub struct AppState {
@@ -21,6 +21,7 @@ pub struct AppState {
 struct Inner {
     registry_path: PathBuf,
     registry: RwLock<Registry>,
+    packaging_write: tokio::sync::Mutex<()>,
     capabilities: Capabilities,
     /// The root of the browsable area for the directory picker.
     home: PathBuf,
@@ -33,6 +34,7 @@ impl AppState {
             inner: Arc::new(Inner {
                 registry_path,
                 registry: RwLock::new(registry),
+                packaging_write: tokio::sync::Mutex::new(()),
                 capabilities: Capabilities {
                     // Local mode is where catalog sync belongs, but the store
                     // clients are not wired up yet — so this build says so
@@ -48,6 +50,10 @@ impl AppState {
 
     pub fn capabilities(&self) -> Capabilities {
         self.inner.capabilities
+    }
+
+    pub async fn packaging_write_lock(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.inner.packaging_write.lock().await
     }
 
     pub fn home(&self) -> &Path {

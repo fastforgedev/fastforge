@@ -5,6 +5,7 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 import { TooltipProvider } from '@dazzlabs/dazzui'
 import { CapabilitiesProvider } from '#/lib/capabilities'
 import { I18nProvider } from '#/lib/i18n'
+import { ThemeProvider } from '#/lib/theme'
 
 import appCss from '../styles.css?url'
 
@@ -65,9 +66,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           fetches them before anything under it renders.
         */}
         <I18nProvider>
-          <TooltipProvider>
-            <CapabilitiesProvider>{children}</CapabilitiesProvider>
-          </TooltipProvider>
+          <ThemeProvider>
+            <TooltipProvider>
+              <CapabilitiesProvider>{children}</CapabilitiesProvider>
+            </TooltipProvider>
+          </ThemeProvider>
         </I18nProvider>
         <TanStackDevtools
           config={{

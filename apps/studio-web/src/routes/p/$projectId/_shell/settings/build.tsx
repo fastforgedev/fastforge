@@ -1,7 +1,10 @@
+import { PreferenceGroup, EmptyState } from '@dazzlabs/dazzui'
 import { createFileRoute } from '@tanstack/react-router'
 import { HammerIcon } from 'lucide-react'
 
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
+import { PackagingForms } from '#/components/packaging-forms'
+import { useCapabilities } from '#/lib/capabilities'
 import { useI18n } from '#/lib/i18n'
 
 export const Route = createFileRoute('/p/$projectId/_shell/settings/build')({
@@ -10,22 +13,40 @@ export const Route = createFileRoute('/p/$projectId/_shell/settings/build')({
 
 function SettingsBuild() {
   const { t } = useI18n()
+  const { projectId } = Route.useParams()
+  const { localFs } = useCapabilities()
   return (
     <>
       <PageBody>
-        <PageTitle
-          title={t('Build & Package')}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {t('Build & Package')}
+            </span>
+          }
           description={t(
-            'Which builder runs, and which package formats it produces.',
+            'Configure native packaging files for your application.',
           )}
         />
-        <EmptyState
-          icon={HammerIcon}
-          title={t('Builders and packagers')}
-          description={t(
-            'Flutter, Gradle, Xcode or a custom builder, and the APK / AAB / IPA / DMG / PKG targets built from it.',
-          )}
-        />
+        {localFs ? (
+          <PackagingForms key={projectId} projectId={projectId} />
+        ) : (
+          <EmptyState
+            title={
+              <>
+                <HammerIcon aria-hidden />
+                <span role="heading" aria-level={2}>
+                  {t('Local packaging files')}
+                </span>
+                <p>
+                  {t(
+                    'Open this project in local Studio to edit its packaging files.',
+                  )}
+                </p>
+              </>
+            }
+          />
+        )}
       </PageBody>
     </>
   )

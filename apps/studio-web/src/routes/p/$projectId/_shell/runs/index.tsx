@@ -1,6 +1,15 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { RouterLink } from '#/components/router-link'
+import {
+  Badge,
+  PillTabs,
+  PreferenceGroup,
+  Table,
+  TableRow,
+  TableCell,
+} from '@dazzlabs/dazzui'
+import { createFileRoute } from '@tanstack/react-router'
 
-import { PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { PageHeader } from '#/components/page-header'
 import { useI18n } from '#/lib/i18n'
 
@@ -49,55 +58,46 @@ function Runs() {
     <>
       <PageHeader crumbs={[{ label: t('Runs') }]} />
       <PageBody>
-        <PageTitle
-          title={t('Runs')}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {t('Runs')}
+            </span>
+          }
           description={t(
             'Every build, package, publish and workflow execution, newest first.',
           )}
         />
 
-        <div className="flex flex-wrap gap-2">
-          {kinds.map((kind, index) => (
-            <button
-              key={kind}
-              type="button"
-              data-active={index === 0}
-              className="rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted data-active:bg-secondary data-active:text-secondary-foreground"
-            >
-              {t(kind)}
-            </button>
-          ))}
-        </div>
-
-        <ul className="divide-y rounded-xl border bg-card">
+        <PillTabs
+          items={kinds.map((kind) => ({ value: kind, label: t(kind) }))}
+          defaultValue="All"
+        />
+        <Table>
           {runs.map((run) => (
-            <li key={run.id}>
-              <Link
-                to="/p/$projectId/runs/$runId"
-                params={{ projectId, runId: run.id }}
-                className="flex items-center gap-4 p-4 transition-colors hover:bg-muted/40"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">
-                    {t(run.label)}{' '}
-                    <span className="font-normal text-muted-foreground">
-                      #{run.id}
-                    </span>
-                  </p>
-                  <p className="truncate text-sm text-muted-foreground">
-                    {run.kind} · {run.target}
-                  </p>
-                </div>
-                <span className="shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium">
+            <TableRow key={run.id}>
+              <TableCell className="min-w-0 flex-1">
+                <RouterLink
+                  to="/p/$projectId/runs/$runId"
+                  params={{ projectId, runId: run.id }}
+                >
+                  {t(run.label)} #{run.id}
+                </RouterLink>
+                <p>
+                  {run.kind} · {run.target}
+                </p>
+              </TableCell>
+              <TableCell>
+                <Badge tint={run.status === 'Failed' ? 'danger' : 'success'}>
                   {t(run.status)}
-                </span>
-                <span className="hidden w-16 shrink-0 text-right text-xs text-muted-foreground sm:block">
-                  {t(run.when)}
-                </span>
-              </Link>
-            </li>
+                </Badge>
+              </TableCell>
+              <TableCell align="end" className="hidden sm:block">
+                {t(run.when)}
+              </TableCell>
+            </TableRow>
           ))}
-        </ul>
+        </Table>
       </PageBody>
     </>
   )

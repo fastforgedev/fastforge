@@ -1,7 +1,8 @@
+import { PreferenceGroup, EmptyState } from '@dazzlabs/dazzui'
 import { createFileRoute } from '@tanstack/react-router'
 import { ScrollTextIcon } from 'lucide-react'
 
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { PageHeader } from '#/components/page-header'
 import { useI18n } from '#/lib/i18n'
 
@@ -25,18 +26,30 @@ function RunDetail() {
         ]}
       />
       <PageBody>
-        <PageTitle
-          title={t('Run {id}', { id: runId })}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {t('Run {id}', { id: runId })}
+            </span>
+          }
           description={t(
             'Step timeline, logs and the artifacts this run produced.',
           )}
         />
         <EmptyState
-          icon={ScrollTextIcon}
-          title={t('Run log')}
-          description={t(
-            'Streaming step output and per-step timings will render here.',
-          )}
+          title={
+            <>
+              <ScrollTextIcon aria-hidden />
+              <span role="heading" aria-level={2}>
+                {t('Run log')}
+              </span>
+              <p>
+                {t(
+                  'Streaming step output and per-step timings will render here.',
+                )}
+              </p>
+            </>
+          }
         />
       </PageBody>
     </>

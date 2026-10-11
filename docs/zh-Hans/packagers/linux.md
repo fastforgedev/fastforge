@@ -112,6 +112,15 @@ RPM 保留 `/opt/<binary>` 安装目录。包名与程序名不同的项目同�
 
 Pacman 旧字段 `installed_size` 和 `options` 现在会输出迁移提示。`size` 按实际暂存内容计算字节数；`options` 属于 makepkg，不能作为 PKGINFO 元数据。需要的预处理应移到钩子或工作流。
 
+## Studio 表单
+
+在本地 Studio 中打开项目，进入「设置 → 构建与打包」，即可编辑
+`.fastforge/packaging/linux/deb/control`、Pacman 的 `PKGINFO`（或已有的
+`.PKGINFO`），以及共享目录中唯一的 `*.desktop` 文件。表单支持配置元数据、
+依赖和启动器字段，预览原生文件，并从模板创建缺失文件。保存时保留变量、注释、
+未覆盖的字段和桌面启动器的其他分组；如果加载后文件被外部修改，必须重新加载后
+才能保存。这些表单用于 Rust 原生打包器，不修改 Dart 的旧版配置文件。
+
 ## ZIP 和 direct
 
 `zip` 把 bundle 目录压缩为归档；`direct` 把它直接复制到 `dist/<version>/`。两者都不需要额外工具。

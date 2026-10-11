@@ -1,10 +1,13 @@
+import { PreferenceGroup, EmptyState } from '@dazzlabs/dazzui'
 import { createFileRoute } from '@tanstack/react-router'
 import { FileCodeIcon } from 'lucide-react'
 
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { useI18n } from '#/lib/i18n'
 
-export const Route = createFileRoute('/p/$projectId/_shell/settings/configuration')({
+export const Route = createFileRoute(
+  '/p/$projectId/_shell/settings/configuration',
+)({
   component: SettingsConfiguration,
 })
 
@@ -13,18 +16,30 @@ function SettingsConfiguration() {
   return (
     <>
       <PageBody>
-        <PageTitle
-          title={t('Configuration')}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {t('Configuration')}
+            </span>
+          }
           description={t(
             'The raw .fastforge/config.yaml. Every form on the other pages is a view onto this file.',
           )}
         />
         <EmptyState
-          icon={FileCodeIcon}
-          title="config.yaml"
-          description={t(
-            'An editor for the file itself, so anything the forms do not cover stays reachable.',
-          )}
+          title={
+            <>
+              <FileCodeIcon aria-hidden />
+              <span role="heading" aria-level={2}>
+                {'config.yaml'}
+              </span>
+              <p>
+                {t(
+                  'An editor for the file itself, so anything the forms do not cover stays reachable.',
+                )}
+              </p>
+            </>
+          }
         />
       </PageBody>
     </>

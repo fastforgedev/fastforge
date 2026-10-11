@@ -1,10 +1,13 @@
+import { PreferenceGroup, EmptyState } from '@dazzlabs/dazzui'
 import { createFileRoute } from '@tanstack/react-router'
 import { LayersIcon } from 'lucide-react'
 
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { useI18n } from '#/lib/i18n'
 
-export const Route = createFileRoute('/p/$projectId/_shell/settings/environments')({
+export const Route = createFileRoute(
+  '/p/$projectId/_shell/settings/environments',
+)({
   component: SettingsEnvironments,
 })
 
@@ -13,18 +16,30 @@ function SettingsEnvironments() {
   return (
     <>
       <PageBody>
-        <PageTitle
-          title={t('Environments')}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {t('Environments')}
+            </span>
+          }
           description={t(
             'Flavors, build variables and the values that differ per environment.',
           )}
         />
         <EmptyState
-          icon={LayersIcon}
-          title={t('No environments configured')}
-          description={t(
-            'Define staging, production and any custom flavors, along with the build arguments each one passes.',
-          )}
+          title={
+            <>
+              <LayersIcon aria-hidden />
+              <span role="heading" aria-level={2}>
+                {t('No environments configured')}
+              </span>
+              <p>
+                {t(
+                  'Define staging, production and any custom flavors, along with the build arguments each one passes.',
+                )}
+              </p>
+            </>
+          }
         />
       </PageBody>
     </>

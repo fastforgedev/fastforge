@@ -52,6 +52,21 @@ Check that a project's store credentials resolve without opening anything:
 cargo run --bin fastforge -- studio doctor --dir /path/to/a/project
 ```
 
+## Packaging forms
+
+In local Studio, open a project and go to **Settings → Build & Package** to
+edit native Linux packaging files: DEB `deb/control`, Pacman `pacman/PKGINFO`
+(or an existing `.PKGINFO`), and the single `shared/*.desktop` launcher under
+`.fastforge/packaging/linux/`. Missing files can be created from a template.
+The preview preserves variables, comments, unknown fields and desktop action
+groups. Repeated Pacman values use one line per value; Debian descriptions
+support multiple paragraphs. Each format keeps its draft while switching tabs.
+
+Saving checks the revision read from disk and refuses external changes. Reload
+explicitly discards the draft. These forms configure the Rust native packagers;
+they do not edit legacy Dart `make_config.yaml` files. Hosted Studio does not
+offer these forms because it has no local checkout.
+
 ## Checks
 
 ```bash

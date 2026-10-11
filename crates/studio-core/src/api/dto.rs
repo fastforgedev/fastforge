@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PutPackagingFileRequest {
+    pub content: String,
+    /// Required optimistic concurrency token from GET, including for creation.
+    pub etag: String,
+}
+
 /// `POST /v1/projects`
 ///
 /// `local` mode registers an existing checkout, so it takes a `path`; `cloud`

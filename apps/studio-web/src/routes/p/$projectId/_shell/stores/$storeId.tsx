@@ -1,11 +1,24 @@
+import {
+  Badge,
+  Callout,
+  Card,
+  Link as DazzLink,
+  PillTabs,
+  PreferenceSection,
+  Table,
+  TableRow,
+  TableCell,
+  PreferenceGroup,
+  EmptyState,
+  Button,
+  Menu,
+} from '@dazzlabs/dazzui'
 import { createFileRoute, notFound } from '@tanstack/react-router'
 import { ApiError, api } from 'studio-api-client'
-import { Button, Menu } from '@dazzlabs/dazzui'
-import { RouterLink } from '#/components/router-link'
 import { ChevronDownIcon, DownloadIcon, StoreIcon } from 'lucide-react'
 
 import { AuthFieldList, AuthStatusBadge } from '#/components/auth-status-badge'
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { PageHeader } from '#/components/page-header'
 import { useI18n } from '#/lib/i18n'
 
@@ -87,36 +100,51 @@ function StoreDetail() {
         }
       />
       <PageBody>
-        <PageTitle
-          title={connection.name}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {connection.name}
+            </span>
+          }
           description={connection.description}
-          actions={<AuthStatusBadge status={connection.authStatus} />}
+          action={<AuthStatusBadge status={connection.authStatus} />}
         />
 
         {connection.authStatus.state === 'incomplete' ? (
-          <div className="rounded-xl border border-amber-500/40 bg-card p-4">
-            <p className="text-sm font-medium">{t('Credentials incomplete')}</p>
+          <Callout tint="warning" title={t('Credentials incomplete')}>
             <p className="text-sm text-muted-foreground">
               {t('Syncing this store will fail until these resolve.')}
             </p>
             <AuthFieldList status={connection.authStatus} />
-          </div>
+          </Callout>
         ) : null}
 
         {!selected || !listing ? (
           <EmptyState
-            icon={StoreIcon}
-            title={t('No apps under this store')}
-            description={`Add an app to the ${connection.store} section of .fastforge/config.yaml, then pull its catalog.`}
+            title={
+              <>
+                <StoreIcon aria-hidden />
+                <span role="heading" aria-level={2}>
+                  {t('No apps under this store')}
+                </span>
+                <p>{`Add an app to the ${connection.store} section of .fastforge/config.yaml, then pull its catalog.`}</p>
+              </>
+            }
           />
         ) : (
           <>
             <AppPicker apps={apps} selected={selected} />
             {listing.empty ? (
               <EmptyState
-                icon={StoreIcon}
-                title={t('Nothing pulled yet')}
-                description={`Run \`fastforge store catalog pull\` in the project to fetch this app's listing, screenshots and release notes.`}
+                title={
+                  <>
+                    <StoreIcon aria-hidden />
+                    <span role="heading" aria-level={2}>
+                      {t('Nothing pulled yet')}
+                    </span>
+                    <p>{`Run \`fastforge store catalog pull\` in the project to fetch this app's listing, screenshots and release notes.`}</p>
+                  </>
+                }
               />
             ) : (
               <Listing listing={listing} storeAppId={selected.id} />
@@ -136,25 +164,19 @@ function AppPicker({
   apps: Array<StoreApp>
   selected: StoreApp
 }) {
-  if (apps.length < 2) {
-    return null
-  }
+  const navigate = Route.useNavigate()
+  if (apps.length < 2) return null
   return (
-    <div className="flex flex-wrap gap-2">
-      {apps.map((app) => (
-        <RouterLink
-          key={app.id}
-          from={Route.fullPath}
-          search={{ app: app.id }}
-          tint={app.id === selected.id ? 'primary' : 'neutral'}
-          underline="none"
-          className="rounded-md px-3 py-1.5"
-          aria-current={app.id === selected.id ? 'page' : undefined}
-        >
-          {app.name ?? app.identifier}
-        </RouterLink>
-      ))}
-    </div>
+    <PillTabs
+      value={selected.id}
+      items={apps.map((app) => ({
+        value: app.id,
+        label: app.name ?? app.identifier,
+      }))}
+      onValueChange={(app) => {
+        void navigate({ search: (previous) => ({ ...previous, app }) })
+      }}
+    />
   )
 }
 
@@ -226,7 +248,7 @@ function Listing({
                 // and the lazy heuristic never decides they are near the
                 // viewport — leaving the gallery blank indefinitely. The
                 // `min-w` keeps the row from collapsing while they arrive.
-                className="h-96 w-auto min-w-40 shrink-0 rounded-xl border bg-muted object-contain"
+                className="h-96 w-auto min-w-40 shrink-0 object-contain"
               />
             ))}
           </div>
@@ -246,10 +268,9 @@ function Listing({
       {tracks.length > 0 ? (
         <section className="space-y-2">
           <h3 className="font-semibold">{t('Tracks')}</h3>
-          <ul className="divide-y rounded-xl border bg-card">
+          <Card>
             {tracks.map((track) => (
-              <li key={track.name} className="space-y-1 p-4">
-                <p className="text-sm font-medium">{track.name}</p>
+              <PreferenceSection key={track.name} label={track.name}>
                 {track.releases?.length ? (
                   track.releases.map((release, index) => (
                     <p
@@ -275,9 +296,9 @@ function Listing({
                     {t('No releases')}
                   </p>
                 )}
-              </li>
+              </PreferenceSection>
             ))}
-          </ul>
+          </Card>
         </section>
       ) : null}
 
@@ -310,19 +331,40 @@ function Information({ listing }: { listing: StoreListing }) {
   if (listing.marketingUrl) {
     rows.push([
       t('Marketing'),
-      <ExternalLink key="m" href={listing.marketingUrl} />,
+      <DazzLink
+        key="m"
+        href={listing.marketingUrl}
+        target="_blank"
+        rel="noreferrer noopener"
+      >
+        {listing.marketingUrl}
+      </DazzLink>,
     ])
   }
   if (listing.supportUrl) {
     rows.push([
       t('Support'),
-      <ExternalLink key="s" href={listing.supportUrl} />,
+      <DazzLink
+        key="s"
+        href={listing.supportUrl}
+        target="_blank"
+        rel="noreferrer noopener"
+      >
+        {listing.supportUrl}
+      </DazzLink>,
     ])
   }
   if (listing.privacyPolicyUrl) {
     rows.push([
       t('Privacy policy'),
-      <ExternalLink key="p" href={listing.privacyPolicyUrl} />,
+      <DazzLink
+        key="p"
+        href={listing.privacyPolicyUrl}
+        target="_blank"
+        rel="noreferrer noopener"
+      >
+        {listing.privacyPolicyUrl}
+      </DazzLink>,
     ])
   }
   if (rows.length === 0) {
@@ -332,28 +374,17 @@ function Information({ listing }: { listing: StoreListing }) {
   return (
     <section className="space-y-2">
       <h3 className="font-semibold">{t('Information')}</h3>
-      <dl className="divide-y rounded-xl border bg-card text-sm">
+      <Table>
         {rows.map(([label, value]) => (
-          <div key={label} className="flex gap-4 p-4">
-            <dt className="w-40 shrink-0 text-muted-foreground">{label}</dt>
-            <dd className="min-w-0 flex-1 break-words">{value}</dd>
-          </div>
+          <TableRow key={label}>
+            <TableCell className="w-40 shrink-0">{label}</TableCell>
+            <TableCell className="min-w-0 flex-1 break-words">
+              {value}
+            </TableCell>
+          </TableRow>
         ))}
-      </dl>
+      </Table>
     </section>
-  )
-}
-
-function ExternalLink({ href }: { href: string }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer noopener"
-      className="underline underline-offset-4"
-    >
-      {href}
-    </a>
   )
 }
 
@@ -384,9 +415,9 @@ function Picker({
   // only invites a click that does nothing.
   if (options.length === 1) {
     return (
-      <p className="px-3 py-1.5 text-sm text-muted-foreground">
+      <Badge tint="neutral">
         {label}: {format(options[0])}
-      </p>
+      </Badge>
     )
   }
 
@@ -420,10 +451,18 @@ function StoreNotFound({ data }: { data?: unknown }) {
   return (
     <PageBody>
       <EmptyState
-        icon={StoreIcon}
-        title={t('Store not found')}
-        description={
-          typeof data === 'string' ? data : `${storeId} is not a known store.`
+        title={
+          <>
+            <StoreIcon aria-hidden />
+            <span role="heading" aria-level={2}>
+              {t('Store not found')}
+            </span>
+            <p>
+              {typeof data === 'string'
+                ? data
+                : `${storeId} is not a known store.`}
+            </p>
+          </>
         }
       />
     </PageBody>

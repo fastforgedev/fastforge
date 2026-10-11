@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   Divider,
+  EmptyState,
   Popover,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  TextField,
+  SearchField,
 } from '@dazzlabs/dazzui'
 import { CheckIcon, ChevronsUpDownIcon, LayoutGridIcon } from 'lucide-react'
 import { BrandIcon } from '#/components/brand-icon'
@@ -57,9 +58,9 @@ export function ProjectSwitcher({
             </SidebarMenuButton>
           }
         >
-          <TextField
+          <SearchField
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onValueChange={setQuery}
             aria-label={t('Search projects…')}
             placeholder={t('Search projects…')}
             size="small"
@@ -69,39 +70,50 @@ export function ProjectSwitcher({
             aria-label={t('Projects')}
             className="my-2 max-h-72 overflow-auto"
           >
-            {matches.length === 0 ? (
-              <p className="px-2 py-3 text-center text-sm text-muted-foreground">
-                {t('No matching project')}
-              </p>
-            ) : (
-              matches.map((candidate) => (
-                <Link
-                  key={candidate.id}
-                  to="/p/$projectId"
-                  params={{ projectId: candidate.id }}
-                  onClick={() => setOpen(false)}
-                  aria-current={
-                    candidate.id === project.id ? 'page' : undefined
-                  }
-                  className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-                >
-                  <span className="flex-1 truncate">{candidate.name}</span>
-                  {candidate.id === project.id ? (
-                    <CheckIcon className="size-4 text-muted-foreground" />
-                  ) : null}
-                </Link>
-              ))
-            )}
+            <SidebarMenu>
+              {matches.length === 0 ? (
+                <SidebarMenuItem>
+                  <EmptyState title={t('No matching project')} />
+                </SidebarMenuItem>
+              ) : (
+                matches.map((candidate) => (
+                  <SidebarMenuItem key={candidate.id}>
+                    <SidebarMenuButton
+                      variant="tinted"
+                      active={candidate.id === project.id}
+                      render={
+                        <Link
+                          to="/p/$projectId"
+                          params={{ projectId: candidate.id }}
+                          onClick={() => setOpen(false)}
+                          aria-current={
+                            candidate.id === project.id ? 'page' : undefined
+                          }
+                        />
+                      }
+                    >
+                      <span className="flex-1 truncate">{candidate.name}</span>
+                      {candidate.id === project.id ? (
+                        <CheckIcon className="size-4 text-muted-foreground" />
+                      ) : null}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))
+              )}
+            </SidebarMenu>
           </nav>
           <Divider />
-          <Link
-            to="/"
-            onClick={() => setOpen(false)}
-            className="mt-2 flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-          >
-            <LayoutGridIcon className="size-4 text-muted-foreground" />
-            <span>{t('All projects')}</span>
-          </Link>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                render={<Link to="/" onClick={() => setOpen(false)} />}
+                icon={<LayoutGridIcon />}
+                variant="plain"
+              >
+                <span>{t('All projects')}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </Popover>
       </SidebarMenuItem>
     </SidebarMenu>

@@ -1,8 +1,16 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
-import { Button } from '@dazzlabs/dazzui'
+import { RouterLink } from '#/components/router-link'
+import {
+  PreferenceGroup,
+  Table,
+  TableRow,
+  TableCell,
+  Code,
+  Button,
+} from '@dazzlabs/dazzui'
+import { createFileRoute } from '@tanstack/react-router'
 import { PlayIcon, PlusIcon } from 'lucide-react'
 
-import { PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { PageHeader } from '#/components/page-header'
 import { useI18n } from '#/lib/i18n'
 
@@ -34,12 +42,16 @@ function Workflows() {
     <>
       <PageHeader crumbs={[{ label: t('Workflows') }]} />
       <PageBody>
-        <PageTitle
-          title={t('Workflows')}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {t('Workflows')}
+            </span>
+          }
           description={t(
             'The YAML under .fastforge/workflows. These are definitions — each execution shows up under Runs.',
           )}
-          actions={
+          action={
             <Button size="small" variant="filled">
               <PlusIcon data-icon="inline-start" />
               {t('New workflow')}
@@ -47,29 +59,31 @@ function Workflows() {
           }
         />
 
-        <ul className="divide-y rounded-xl border bg-card">
+        <Table>
           {workflows.map((workflow) => (
-            <li key={workflow.id} className="flex items-center gap-4 p-4">
-              <Link
-                to="/p/$projectId/workflows/$workflowId"
-                params={{ projectId, workflowId: workflow.id }}
-                className="min-w-0 flex-1"
-              >
-                <p className="font-medium">{t(workflow.name)}</p>
-                <p className="truncate font-mono text-xs text-muted-foreground">
-                  .fastforge/workflows/{workflow.id}
-                </p>
-              </Link>
-              <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                {workflow.trigger}
-              </span>
-              <Button variant="outlined" size="small" className="shrink-0">
-                <PlayIcon data-icon="inline-start" />
-                {t('Run')}
-              </Button>
-            </li>
+            <TableRow key={workflow.id}>
+              <TableCell className="min-w-0 flex-1">
+                <RouterLink
+                  to="/p/$projectId/workflows/$workflowId"
+                  params={{ projectId, workflowId: workflow.id }}
+                  className="min-w-0 flex-1"
+                >
+                  <p className="font-medium">{t(workflow.name)}</p>
+                  <Code>.fastforge/workflows/{workflow.id}</Code>
+                </RouterLink>
+              </TableCell>
+              <TableCell>
+                <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+                  {workflow.trigger}
+                </span>
+                <Button variant="outlined" size="small" className="shrink-0">
+                  <PlayIcon data-icon="inline-start" />
+                  {t('Run')}
+                </Button>
+              </TableCell>
+            </TableRow>
           ))}
-        </ul>
+        </Table>
       </PageBody>
     </>
   )

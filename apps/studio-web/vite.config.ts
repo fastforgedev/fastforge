@@ -5,6 +5,7 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { dazzuiThemes } from './vite-plugins/dazzui-themes.ts'
 
 /** Where `fastforge-studio serve` listens. Keep in sync with the CLI default. */
 const STUDIO_API = process.env.STUDIO_API_URL ?? 'http://127.0.0.1:7391'
@@ -21,6 +22,7 @@ const config = defineConfig({
     },
   },
   plugins: [
+    dazzuiThemes(),
     devtools(),
     tailwindcss(),
     tanstackStart({

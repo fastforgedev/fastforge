@@ -1,6 +1,6 @@
 'use client'
 
-import { StudioSidebar } from '#/components/studio-sidebar'
+import { StudioSidebar, useStudioSidebar } from '#/components/studio-sidebar'
 
 import { Link } from '@tanstack/react-router'
 import {
@@ -12,6 +12,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
   SidebarSeparator,
+  Callout,
 } from '@dazzlabs/dazzui'
 import { CloudIcon, HardDriveIcon, Settings2Icon } from 'lucide-react'
 
@@ -37,10 +38,11 @@ export function AppSidebar({
   projects: Array<ProjectSummary>
 } & React.ComponentProps<typeof StudioSidebar>) {
   const capabilities = useCapabilities()
+  const { isMobile } = useStudioSidebar()
   const { t } = useI18n()
 
   return (
-    <StudioSidebar variant="inset" collapsible="icon" {...props}>
+    <StudioSidebar variant="sidebar" collapsible="icon" {...props}>
       <SidebarHeader>
         <ProjectSwitcher project={project} projects={projects} />
       </SidebarHeader>
@@ -73,7 +75,7 @@ export function AppSidebar({
         <NavDoc />
       </SidebarFooter>
 
-      <SidebarRail />
+      {!isMobile && <SidebarRail />}
     </StudioSidebar>
   )
 }
@@ -83,15 +85,16 @@ function ModeIndicator({ project }: { project: Project }) {
   const { mode } = useCapabilities()
   const { t } = useI18n()
   const Icon = mode === 'local' ? HardDriveIcon : CloudIcon
+  const { state, isMobile } = useStudioSidebar()
+  if (state === 'collapsed' && !isMobile) return null
 
   return (
-    <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground studio-mode-indicator">
-      <Icon className="size-3.5 shrink-0" />
-      <span className="truncate">
+    <Callout size="small" icon={<Icon />}>
+      <span className="block truncate">
         {mode === 'local'
           ? (project.path ?? t('This machine'))
           : t('Cloud runners')}
       </span>
-    </div>
+    </Callout>
   )
 }

@@ -1,7 +1,8 @@
+import { PreferenceGroup, EmptyState } from '@dazzlabs/dazzui'
 import { createFileRoute } from '@tanstack/react-router'
 import { FlaskConicalIcon } from 'lucide-react'
 
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { PageHeader } from '#/components/page-header'
 import { useI18n } from '#/lib/i18n'
 
@@ -15,18 +16,30 @@ function UnitTests() {
     <>
       <PageHeader crumbs={[{ label: t('Unit Tests') }]} />
       <PageBody>
-        <PageTitle
-          title={t('Unit Tests')}
+        <PreferenceGroup
+          title={
+            <span role="heading" aria-level={1}>
+              {t('Unit Tests')}
+            </span>
+          }
           description={t(
             'The test suites defined for this project and their latest results.',
           )}
         />
         <EmptyState
-          icon={FlaskConicalIcon}
-          title={t('No tests yet')}
-          description={t(
-            'Test suites appear here once a run finishes. Each one can be analyzed from its detail page.',
-          )}
+          title={
+            <>
+              <FlaskConicalIcon aria-hidden />
+              <span role="heading" aria-level={2}>
+                {t('No tests yet')}
+              </span>
+              <p>
+                {t(
+                  'Test suites appear here once a run finishes. Each one can be analyzed from its detail page.',
+                )}
+              </p>
+            </>
+          }
         />
       </PageBody>
     </>

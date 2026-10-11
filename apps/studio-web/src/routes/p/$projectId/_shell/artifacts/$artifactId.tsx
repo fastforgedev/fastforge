@@ -1,7 +1,8 @@
+import { PreferenceGroup, EmptyState } from '@dazzlabs/dazzui'
 import { createFileRoute } from '@tanstack/react-router'
 import { FileSearchIcon } from 'lucide-react'
 
-import { EmptyState, PageBody, PageTitle } from '#/components/page-body'
+import { PageBody } from '#/components/page-body'
 import { PageHeader } from '#/components/page-header'
 import { useI18n } from '#/lib/i18n'
 
@@ -27,18 +28,26 @@ function ArtifactDetail() {
         ]}
       />
       <PageBody>
-        <PageTitle
-          title={`${artifactId}`}
+        <PreferenceGroup
+          title={<span role="heading" aria-level={1}>{`${artifactId}`}</span>}
           description={t(
             'Contents, signing and size breakdown, plus the publish targets it can go to.',
           )}
         />
         <EmptyState
-          icon={FileSearchIcon}
-          title={t('Package analysis')}
-          description={t(
-            'The output of `fastforge analyze` — manifest, permissions, signing and size — belongs on this page.',
-          )}
+          title={
+            <>
+              <FileSearchIcon aria-hidden />
+              <span role="heading" aria-level={2}>
+                {t('Package analysis')}
+              </span>
+              <p>
+                {t(
+                  'The output of `fastforge analyze` — manifest, permissions, signing and size — belongs on this page.',
+                )}
+              </p>
+            </>
+          }
         />
       </PageBody>
     </>

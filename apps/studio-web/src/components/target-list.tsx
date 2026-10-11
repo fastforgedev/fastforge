@@ -1,5 +1,15 @@
-import { Link } from '@tanstack/react-router'
-import { Button } from '@dazzlabs/dazzui'
+import { RouterLink } from '#/components/router-link'
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  PreferenceGroup,
+  PreferenceSection,
+  Table,
+  TableRow,
+  TableCell,
+} from '@dazzlabs/dazzui'
 import { PlusIcon } from 'lucide-react'
 
 import type { LinkComponentProps } from '@tanstack/react-router'
@@ -23,62 +33,49 @@ export function TargetList({
 
   return (
     <div className="space-y-6">
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {t('Connected')}
-        </h2>
+      <PreferenceSection label={t('Connected')}>
         {connected.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            {t('Nothing connected yet.')}
-          </p>
+          <EmptyState title={t('Nothing connected yet.')} />
         ) : (
-          <ul className="divide-y rounded-xl border bg-card">
+          <Table>
             {connected.map((target) => (
-              <li key={target.id}>
-                <Link
-                  {...detailLink(target)}
-                  className="flex items-center gap-4 p-4 transition-colors hover:bg-muted/40"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{t(target.name)}</p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {target.detail ?? t(target.description)}
-                    </p>
-                  </div>
-                  <span className="shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium">
-                    {t('Connected')}
-                  </span>
-                </Link>
-              </li>
+              <TableRow key={target.id}>
+                <TableCell className="min-w-0 flex-1">
+                  <PreferenceGroup
+                    title={
+                      <RouterLink {...detailLink(target)}>
+                        {t(target.name)}
+                      </RouterLink>
+                    }
+                    description={target.detail ?? t(target.description)}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Badge tint="success">{t('Connected')}</Badge>
+                </TableCell>
+              </TableRow>
             ))}
-          </ul>
+          </Table>
         )}
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {t('Available')}
-        </h2>
-        <ul className="grid gap-3 sm:grid-cols-2">
+      </PreferenceSection>
+      <PreferenceSection label={t('Available')}>
+        <div className="grid gap-3 sm:grid-cols-2">
           {available.map((target) => (
-            <li
-              key={target.id}
-              className="flex items-start gap-3 rounded-xl border p-4"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">{t(target.name)}</p>
-                <p className="text-sm text-muted-foreground">
-                  {t(target.description)}
-                </p>
-              </div>
-              <Button variant="outlined" size="small" className="shrink-0">
-                <PlusIcon data-icon="inline-start" />
-                {t('Connect')}
-              </Button>
-            </li>
+            <Card key={target.id}>
+              <PreferenceGroup
+                title={t(target.name)}
+                description={t(target.description)}
+                action={
+                  <Button variant="outlined" size="small">
+                    <PlusIcon />
+                    {t('Connect')}
+                  </Button>
+                }
+              />
+            </Card>
           ))}
-        </ul>
-      </section>
+        </div>
+      </PreferenceSection>
     </div>
   )
 }

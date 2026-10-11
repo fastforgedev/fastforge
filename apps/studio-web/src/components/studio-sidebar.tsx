@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react'
 import * as Dazz from '@dazzlabs/dazzui'
 import { createContext, useContext, useState } from 'react'
 import { useIsMobile } from '#/hooks/use-mobile'
+import { useI18n } from '#/lib/i18n'
 
 const MobileContext = createContext(false)
 
@@ -46,6 +47,7 @@ export function StudioSidebar({
   ...props
 }: ComponentProps<typeof Dazz.Sidebar>) {
   const { isMobile, open, setOpen } = useStudioSidebar()
+  const { t } = useI18n()
   if (!isMobile || collapsible === 'none')
     return (
       <Dazz.Sidebar {...props} side={side} collapsible={collapsible}>
@@ -57,13 +59,25 @@ export function StudioSidebar({
       open={open}
       onOpenChange={setOpen}
       side={side}
-      title="Navigation"
-      className="studio-mobile-sidebar"
-      size="18rem"
+      title={t('Navigation')}
+      footer={
+        <Dazz.DrawerClose render={<Dazz.Button />}>
+          {t('Close')}
+        </Dazz.DrawerClose>
+      }
     >
-      <Dazz.Sidebar {...props} side={side} collapsible="none">
+      <div
+        className="contents"
+        onClickCapture={(event) => {
+          if (
+            event.target instanceof Element &&
+            event.target.closest('a[href]')
+          )
+            setOpen(false)
+        }}
+      >
         {children}
-      </Dazz.Sidebar>
+      </div>
     </Dazz.Drawer>
   )
 }

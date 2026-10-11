@@ -1,3 +1,4 @@
+import { Sidebar } from '@dazzlabs/dazzui'
 import { Outlet, createFileRoute, useRouterState } from '@tanstack/react-router'
 
 import { PageHeader } from '#/components/page-header'
@@ -39,7 +40,10 @@ function settingsCrumbs(
     crumbs.push(
       {
         label: t('Publishers'),
-        link: { to: '/p/$projectId/settings/publishers', params: { projectId } },
+        link: {
+          to: '/p/$projectId/settings/publishers',
+          params: { projectId },
+        },
       },
       { label: detail },
     )
@@ -54,8 +58,7 @@ function settingsCrumbs(
  * Settings renders as a secondary sidebar inside the page rather than
  * replacing the project sidebar. The breadcrumb header spans the full content
  * width (it lives here, not in the pages), and below it the body splits into
- * the settings nav column and the page itself — Maple's settings-shell
- * arrangement.
+ * the settings nav column and the page itself.
  */
 function ProjectSettingsShell() {
   const { projectId } = Route.useParams()
@@ -66,9 +69,9 @@ function ProjectSettingsShell() {
     <>
       <PageHeader crumbs={settingsCrumbs(pathname, projectId, t)} />
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-56 shrink-0 border-r p-3 md:block">
+        <Sidebar collapsible="none" className="hidden! md:flex!">
           <SettingsNav projectId={projectId} />
-        </aside>
+        </Sidebar>
         <div className="flex min-w-0 flex-1 flex-col">
           <Outlet />
         </div>

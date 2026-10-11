@@ -96,6 +96,10 @@ pub async fn handle(mut request: Request, env: Env) -> Result<Response> {
             respond(handlers::get_store_app(&db, &owner, id, store_app_id).await)
         }
 
+        (_, ["v1", "projects", _, "packaging", _]) => failed(&ApiError::capability_unavailable(
+            "Packaging files require a local project checkout",
+        )),
+
         // Catalogs live in R2 and nothing writes them here yet. Answering 501
         // rather than 404 says the endpoint is coming, so the client reports it
         // instead of hiding the feature.

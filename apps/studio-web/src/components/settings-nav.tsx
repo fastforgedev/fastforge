@@ -1,14 +1,16 @@
 'use client'
 
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
+import {
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+} from '@dazzlabs/dazzui'
 
 import { settingsNavGroups } from '#/lib/navigation'
 import { useI18n } from '#/lib/i18n'
-
-// Only the active row paints the 2px lane, so rows share one vertical line
-// whether or not they are selected (Maple's settings-shell row treatment).
-const rowClass =
-  'relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground data-[status=active]:bg-accent data-[status=active]:font-medium data-[status=active]:text-accent-foreground data-[status=active]:before:absolute data-[status=active]:before:inset-y-1.5 data-[status=active]:before:left-0 data-[status=active]:before:w-0.5 data-[status=active]:before:rounded-full data-[status=active]:before:bg-primary'
 
 /**
  * The settings sections as a secondary navigation column. The project sidebar
@@ -17,25 +19,40 @@ const rowClass =
 export function SettingsNav({ projectId }: { projectId: string }) {
   const { t } = useI18n()
   const groups = settingsNavGroups(projectId, t)
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
 
   return (
     <nav className="flex flex-col gap-5">
       {groups.map((group, index) => (
-        <div key={group.label ?? index} className="flex flex-col gap-1">
+        <SidebarGroup key={group.label ?? index}>
           {group.label ? (
-            <div className="px-2.5 text-[10px] font-medium tracking-[0.14em] text-muted-foreground/60 uppercase">
-              {group.label}
-            </div>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
           ) : null}
-          <div className="flex flex-col gap-0.5">
+          <SidebarMenu>
             {group.items.map((item) => (
-              <Link key={item.title} {...item.link} className={rowClass}>
-                <item.icon className="size-4 shrink-0" />
-                {item.title}
-              </Link>
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton
+                  size="small"
+                  variant="tinted"
+                  active={
+                    pathname ===
+                      item.link.to?.replace('$projectId', projectId) ||
+                    (item.link.to?.endsWith('/publishers') &&
+                      pathname.includes('/settings/publishers/'))
+                  }
+                  icon={<item.icon />}
+                  render={
+                    <Link {...item.link} activeOptions={{ exact: true }} />
+                  }
+                >
+                  {item.title}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             ))}
-          </div>
-        </div>
+          </SidebarMenu>
+        </SidebarGroup>
       ))}
     </nav>
   )
