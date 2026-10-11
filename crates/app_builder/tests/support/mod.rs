@@ -6,8 +6,15 @@ pub fn fixture_dir(name: &str) -> PathBuf {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../fixtures")
         .join(name);
-    path.canonicalize()
-        .unwrap_or_else(|e| panic!("fixture '{name}' not found at {}: {e}", path.display()))
+    assert!(
+        path.is_dir(),
+        "fixture '{name}' not found at {}",
+        path.display()
+    );
+    // canonicalize() adds a Windows verbatim prefix (\\?\), which cmd.exe
+    // rejects as its working directory when Flutter's batch script starts.
+    // CARGO_MANIFEST_DIR is already absolute; retain a normal Win32 path.
+    path
 }
 
 /// Changes the process's current working directory for the lifetime of the

@@ -185,6 +185,11 @@ jobs:
 
 ## 参与贡献
 
+开发和 CI 使用 Flutter 3.47.6 稳定版及其自带的 Dart 3.13.5 SDK。
+将 Flutter SDK 的 `bin` 目录加入 `PATH`，直接运行 `flutter` 和 `dart`。
+CI 版本配置见 [ci.yml](.github/workflows/ci.yml)，仓库环境与验证命令见
+[AGENTS.md](AGENTS.md)。
+
 欢迎贡献代码！如果您想帮助改进 Fastforge：
 
 1. Fork 仓库

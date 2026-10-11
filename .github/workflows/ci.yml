@@ -8,6 +8,7 @@ on:
       - "Cargo.lock"
       - "crates/**"
       - "apps/cli/**"
+      - "fixtures/flutter_app/**"
       - "apps/studio-*/**"
       - ".github/workflows/ci.yml"
   pull_request:
@@ -17,6 +18,7 @@ on:
       - "Cargo.lock"
       - "crates/**"
       - "apps/cli/**"
+      - "fixtures/flutter_app/**"
       - "apps/studio-*/**"
       - ".github/workflows/ci.yml"
 
@@ -133,6 +135,53 @@ jobs:
             }
             Remove-Item $pfx, $cer -ErrorAction SilentlyContinue
           }
+
+  flutter-desktop:
+    name: Flutter desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.6"
+          cache: true
+      - name: Install Linux desktop and AppImage tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libglu1-mesa xvfb desktop-file-utils
+          mkdir -p "$RUNNER_TEMP/appimage-tools"
+          curl -fL --retry 3 --max-time 120 https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage -o "$RUNNER_TEMP/appimage-tools/appimagetool.AppImage"
+          curl -fL --retry 3 --max-time 120 https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64 -o "$RUNNER_TEMP/appimage-tools/runtime-x86_64"
+          chmod +x "$RUNNER_TEMP/appimage-tools/appimagetool.AppImage"
+          printf '#!/bin/sh\nexec "%s/appimagetool.AppImage" --appimage-extract-and-run --runtime-file "%s/runtime-x86_64" "$@"\n' "$RUNNER_TEMP/appimage-tools" "$RUNNER_TEMP/appimage-tools" > "$RUNNER_TEMP/appimage-tools/appimagetool"
+          chmod +x "$RUNNER_TEMP/appimage-tools/appimagetool"
+          echo "$RUNNER_TEMP/appimage-tools" >> "$GITHUB_PATH"
+      - name: Build real Linux Flutter bundle
+        if: runner.os == 'Linux'
+        run: cargo test -p fastforge_app_builder --test flutter_builder builds_linux -- --ignored --nocapture --test-threads=1
+      - name: Package, launch and replace AppImage versions
+        if: runner.os == 'Linux'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a -s '-screen 0 1280x800x24' cargo test -p fastforge_app_packager --test flutter_desktop appimage_flutter -- --ignored --nocapture --test-threads=1
+      - name: Build real Windows Flutter bundle
+        if: runner.os == 'Windows'
+        run: cargo test -p fastforge_app_builder --test flutter_builder builds_windows -- --ignored --nocapture --test-threads=1
+      - name: Package and launch DMG and PKG; install and upgrade on an isolated volume
+        if: runner.os == 'macOS'
+        env:
+          FASTFORGE_TEST_PKG_INSTALL: "1"
+        run: cargo test -p fastforge_app_packager --test flutter_desktop macos_flutter -- --ignored --nocapture --test-threads=1
 
   studio-worker:
     runs-on: ubuntu-latest

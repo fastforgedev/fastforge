@@ -192,6 +192,11 @@ Check the [documentation](https://fastforge.dev/) for more detailed CI/CD integr
 
 ## Contributing
 
+Development and CI use Flutter 3.47.6 stable and its bundled Dart 3.13.5 SDK.
+Add the Flutter SDK's `bin` directory to `PATH` and run `flutter` and `dart`
+directly. The CI version is configured in [ci.yml](.github/workflows/ci.yml).
+See [AGENTS.md](AGENTS.md) for repository setup and validation commands.
+
 Contributions are welcome! If you'd like to help improve Fastforge:
 
 1. Fork the repository

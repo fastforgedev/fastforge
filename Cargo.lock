@@ -844,6 +844,7 @@ version = "0.1.0"
 dependencies = [
  "crc32fast",
  "dmg_maker",
+ "fastforge_app_builder",
  "fastforge_core",
  "flate2",
  "image",

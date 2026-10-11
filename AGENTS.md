@@ -68,7 +68,9 @@ pnpm --filter docs build
 
 ### Dart / Flutter
 
-使用 Flutter / Dart SDK 及根目录 `pubspec.yaml` 声明的 Melos 6。
+开发和 CI 统一使用 Flutter 3.47.6 稳定版及其自带的 Dart 3.13.5，将 Flutter SDK 的 `bin` 目录加入 `PATH`。CI 的版本配置位于 `.github/workflows/ci.yml`。各包 `pubspec.yaml` 的 SDK 范围表示兼容下限，不要求与开发工具链版本号相同。使用根目录 `pubspec.yaml` 声明的 Melos 6。
+
+安装 SDK 后，直接运行命令：
 
 ```sh
 dart pub get
