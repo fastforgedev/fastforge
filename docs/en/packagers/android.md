@@ -46,6 +46,8 @@ Workflow example:
     output: artifacts/
 ```
 
+With `--flutter-build-args split-per-abi`, every split APK is packaged, with its ABI appended to the artifact name, such as `<artifact>-arm64-v8a.apk`. Without it, only the universal APK is packaged, even when the build directory still holds split APKs from an earlier build.
+
 To generate only the raw Flutter artifact, run `fastforge build --platform android --target apk`. See [Flutter Builder](../builders/flutter.md) for all options.
 
 ## AAB

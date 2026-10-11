@@ -84,6 +84,13 @@ For projects that also use the Dart CLI, `linux/packaging/<format>/make_config.y
 
 Requires `appimagetool` and `ldd`. An AppImage runs on systems whose glibc is at least as new as the build host's, so build it on the oldest distribution you support. The default `AppRun` puts the bundled libraries first and starts the binary with the given arguments, in the current directory. Shared objects the plugins need are copied into `usr/lib`, unless a `files/` overlay already provides them. Additional `make_config.yaml` keys include `include` (extra shared objects, resolved with `locate`, which must then be installed) and `actions`.
 
+To embed [update information](https://github.com/AppImage/AppImageSpec/blob/master/draft.md#update-information), set `UPDATE_INFORMATION` in `.fastforge/config.yaml` `env:` or in the environment. `appimagetool` also writes a `.zsync` file next to the AppImage when `zsyncmake` is installed. To use another AppImage runtime, set `APPIMAGETOOL_RUNTIME_FILE` the same way.
+
+```yaml
+env:
+  UPDATE_INFORMATION: gh-releases-zsync|owner|repo|latest|*x86_64.AppImage.zsync
+```
+
 ## DEB
 
 Requires `dpkg-deb` (`dpkg-dev` on Debian/Ubuntu). Files are owned by root. The default package name is the binary name, lowercased, with characters Debian does not allow, such as `_`, replaced by `-`. `Version` keeps the build number (`1.2.3+4`) and writes a pre-release's `-` as `~`. Without `dependencies` in `make_config.yaml`, the package depends on `libgtk-3-0`; an empty list opts out. The `/usr/bin` link is owned and removed by the package manager. Generated `postinst` restores it only when missing during configuration, before `postinstall_scripts`, because the old Dart package’s `postrm` can delete it during upgrade. Existing files and symlinks are kept, including dangling links, and symlink targets supplied by overlays are preserved. A raw `postinst` replaces the generated script and must handle this migration itself; `postrm` is only generated for configured `postuninstall_scripts`. Additional `make_config.yaml` keys include `maintainer`, `co_authors`, `priority`, `section`, and `dependencies`.

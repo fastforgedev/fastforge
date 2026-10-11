@@ -1,4 +1,4 @@
-use fastforge_core::{AppBuilder, BuildConfig, BuildError, BuildResult, Platform};
+use fastforge_core::{AppBuilder, BuildConfig, BuildError, BuildResult, Platform, android_apk_abi};
 use glob::{MatchOptions, glob_with};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -63,6 +63,14 @@ fn linux_arch() -> &'static str {
     }
 }
 
+/// Keeps the APKs of the current build: the output directory keeps APKs from
+/// earlier builds, so take the split APKs only when the build splits them,
+/// else the universal one.
+fn select_apks(mut files: Vec<PathBuf>, split_per_abi: bool) -> Vec<PathBuf> {
+    files.retain(|file| android_apk_abi(file).is_some() == split_per_abi);
+    files
+}
+
 /// Parses `PRODUCT_NAME` from a macOS `AppInfo.xcconfig` file.
 fn read_product_name_from_xcconfig(path: &str) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
@@ -120,7 +128,11 @@ impl AppBuilder for AndroidApkBuilder {
                 config.mode().as_str()
             )
         };
-        Ok((output_directory, resolve_glob(&pattern)?))
+        let split_per_abi = config.arguments.contains_key("split-per-abi");
+        Ok((
+            output_directory,
+            select_apks(resolve_glob(&pattern)?, split_per_abi),
+        ))
     }
     fn build_result(
         &self,
@@ -219,7 +231,8 @@ impl AppBuilder for IOSBuilder {
         "ipa"
     }
     fn validate_arguments(&self, config: &BuildConfig) -> Result<(), BuildError> {
-        if !config.arguments.contains_key("export-options-plist")
+        if !config.arguments.contains_key("no-codesign")
+            && !config.arguments.contains_key("export-options-plist")
             && !config.arguments.contains_key("export-method")
         {
             return Err(BuildError::InvalidArgument(
@@ -230,11 +243,20 @@ impl AppBuilder for IOSBuilder {
     }
     fn resolve_output_files(
         &self,
-        _config: &BuildConfig,
+        config: &BuildConfig,
         _environment: Option<&HashMap<String, String>>,
     ) -> Result<(PathBuf, Vec<PathBuf>), BuildError> {
-        let output_directory = PathBuf::from("build/ios/ipa");
-        let mut files = resolve_glob(&format!("{}/**/*.ipa", output_directory.display()))?;
+        // With `--no-codesign`, `flutter build ipa` stops after the archive,
+        // so the output is the unsigned `.app` the ipa packager wraps.
+        let (output_directory, pattern) = if config.arguments.contains_key("no-codesign") {
+            (
+                PathBuf::from("build/ios/archive"),
+                "*.xcarchive/Products/Applications/*.app",
+            )
+        } else {
+            (PathBuf::from("build/ios/ipa"), "**/*.ipa")
+        };
+        let mut files = resolve_glob(&format!("{}/{}", output_directory.display(), pattern))?;
         files.sort_by(|a, b| {
             let am = a.metadata().and_then(|m| m.modified()).ok();
             let bm = b.metadata().and_then(|m| m.modified()).ok();
@@ -586,6 +608,35 @@ mod tests {
     use serde_json::{Map, Value};
 
     #[test]
+    fn android_apk_selection_follows_split_per_abi() {
+        let files = || {
+            [
+                "build/app/outputs/flutter-apk/app-arm64-v8a-release.apk",
+                "build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk",
+                "build/app/outputs/flutter-apk/app-release.apk",
+                "build/app/outputs/flutter-apk/app-x86_64-release.apk",
+            ]
+            .map(PathBuf::from)
+            .to_vec()
+        };
+        let names = |files: Vec<PathBuf>| {
+            files
+                .iter()
+                .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(select_apks(files(), false)), ["app-release.apk"]);
+        assert_eq!(
+            names(select_apks(files(), true)),
+            [
+                "app-arm64-v8a-release.apk",
+                "app-armeabi-v7a-release.apk",
+                "app-x86_64-release.apk",
+            ]
+        );
+    }
+
+    #[test]
     fn android_apk_path_resolution() {
         let mut args = Map::new();
         args.insert("flavor".to_string(), Value::String("dev".to_string()));
@@ -605,6 +656,17 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("Missing `export-options-plist` or `export-method`")
+        );
+    }
+
+    #[test]
+    fn ios_no_codesign_needs_no_export_options() {
+        let mut args = Map::new();
+        args.insert("no-codesign".to_string(), Value::Bool(true));
+        assert!(
+            IOSBuilder
+                .validate_arguments(&BuildConfig::new(args))
+                .is_ok()
         );
     }
 

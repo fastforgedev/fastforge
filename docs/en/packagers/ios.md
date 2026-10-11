@@ -11,7 +11,7 @@ Fastforge builds and prepares iOS application artifacts, producing [IPA](#ipa) f
 | Xcode           | No `pubspec.yaml`       | IPA supported; package action recommended          |
 | Flutter Builder | Contains `pubspec.yaml` | IPA supported through the CLI and package action   |
 
-Both paths require export configuration. Xcode Builder also requires `project` and `scheme`, which are best supplied through a workflow package action's `build-args`. The packaged IPA is copied to `dist/<version>/`.
+Both paths require export configuration, except for an unsigned Flutter IPA. Xcode Builder also requires `project` and `scheme`, which are best supplied through a workflow package action's `build-args`. The packaged IPA is copied to `dist/<version>/`.
 
 ## IPA
 
@@ -25,6 +25,8 @@ fastforge package --targets ipa \
 ```
 
 Or use an export method through `--flutter-build-args export-method=app-store`. See [Flutter Builder](../builders/flutter.md) for all options.
+
+To package without signing, for example to sign the IPA later or for a CI check, use `--flutter-build-args no-codesign`. No export configuration is needed: Flutter stops after the Xcode archive, and Fastforge wraps its `.app` as `Payload/<name>.app` in the IPA.
 
 Package an Xcode project through a workflow:
 

@@ -46,6 +46,8 @@ fastforge package --targets apk \
     output: artifacts/
 ```
 
+使用 `--flutter-build-args split-per-abi` 时，会打包每个按 ABI 拆分的 APK，并在产物名后追加 ABI，例如 `<artifact>-arm64-v8a.apk`。未使用该参数时只打包通用 APK，即使构建目录里还留有之前构建的拆分 APK。
+
 只需要 Flutter 原始产物时，运行 `fastforge build --platform android --target apk`。完整参数见 [Flutter Builder](../builders/flutter.md)。
 
 ## AAB

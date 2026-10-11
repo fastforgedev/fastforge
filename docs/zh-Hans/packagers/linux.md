@@ -84,6 +84,13 @@ project:
 
 需要 `appimagetool` 和 `ldd`。AppImage 只能在 glibc 不旧于构建主机的系统上运行，请在所支持的最老发行版上构建。默认 `AppRun` 会优先使用随包的库，并在当前目录下带着传入的参数启动程序。插件依赖的共享库会复制到 `usr/lib`，`files/` 覆盖树已经提供的除外。`make_config.yaml` 额外的键包括 `include`（额外的共享库，通过 `locate` 查找，此时需要安装 `locate`）和 `actions`。
 
+如需嵌入[更新信息](https://github.com/AppImage/AppImageSpec/blob/master/draft.md#update-information)，在 `.fastforge/config.yaml` 的 `env:` 或环境变量中设置 `UPDATE_INFORMATION`。安装了 `zsyncmake` 时，`appimagetool` 还会在 AppImage 旁生成 `.zsync` 文件。如需使用其他 AppImage runtime，用同样的方式设置 `APPIMAGETOOL_RUNTIME_FILE`。
+
+```yaml
+env:
+  UPDATE_INFORMATION: gh-releases-zsync|owner|repo|latest|*x86_64.AppImage.zsync
+```
+
 ## DEB
 
 需要 `dpkg-deb`（Debian/Ubuntu 上由 `dpkg-dev` 提供）。文件属主为 root。默认包名为可执行文件名转为小写，并把 Debian 不允许的字符（如 `_`）替换为 `-`。`Version` 保留构建号（`1.2.3+4`），预发布版本中的 `-` 写成 `~`。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `libgtk-3-0`；设为空列表可以去掉。`/usr/bin` 链接由包管理器拥有并负责卸载清理。旧 Dart 包的 `postrm` 可能在升级时删除它，因此默认 `postinst` 会在配置阶段、执行 `postinstall_scripts` 之前，仅在入口缺失时补回链接。已有文件及符号链接（包括失效链接）均保留，覆盖树提供的链接目标也会保留。原生 `postinst` 会替换默认脚本，需要自行处理这项升级兼容；仅配置了 `postuninstall_scripts` 时才生成 `postrm`。`make_config.yaml` 额外的键包括 `maintainer`、`co_authors`、`priority`、`section` 和 `dependencies`。

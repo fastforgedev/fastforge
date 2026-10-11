@@ -533,7 +533,7 @@ fn package_with_hooks(
         "{}",
         serde_json::to_string_pretty(&make_result_json(package_config, &package_format, &result))?
     );
-    if let Some(artifact) = result.artifacts.first() {
+    for artifact in &result.artifacts {
         println!(
             "{}",
             bright_green(&format!("Successfully packaged {}", artifact.display()))

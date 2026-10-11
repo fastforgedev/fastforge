@@ -2,7 +2,7 @@ use crate::model::Platform;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -60,6 +60,21 @@ impl BuildConfig {
         );
         Value::Object(obj)
     }
+}
+
+/// ABIs that Android splits APKs by, as named in split APK files.
+const ANDROID_APK_ABIS: [&str; 4] = ["armeabi-v7a", "arm64-v8a", "x86_64", "x86"];
+
+/// The ABI of a split APK, from its file name: Flutter writes
+/// `app-<abi>[-<flavor>]-<mode>.apk` for `--split-per-abi`, and Gradle ABI
+/// splits also name the ABI as a `-`-delimited segment. `None` for a
+/// universal APK.
+pub fn android_apk_abi(path: &Path) -> Option<&'static str> {
+    let stem = path.file_stem()?.to_str()?;
+    let segments = format!("-{}-", stem);
+    ANDROID_APK_ABIS
+        .into_iter()
+        .find(|abi| segments.contains(&format!("-{}-", abi)))
 }
 
 #[derive(Debug, Clone)]
@@ -144,4 +159,21 @@ pub trait AppBuilder {
         output_files: Vec<PathBuf>,
         duration_ms: u128,
     ) -> BuildResult;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn android_apk_abi_from_file_name() {
+        let abi = |name: &str| android_apk_abi(Path::new(name));
+        assert_eq!(abi("app-arm64-v8a-release.apk"), Some("arm64-v8a"));
+        assert_eq!(abi("app-armeabi-v7a-dev-release.apk"), Some("armeabi-v7a"));
+        assert_eq!(abi("app-x86_64-profile.apk"), Some("x86_64"));
+        assert_eq!(abi("app-dev-x86-release.apk"), Some("x86"));
+        assert_eq!(abi("app-release.apk"), None);
+        assert_eq!(abi("app-dev-release.apk"), None);
+        assert_eq!(abi("app-universal-release.apk"), None);
+    }
 }

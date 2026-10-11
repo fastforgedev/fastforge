@@ -11,7 +11,7 @@ Fastforge 构建并整理 iOS 应用产物，输出格式为 [IPA](#ipa)。构�
 | Xcode           | 不含 `pubspec.yaml` | IPA 已支持；推荐使用 package action   |
 | Flutter Builder | 含 `pubspec.yaml`   | IPA 已通过 CLI 和 package action 支持 |
 
-两条路径都需要导出配置。Xcode Builder 还需要 `project` 和 `scheme`，推荐通过工作流 package action 的 `build-args` 传入。打包后的 IPA 会复制到 `dist/<version>/`。
+除未签名的 Flutter IPA 外，两条路径都需要导出配置。Xcode Builder 还需要 `project` 和 `scheme`，推荐通过工作流 package action 的 `build-args` 传入。打包后的 IPA 会复制到 `dist/<version>/`。
 
 ## IPA
 
@@ -25,6 +25,8 @@ fastforge package --targets ipa \
 ```
 
 也可以通过 `--flutter-build-args export-method=app-store` 指定导出方式。完整参数见 [Flutter Builder](../builders/flutter.md)。
+
+如需不签名打包（例如稍后再签名，或用于 CI 检查），使用 `--flutter-build-args no-codesign`。此时无需导出配置：Flutter 在生成 Xcode archive 后停止，Fastforge 把其中的 `.app` 以 `Payload/<name>.app` 的形式打包为 IPA。
 
 Xcode 项目通过工作流打包：
 

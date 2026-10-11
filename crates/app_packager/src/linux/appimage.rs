@@ -6,7 +6,7 @@ use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Pl
 use serde::Deserialize;
 
 use super::common::{
-    FormatVariables, RawPackaging, load_make_config, machine_architecture, make_executable,
+    FormatVariables, RawPackaging, load_make_config, machine_architecture, make_executable, var,
 };
 use super::staging::{self, Contents, Layout};
 
@@ -153,6 +153,14 @@ impl AppImageMakeConfig {
             config.app_binary_name
         )
     }
+}
+
+/// The update information to embed (`-u`), such as
+/// `gh-releases-zsync|owner|repo|latest|*x86_64.AppImage.zsync`: the
+/// `UPDATE_INFORMATION` variable from `.fastforge/config.yaml` `env:`, else
+/// from the environment, as linuxdeploy's AppImage plugin reads it.
+fn update_information(raw: &RawPackaging, config: &PackageConfig) -> Option<String> {
+    var(raw.variables(), "UPDATE_INFORMATION").or_else(|| config.env_var("UPDATE_INFORMATION"))
 }
 
 fn run(cmd: &mut Command) -> Result<(), PackageError> {
@@ -341,8 +349,11 @@ impl AppPackager for LinuxAppImagePackager {
 
         // Build the AppImage
         let mut cmd = Command::new("appimagetool");
+        cmd.arg("--no-appstream");
+        if let Some(info) = update_information(&raw, config) {
+            cmd.args(["--updateinformation", &info]);
+        }
         cmd.args([
-            "--no-appstream",
             &app_dir.display().to_string(),
             &output_file.display().to_string(),
         ]);
@@ -376,6 +387,52 @@ mod tests {
             output_dir: PathBuf::new(),
             environment: Default::default(),
         }
+    }
+
+    #[test]
+    fn update_information_from_config_env_then_environment() {
+        let tmp = tempfile::tempdir().unwrap();
+        let raw_with = |env: &[(&str, &str)], config: &PackageConfig| {
+            let settings = fastforge_core::ProjectSettings {
+                env: env
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+                ..Default::default()
+            };
+            RawPackaging::load_from(
+                tmp.path().join("appimage"),
+                settings,
+                config,
+                FormatVariables {
+                    package_name: None,
+                    default_package_name: "hola_amigos".into(),
+                    package_version: "1.0.0".into(),
+                    package_arch: "x86_64".into(),
+                    install_dir: None,
+                    display_name: None,
+                    packaging_dir: &tmp.path().join("staging"),
+                    output_file: &tmp.path().join("out.AppImage"),
+                    extra: vec![],
+                },
+            )
+            .unwrap()
+        };
+        let info = "gh-releases-zsync|owner|repo|latest|*x86_64.AppImage.zsync";
+        let mut config = test_config();
+        config.environment.insert(
+            "UPDATE_INFORMATION".into(),
+            "zsync|https://example.com/old".into(),
+        );
+
+        let raw = raw_with(&[("UPDATE_INFORMATION", info)], &config);
+        assert_eq!(update_information(&raw, &config).as_deref(), Some(info));
+
+        let raw = raw_with(&[], &config);
+        assert_eq!(
+            update_information(&raw, &config).as_deref(),
+            Some("zsync|https://example.com/old")
+        );
     }
 
     #[test]
