@@ -59,7 +59,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools zlib1g-dev
       - name: Check packages and install, upgrade, remove in temporary roots
         run: |
-          sudo env "PATH=$PATH" "RUSTUP_HOME=$HOME/.rustup" "CARGO_HOME=$HOME/.cargo" FASTFORGE_REQUIRE_NATIVE_TESTS=1 cargo test -p fastforge_app_packager --test linux_packagers deb_follows -- --ignored --nocapture --test-threads=1
+          sudo env "PATH=$PATH" "RUSTUP_HOME=$HOME/.rustup" "CARGO_HOME=$HOME/.cargo" FASTFORGE_REQUIRE_NATIVE_TESTS=1 cargo test -p fastforge_app_packager --test linux_packagers deb_ -- --ignored --nocapture --test-threads=1
           sudo env "PATH=$PATH" "RUSTUP_HOME=$HOME/.rustup" "CARGO_HOME=$HOME/.cargo" FASTFORGE_REQUIRE_NATIVE_TESTS=1 cargo test -p fastforge_app_packager --test linux_packagers rpm_ -- --ignored --nocapture --test-threads=1
 
   arch-package:

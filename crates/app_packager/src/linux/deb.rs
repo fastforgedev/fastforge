@@ -190,10 +190,12 @@ impl DebMakeConfig {
         ])
     }
 
-    /// `postinst` from `postinstall_scripts`, `None` when there are none (the
-    /// `/usr/bin` link is part of the package, not created by a script).
-    fn postinst(&self) -> Option<String> {
-        maintainer_script(&self.postinstall_scripts)
+    /// Repair a package-owned launcher removed by Dart's old postrm during
+    /// upgrade, before running the configured installation commands.
+    fn postinst(&self, launcher_repair: Option<String>) -> Option<String> {
+        let mut lines: Vec<String> = launcher_repair.into_iter().collect();
+        lines.extend(self.postinstall_scripts.iter().flatten().cloned());
+        maintainer_script(&Some(lines))
     }
 
     /// `postrm` from `postuninstall_scripts`, `None` when there are none.
@@ -205,6 +207,38 @@ impl DebMakeConfig {
 fn maintainer_script(lines: &Option<Vec<String>>) -> Option<String> {
     let lines = lines.as_ref().filter(|lines| !lines.is_empty())?;
     Some(format!("#!/bin/sh\n{}\nexit 0\n", lines.join("\n")))
+}
+
+/// Only symlinks shipped in the final payload need repair. In particular, a
+/// launcher replaced with a regular file by an overlay must stay untouched.
+fn launcher_repair(root: &Path, binary_name: &str) -> Result<Option<String>, PackageError> {
+    let link = format!("/usr/bin/{binary_name}");
+    let staged_link = root.join(link.trim_start_matches('/'));
+    let metadata = match std::fs::symlink_metadata(&staged_link) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.is_symlink() {
+        return Ok(None);
+    }
+    let target = std::fs::read_link(staged_link)?;
+    let target = target
+        .to_str()
+        .ok_or_else(|| PackageError::General("DEB launcher target must be valid UTF-8".into()))?;
+    Ok(Some(restore_launcher(&link, target)))
+}
+
+fn restore_launcher(link: &str, target: &str) -> String {
+    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
+    let link = quote(link);
+    // dpkg runs old postrm after unpacking the new payload. Restore only a
+    // missing entry during configure, without replacing an existing file or
+    // dangling symlink. The link remains owned and removed by dpkg.
+    format!(
+        "if [ \"${{1:-}}\" = configure ] && [ ! -e {link} ] && [ ! -L {link} ]; then\n    ln -s -- {} {link} || exit \"$?\"\nfi",
+        quote(target),
+    )
 }
 
 /// Adds `Installed-Size` (KiB) to a control file that does not set it, before
@@ -353,16 +387,14 @@ impl AppPackager for LinuxDebPackager {
         )?;
 
         // Maintainer scripts: raw, else generated from make_config.yaml.
-        for (name, generated) in [
-            ("postinst", make_config.postinst()),
-            ("postrm", make_config.postrm()),
-            ("preinst", None),
-            ("prerm", None),
-            ("config", None),
-        ] {
+        for name in ["postinst", "postrm", "preinst", "prerm", "config"] {
             let content = match raw.file(&[name]) {
                 Some(src) => Some(raw.render(&src)?),
-                None => generated,
+                None => match name {
+                    "postinst" => make_config.postinst(launcher_repair(&pkg_dir, binary_name)?),
+                    "postrm" => make_config.postrm(),
+                    _ => None,
+                },
             };
             if let Some(content) = content {
                 let dest = debian_dir.join(name);
@@ -507,12 +539,78 @@ startup_notify: true
     #[test]
     fn scripts_only_run_configured_lines() {
         let mc = full_make_config();
-        let postinst = mc.postinst().unwrap();
+        let postinst = mc.postinst(None).unwrap();
         assert_eq!(postinst, "#!/bin/sh\necho Installed\nexit 0\n");
         assert!(!postinst.contains("/usr/bin"));
         assert_eq!(mc.postrm().unwrap(), "#!/bin/sh\necho Removed\nexit 0\n");
-        assert_eq!(DebMakeConfig::default().postinst(), None);
+        assert_eq!(DebMakeConfig::default().postinst(None), None);
         assert_eq!(DebMakeConfig::default().postrm(), None);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn postinst_restores_only_missing_launchers_during_configure() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Both paths exercise shell quoting; a dangling symlink is valid.
+        let link = tmp.path().join("launcher's $entry");
+        let target = "../bundle's $executable";
+        let marker = tmp.path().join("configured");
+        let mc = DebMakeConfig {
+            postinstall_scripts: Some(vec!["test -L \"$LAUNCHER\" && touch \"$MARKER\"".into()]),
+            ..Default::default()
+        };
+        let script = tmp.path().join("postinst");
+        std::fs::write(
+            &script,
+            mc.postinst(Some(restore_launcher(link.to_str().unwrap(), target)))
+                .unwrap(),
+        )
+        .unwrap();
+        let execute = |argument: &str| {
+            Command::new("sh")
+                .arg(&script)
+                .arg(argument)
+                .env("LAUNCHER", &link)
+                .env("MARKER", &marker)
+                .status()
+                .unwrap()
+        };
+        assert!(execute("abort-upgrade").success());
+        assert!(link.symlink_metadata().is_err());
+        assert!(!marker.exists());
+        assert!(execute("configure").success());
+        assert_eq!(std::fs::read_link(&link).unwrap(), Path::new(target));
+        assert!(marker.exists(), "configured commands must run after repair");
+        assert!(execute("configure").success(), "repair must be idempotent");
+        // Keep a replacement dangling symlink, and a regular file too.
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink("custom-target", &link).unwrap();
+        assert!(execute("configure").success());
+        assert_eq!(
+            std::fs::read_link(&link).unwrap(),
+            Path::new("custom-target")
+        );
+        std::fs::remove_file(&link).unwrap();
+        std::fs::write(&link, "custom launcher").unwrap();
+        assert!(execute("configure").success());
+        assert_eq!(std::fs::read_to_string(&link).unwrap(), "custom launcher");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn launcher_repair_uses_the_final_overlay_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let link = tmp.path().join("usr/bin/demo");
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        assert!(launcher_repair(tmp.path(), "demo").unwrap().is_none());
+        std::fs::write(&link, "custom launcher").unwrap();
+        assert!(launcher_repair(tmp.path(), "demo").unwrap().is_none());
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink("../../opt/custom/demo", &link).unwrap();
+        assert_eq!(
+            launcher_repair(tmp.path(), "demo").unwrap(),
+            Some(restore_launcher("/usr/bin/demo", "../../opt/custom/demo")),
+        );
     }
 
     #[test]

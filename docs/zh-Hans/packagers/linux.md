@@ -86,7 +86,7 @@ project:
 
 ## DEB
 
-需要 `dpkg-deb`（Debian/Ubuntu 上由 `dpkg-dev` 提供）。文件属主为 root。默认包名为可执行文件名转为小写，并把 Debian 不允许的字符（如 `_`）替换为 `-`。`Version` 保留构建号（`1.2.3+4`），预发布版本中的 `-` 写成 `~`。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `libgtk-3-0`；设为空列表可以去掉。`/usr/bin` 链接已包含在包里，因此只有提供了维护脚本，或设置了 `postinstall_scripts`/`postuninstall_scripts` 时才会写入维护脚本。`make_config.yaml` 额外的键包括 `maintainer`、`co_authors`、`priority`、`section` 和 `dependencies`。
+需要 `dpkg-deb`（Debian/Ubuntu 上由 `dpkg-dev` 提供）。文件属主为 root。默认包名为可执行文件名转为小写，并把 Debian 不允许的字符（如 `_`）替换为 `-`。`Version` 保留构建号（`1.2.3+4`），预发布版本中的 `-` 写成 `~`。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `libgtk-3-0`；设为空列表可以去掉。`/usr/bin` 链接由包管理器拥有并负责卸载清理。旧 Dart 包的 `postrm` 可能在升级时删除它，因此默认 `postinst` 会在配置阶段、执行 `postinstall_scripts` 之前，仅在入口缺失时补回链接。已有文件及符号链接（包括失效链接）均保留，覆盖树提供的链接目标也会保留。原生 `postinst` 会替换默认脚本，需要自行处理这项升级兼容；仅配置了 `postuninstall_scripts` 时才生成 `postrm`。`make_config.yaml` 额外的键包括 `maintainer`、`co_authors`、`priority`、`section` 和 `dependencies`。
 
 ## RPM
 

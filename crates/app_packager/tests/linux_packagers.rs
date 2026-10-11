@@ -205,8 +205,48 @@ fn s(path: &Path) -> &str {
     path.to_str().unwrap()
 }
 
+/// Maintainer scripts run inside the temporary dpkg root, including Dart's
+/// `/usr/bin/env sh` scripts. Never use --force-script-chrootless here: their
+/// absolute paths must not reach the host's /usr/bin.
+fn deb_root() -> tempfile::TempDir {
+    let target = tempfile::tempdir().unwrap();
+    let root = target.path();
+    for dir in [
+        "var/lib/dpkg/info",
+        "var/lib/dpkg/updates",
+        "bin",
+        "usr/bin",
+    ] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    write(&root.join("var/lib/dpkg/status"), "");
+    for name in ["sh", "env", "ln", "chmod", "rm"] {
+        let source = host_file(&[&format!("/bin/{name}"), &format!("/usr/bin/{name}")])
+            .unwrap_or_else(|| panic!("missing {name}"));
+        let destination = if name == "sh" {
+            root.join("bin/sh")
+        } else {
+            root.join(format!("usr/bin/{name}"))
+        };
+        std::fs::copy(&source, destination).unwrap();
+        // Copy both shared libraries and the ELF interpreter, preserving
+        // their absolute locations within the chroot.
+        for library in run("ldd", &[s(&source)])
+            .split_whitespace()
+            .filter(|word| word.starts_with('/'))
+        {
+            let destination = root.join(library.trim_start_matches('/'));
+            std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            std::fs::copy(library, destination).unwrap();
+        }
+    }
+    // env inherits PATH; Arch's PATH can omit /bin entirely.
+    std::fs::copy(root.join("bin/sh"), root.join("usr/bin/sh")).unwrap();
+    target
+}
+
 #[test]
-#[ignore = "needs Linux with dpkg-deb (and dpkg + unshare for install checks)"]
+#[ignore = "needs Linux with dpkg-deb (and dpkg, ldd + unshare for install checks)"]
 fn deb_follows_debian_conventions() {
     if !has("dpkg-deb") {
         return skip("dpkg-deb not found");
@@ -242,17 +282,13 @@ fn deb_follows_debian_conventions() {
     let md5sums = std::fs::read_to_string(control.path().join("md5sums")).unwrap();
     assert!(md5sums.contains("  opt/hola/hola\n"));
     assert!(md5sums.contains(&format!("  {}\n", CONF)));
-    // The /usr/bin link is part of the package: no maintainer scripts.
-    assert!(!control.path().join("postinst").exists());
-
-    if !has("dpkg") || !userns() {
-        return skip("deb install checks (dpkg or unshare missing)");
+    assert!(control.path().join("postinst").is_file());
+    assert!(!control.path().join("postrm").exists());
+    if !has("dpkg") || !has("ldd") || !userns() {
+        return skip("deb install checks (dpkg, ldd or unshare missing)");
     }
-    let target = tempfile::tempdir().unwrap();
+    let target = deb_root();
     let root = target.path();
-    std::fs::create_dir_all(root.join("var/lib/dpkg/info")).unwrap();
-    std::fs::create_dir_all(root.join("var/lib/dpkg/updates")).unwrap();
-    std::fs::write(root.join("var/lib/dpkg/status"), "").unwrap();
     let dpkg = |args: &[&str]| -> (bool, String) {
         let mut all = vec!["--root", s(root), "--log=/dev/null"];
         all.extend_from_slice(args);
@@ -296,6 +332,117 @@ fn deb_follows_debian_conventions() {
     let (ok, out) = dpkg(&["-P", "hola"]);
     assert!(ok, "{}", out);
     assert!(!root.join(CONF).exists());
+}
+
+#[test]
+#[ignore = "needs Linux with dpkg-deb, dpkg, ldd, chroot and root or unshare"]
+fn deb_upgrades_dart_layout_and_restores_the_launch_command() {
+    if !has("dpkg-deb") || !has("dpkg") || !has("ldd") || !has("chroot") || !userns() {
+        return skip("legacy DEB upgrade needs dpkg-deb, dpkg, ldd, chroot and root or unshare");
+    }
+    let project = project();
+    let legacy = project.root.join("legacy");
+    write(
+        &legacy.join("DEBIAN/control"),
+        format!(
+            "Package: hola\nVersion: 1.0.0\nArchitecture: {}\n\
+             Maintainer: Test <test@example.com>\nDescription: Dart legacy package\n",
+            run("dpkg", &["--print-architecture"]).trim(),
+        ),
+    );
+    std::fs::create_dir_all(legacy.join("opt/hola")).unwrap();
+    std::fs::copy(
+        project.root.join("build/bundle/hola"),
+        legacy.join("opt/hola/hola"),
+    )
+    .unwrap();
+    // Exact default commands from Dart's MakeDebConfig. The link is made
+    // by postinst, and old postrm removes it even when invoked for upgrade.
+    for (name, script) in [
+        (
+            "postinst",
+            "#!/usr/bin/env sh\nln -s /opt/hola/hola /usr/bin/hola\nchmod +x /usr/bin/hola\nexit 0\n",
+        ),
+        ("postrm", "#!/usr/bin/env sh\nrm /usr/bin/hola\nexit 0\n"),
+    ] {
+        let path = legacy.join("DEBIAN").join(name);
+        write(&path, script);
+        run("chmod", &["755", s(&path)]);
+    }
+    let legacy_deb = project.root.join("legacy.deb");
+    run(
+        "dpkg-deb",
+        &["--build", "--root-owner-group", s(&legacy), s(&legacy_deb)],
+    );
+    let native = package(&project, &LinuxDebPackager, "deb", "1.2.3+4");
+    let target = deb_root();
+    let root = target.path();
+    let dpkg = |args: &[&str]| {
+        let mut all = vec!["--root", s(root), "--log=/dev/null", "--force-depends"];
+        all.extend_from_slice(args);
+        as_root_ok("dpkg", &all)
+    };
+    dpkg(&["-i", s(&legacy_deb)]);
+    assert_eq!(
+        std::fs::read_link(root.join("usr/bin/hola")).unwrap(),
+        Path::new("/opt/hola/hola")
+    );
+    dpkg(&["-i", s(&native)]);
+    assert_eq!(
+        std::fs::read_link(root.join("usr/bin/hola"))
+            .expect("Dart postrm removed the native launch command"),
+        Path::new("/opt/hola/hola"),
+    );
+    as_root_ok("chroot", &[s(root), "/usr/bin/hola"]);
+    // The restored link stays package-owned: another native upgrade must
+    // retain it, and remove/purge must clean it without an rm script.
+    let native_v2 = package(&project, &LinuxDebPackager, "deb", "1.2.3+5");
+    dpkg(&["-i", s(&native_v2)]);
+    assert_eq!(
+        std::fs::read_link(root.join("usr/bin/hola")).unwrap(),
+        Path::new("/opt/hola/hola")
+    );
+    dpkg(&["-r", "hola"]);
+    assert!(root.join("usr/bin/hola").symlink_metadata().is_err());
+    assert!(!root.join("opt/hola").exists());
+    dpkg(&["-P", "hola"]);
+}
+
+#[test]
+#[cfg(unix)]
+#[ignore = "needs Linux with dpkg-deb"]
+fn deb_preserves_raw_postinst_and_overlay_links() {
+    if !has("dpkg-deb") {
+        return skip("dpkg-deb not found");
+    }
+    let project = project();
+    let directory = project.root.join(".fastforge/packaging/linux/deb");
+    let raw_script = "#!/bin/sh\n# Project-owned lifecycle\nexit 0\n";
+    write(&directory.join("postinst"), raw_script);
+    let artifact = package(&project, &LinuxDebPackager, "deb", "1.2.3+4");
+    let control = tempfile::tempdir().unwrap();
+    run("dpkg-deb", &["-e", s(&artifact), s(control.path())]);
+    assert_eq!(
+        std::fs::read_to_string(control.path().join("postinst")).unwrap(),
+        raw_script
+    );
+
+    std::fs::remove_file(directory.join("postinst")).unwrap();
+    let overlay_link = directory.join("files/usr/bin/hola");
+    std::fs::create_dir_all(overlay_link.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink("../../opt/custom/hola", &overlay_link).unwrap();
+    let artifact = package(&project, &LinuxDebPackager, "deb", "1.2.3+5");
+    let payload = tempfile::tempdir().unwrap();
+    run("dpkg-deb", &["-x", s(&artifact), s(payload.path())]);
+    assert_eq!(
+        std::fs::read_link(payload.path().join("usr/bin/hola")).unwrap(),
+        Path::new("../../opt/custom/hola")
+    );
+    let control = tempfile::tempdir().unwrap();
+    run("dpkg-deb", &["-e", s(&artifact), s(control.path())]);
+    let postinst = std::fs::read_to_string(control.path().join("postinst")).unwrap();
+    assert!(postinst.contains("'../../opt/custom/hola'"));
+    assert!(!postinst.contains("'/opt/hola/hola'"));
 }
 
 #[test]
