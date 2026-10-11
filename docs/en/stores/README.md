@@ -48,4 +48,6 @@ The `appstore`, `appgallery`, and `googleplay` commands support:
 - `--debug`
 - `--no-color`
 
-`appstore` and `googleplay` also accept `--limit <LIMIT>`; for `appgallery`, only `package list` has its own `--limit` and `--offset`. `appstore` accepts `--paginate`, but it currently has no effect.
+`--json` takes a comma-separated list of fields and prints the selected fields of typed query results as JSON (an unknown field fails and lists the available ones); raw `api`, `catalog`, and `appgallery release` commands ignore it. `--verbose`, `--debug`, and `--no-color` are accepted but currently have no effect.
+
+`appstore` and `googleplay` also accept `--limit <LIMIT>`. In `appstore` it is passed to `app list`, `build list`, `version list`, `submission list`, and `submission items`; in `googleplay` it currently has no effect. For `appgallery`, only `package list` has its own `--limit` and `--offset`. `appstore` accepts `--paginate`, but it currently has no effect.

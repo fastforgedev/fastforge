@@ -34,9 +34,9 @@ DMG 是 macOS 常用的磁盘映像分发格式。当前版本使用内置 DMG m
 fastforge package --targets dmg
 ```
 
-`macos/packaging/dmg/` 中的内容（背景图、图标等）会被复制到 `.app` 旁边。如果存在 `macos/packaging/dmg/make_config.yaml`，它会作为 appdmg 风格的规格使用（`title`、`icon`、`background`、`icon-size`、`window`、`contents` 等），路径相对于该目录；否则使用默认布局：应用和 `/Applications` 链接，存在 `background.png` 时一并使用。
+`macos/packaging/dmg/` 中的内容（背景图、图标等）会被复制到 `.app` 旁边。如果存在 `macos/packaging/dmg/make_config.yaml`，它会作为 appdmg 风格的规格使用，路径相对于该目录。可用的键为 `title` 和 `contents`（均为必填）、`icon`、`background`、`background-color`、`icon-size`、`window`（`position`、`size`）、`format`（默认 `UDZO`）、`filesystem`（`HFS+` 或 `APFS`），以及 `code-sign`（`signing-identity`，可选 `identifier`），后者会用 `codesign` 为 DMG 签名。未知的键会导致打包失败；也接受带 `app` 和 `icons` 的旧版 appdmg 格式。否则使用默认布局：应用和 `/Applications` 链接，存在 `background.png` 时一并使用。
 
-签名、公证等额外流程可以通过 post-package 钩子执行（`--hook-post`，或 release job 中的 `package.hooks.post`）。
+公证等额外流程可以通过 post-package 钩子执行（`--hook-post`，或 release job 中的 `package.hooks.post`）。
 
 ## PKG
 

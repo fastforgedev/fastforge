@@ -61,7 +61,7 @@ fastforge googleplay bundle upload dist/app-release.aab \
 - Only `.aab` files are accepted.
 - Without `--edit-id`, a new edit is created. Without `--commit`, that edit stays uncommitted; the output includes its edit ID.
 - Without `--track`, the bundle is uploaded but not assigned to a track.
-- `--status` defaults to `completed`. `--release-name` defaults to the AAB file name.
+- `--status` defaults to `completed`. `--release-name` defaults to the AAB file name without the `.aab` extension.
 
 ## Tracks
 
@@ -92,4 +92,12 @@ Track names include `internal`, `alpha`, `beta`, `production`, and custom tracks
 ## Catalog and Raw API
 
 - See [Unified Catalog](catalog.md) for listing, image, and track metadata synchronization.
-- Call endpoints without typed commands through `fastforge googleplay api`.
+- Call endpoints without typed commands through `fastforge googleplay api`:
+
+```bash
+fastforge googleplay api get /applications/com.example.myapp/edits/<edit-id>/tracks
+fastforge googleplay api put /applications/com.example.myapp/edits/<edit-id>/tracks/beta \
+  --input track.json
+```
+
+Supported methods are `get`, `post`, `put`, `patch`, and `delete`. The path is relative to `androidpublisher/v3` and must start with `/applications/`, `--query KEY=VALUE` can be repeated, and `post`/`put`/`patch` accept `--input` pointing to a JSON request body file.

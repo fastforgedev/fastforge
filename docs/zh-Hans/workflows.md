@@ -118,7 +118,7 @@ fastforge workflow run \
 | `hook-pre`      | 打包前 shell 命令              |
 | `hook-post`     | 打包后 shell 命令              |
 
-`skip-clean` 和 `channel` 只对 Flutter 项目生效，原生 Gradle 和 Xcode 项目会忽略它们。与 `fastforge package` 不同，该 action 不读取 `distribute_options.yaml`：输出目录来自 `output`，变量来自进程环境变量。
+`skip-clean` 和 `channel` 只对 Flutter 项目生效，原生 Gradle 和 Xcode 项目会忽略它们。与 `fastforge package` 不同，该 action 不读取 `distribute_options.yaml`：输出目录来自 `output`，变量来自工作流、job 和 step 的 `env` 与进程环境变量的合并结果（冲突时以进程环境变量为准）。
 
 `build-args` 的字段由实际构建器决定，分别见 [Gradle Builder](builders/gradle.md)、[Xcode Builder](builders/xcode.md)和 [Flutter Builder](builders/flutter.md)。
 
@@ -180,8 +180,10 @@ Action 输出为 `message`。
 引擎遵循 GitHub Actions 语法。除两个 Fastforge action 外，还支持：
 
 - `run` step（支持 `shell`、`working-directory`、`env`），以及 step 上的 `if`、`continue-on-error` 和 `timeout-minutes`
-- job 的 `needs`、`if`、`outputs` 和 `strategy.matrix`；`${{ }}` 表达式可访问 `inputs`、`env`、`steps`、`needs`、`matrix` 和 `github`
+- job 的 `needs`、`if`、`outputs` 和 `strategy.matrix`；`${{ }}` 表达式可访问 `inputs`、`env`、`steps`、`needs`、`matrix`、`strategy`、`job`、`runner` 和 `github`（`secrets` 和 `vars` 始终为空字符串）
 - `uses:` 依次解析为内置 action（`fastforge/package`、`fastforge/publish`、`actions/checkout`、`actions/cache`、`actions/upload-artifact`、`actions/download-artifact`）、带 `action.yml` 的本地 `./path` action、`docker://image`，或远程 `owner/repo@ref` action。远程 action 需要联网获取，并缓存在 `~/.minact/actions`。
+
+job 在本机运行。`runs-on` 不会选择 runner：与本机不符的标签只会输出警告。带 `container:` 的 job 会在对应的 Docker 镜像中执行 step，`services:` 不会启动。引擎把临时文件放在工作区下的 `.minact/_work/` 中。
 
 Fastforge 尚未集成的构建系统可以作为 `run` step 执行，再把产物路径交给 `fastforge/publish` step。
 
@@ -193,5 +195,5 @@ Fastforge 尚未集成的构建系统可以作为 `run` step 执行，再把产�
 
 - `build-args` 和 `publish-args` 必须是有效 JSON，不是 YAML object。
 - 工作流内置 package action 与 CLI 使用相同的当前打包覆盖范围。
-- 发布凭证应通过运行进程的环境变量传入。
+- 发布凭证应通过运行进程的环境变量传入。`fastforge/publish` 只读取进程环境变量，不读取工作流中的 `env:`；`with` 的值会打印在运行日志中。
 - 多个工作流并存时显式使用 `--file`，避免选择歧义。

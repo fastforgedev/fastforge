@@ -51,21 +51,24 @@ fastforge analyze dist/app-release.apk \
   --output analysis.json
 ```
 
+`-o` is the short form of `--output`.
+
 ## Several Artifacts at Once
 
 Every argument is either an artifact or a directory to scan. Directories are
 walked recursively (up to 16 levels), skipping hidden entries; a `.app` bundle
 is treated as an artifact rather than a directory to descend into. A symlink
 that points to an artifact is analyzed, but symlinked directories are never
-descended into. With several artifacts, analyses run in parallel and progress
-lines (`[n/total] path`) go to stderr.
+descended into. With several artifacts, analyses run in parallel (up to 8 at a
+time) and progress lines (`[n/total] path`) go to stderr.
 
 ```bash
 fastforge analyze dist
 fastforge analyze dist/android dist/macos build/ios/ipa
 ```
 
-Analyzing more than one artifact wraps the results:
+Scanning a directory or analyzing more than one artifact wraps the results;
+`artifactCount` counts the artifacts that analyzed successfully:
 
 ```json
 {
@@ -91,17 +94,19 @@ The report is a single self-contained file — no external styles, scripts or
 fonts — so it can be opened straight from disk or attached to a build.
 
 It opens with a summary row and three distributions: artifacts per runtime,
-per signing state, and the largest artifacts. Clicking a bar filters
-everything below it, and the filters stack. The table sorts by any column,
-and a row expands in place to show that artifact's identity, tech stack, size
-composition, signing, and the full analysis JSON. Anything that failed to
+per signing state, and the largest artifacts. Clicking a runtime or signing
+bar filters everything below it; these filters stack with each other and with
+the search box. Clicking a bar in the size chart expands that artifact's row.
+The table sorts by any column, and a row expands in place to show that
+artifact's identity, tech stack, size composition, signing, and the full
+analysis JSON. Anything that failed to
 analyze is listed at the end.
 
 The page renders itself from the analysis embedded in it, so it needs
 JavaScript; the JSON output is the equivalent for anything that reads the
 results programmatically.
 
-`--output report.html` selects HTML from the file extension; pass
+`--output report.html` (or `.htm`) selects HTML from the file extension; pass
 `--format html` to write it to stdout instead, or `--format json` to keep JSON
 for a `.html` output path.
 
@@ -263,7 +268,7 @@ fastforge analyze "$ARTIFACT" --output artifact-metadata.json
 ```
 
 The command exits with a nonzero status for unsupported extensions, missing
-tools, or artifacts that cannot be parsed.
+tools, artifacts that cannot be parsed, or when no supported package is found.
 
 ## Notes
 
@@ -273,7 +278,7 @@ tools, or artifacts that cannot be parsed.
   always numeric; it stays an integer for Android version codes.
 - macOS signature inspection needs `codesign`; Gatekeeper (`spctl`) and
   notarization (`xcrun stapler`) are only checked for signed artifacts and may
-  reach the network. Every external tool call is capped at 30 seconds, and a
-  missing tool simply leaves its section out.
+  reach the network. Every external tool call is capped at 30 seconds (attaching a
+  DMG at 120 seconds), and a missing tool simply leaves its section out.
 - Encrypted disk images are rejected, because attaching one would block on a
   password prompt.

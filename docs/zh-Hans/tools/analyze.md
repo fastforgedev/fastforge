@@ -48,18 +48,20 @@ fastforge analyze dist/app-release.apk \
   --output analysis.json
 ```
 
+`-o` 是 `--output` 的简写。
+
 ## 一次分析多个产物
 
 每个参数要么是产物，要么是待扫描的目录。目录会被递归遍历（最多 16 层），跳过隐藏项；`.app` bundle
 被当作产物而不是继续深入的目录。指向产物的符号链接会被分析，但不会进入符号链接指向的目录。
-分析多个产物时会并行执行，进度行（`[n/total] path`）输出到 stderr。
+分析多个产物时会并行执行（最多同时 8 个），进度行（`[n/total] path`）输出到 stderr。
 
 ```bash
 fastforge analyze dist
 fastforge analyze dist/android dist/macos build/ios/ipa
 ```
 
-分析多个产物时，结果会被包一层：
+扫描目录或分析多个产物时，结果会被包一层；`artifactCount` 只统计分析成功的产物：
 
 ```json
 {
@@ -83,15 +85,16 @@ fastforge analyze dist --output report.html
 报告是单个自包含文件——不引用外部样式、脚本或字体——可以直接打开，也可以作为构建
 产物附带。
 
-开头是一行统计，以及三张分布图：按运行时、按签名状态、以及体积最大的产物。点击某个
-条目即可筛选下方全部内容，多个筛选条件可叠加。表格支持按任意列排序，点击某一行会就地
+开头是一行统计，以及三张分布图：按运行时、按签名状态、以及体积最大的产物。点击运行时
+或签名分布中的条目即可筛选下方全部内容，这些筛选条件可相互叠加，也可与搜索框叠加；点击体积图中的
+条目会展开对应产物的行。表格支持按任意列排序，点击某一行会就地
 展开，显示该产物的身份信息、技术栈、体积构成、签名，以及完整的分析 JSON。分析失败的
 条目列在最后。
 
 页面依据内嵌的分析数据自行渲染，因此需要 JavaScript；需要程序化读取结果时请用 JSON
 输出。
 
-`--output report.html` 会根据扩展名选择 HTML；也可以用 `--format html` 直接输出到
+`--output report.html`（或 `.htm`）会根据扩展名选择 HTML；也可以用 `--format html` 直接输出到
 stdout，或在 `.html` 输出路径下用 `--format json` 保持 JSON。
 
 ## 技术栈
@@ -243,7 +246,7 @@ fastforge analyze dist/app-release.aab
 fastforge analyze "$ARTIFACT" --output artifact-metadata.json
 ```
 
-命令遇到不支持的扩展名、缺少工具或无法解析的产物时会以非零状态退出。
+命令遇到不支持的扩展名、缺少工具、无法解析的产物，或找不到任何支持的包时，会以非零状态退出。
 
 ## 注意事项
 
@@ -251,6 +254,6 @@ fastforge analyze "$ARTIFACT" --output artifact-metadata.json
 - Apple 产物的 `buildNumber` 是字符串，因为 `CFBundleVersion` 并不总是数字；Android
   的 version code 仍是整数。
 - macOS 签名分析依赖 `codesign`；Gatekeeper（`spctl`）与公证（`xcrun stapler`）只对
-  已签名的产物执行，且可能访问网络。所有外部命令都有 30 秒上限，缺少某个工具时只会
+  已签名的产物执行，且可能访问网络。所有外部命令都有 30 秒上限（挂载 DMG 为 120 秒），缺少某个工具时只会
   省略对应字段。
 - 加密的磁盘镜像会被拒绝分析，因为挂载它会阻塞在密码输入上。

@@ -5,7 +5,7 @@ use crate::fs_util::{copy_dir_contents, zip_dir_contents};
 /// Copies the first build output file (the `.ipa` exported by Xcode)
 /// to the versioned output path, mirroring Dart's `AppPackageMakerIpa`.
 ///
-/// An unsigned `.app` (from `--build-no-codesign`) is wrapped into an IPA
+/// An unsigned `.app` (from `--flutter-build-args no-codesign`) is wrapped into an IPA
 /// as `Payload/<name>.app`, for signing later or for tools that take one.
 pub struct IOSIpaPackager;
 

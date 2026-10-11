@@ -63,7 +63,7 @@
 | 多商店 catalog 同步      | 已实现         | [Catalog](stores/catalog.md)        |
 | Studio（本地 Web 界面）  | 已实现         | [`fastforge studio`](cli.md#studio) |
 | 自动升级                 | 已实现         | [`fastforge upgrade`](installation.md#升级) |
-| 在线版本检查             | 已实现         | 每次运行命令前，或 `fastforge version-check` |
+| 在线版本检查             | 已实现         | 大多数命令运行前，或 `fastforge version-check` |
 
 ## 获取当前版本信息
 

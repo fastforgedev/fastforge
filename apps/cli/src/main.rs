@@ -65,7 +65,7 @@ enum Commands {
                       (VM service, DevTools, web server) are forwarded to this machine."
     )]
     Run(RunArgs),
-    #[command(about = "Manage remote hosts that package and publish on other machines")]
+    #[command(about = "Manage remote hosts that package and run apps on other machines")]
     Host(HostArgs),
     #[command(name = "remote-agent", hide = true)]
     RemoteAgent(RemoteAgentArgs),

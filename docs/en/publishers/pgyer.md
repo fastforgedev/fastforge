@@ -16,7 +16,7 @@ export PGYER_API_KEY=pgyer-api-key
 fastforge publish --path dist/app.apk --target pgyer
 ```
 
-The file extension (for example `apk` or `ipa`) is sent as PGYER's build type, so keep the extension accurate. After the upload, Fastforge polls the build information (up to 10 times, every 3 seconds). The publishing result is `http://www.pgyer.com/<build key>`.
+The file extension (for example `apk` or `ipa`) is sent as PGYER's build type, so keep the extension accurate. After the upload, Fastforge polls the build information every 3 seconds, retrying up to 10 times while PGYER is still processing the build. The publishing result is `http://www.pgyer.com/<build key>`.
 
 ## Optional Arguments
 

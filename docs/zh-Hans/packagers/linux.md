@@ -82,7 +82,7 @@ project:
 
 ## AppImage
 
-需要 `appimagetool` 和 `ldd`。AppImage 只能在 glibc 不旧于构建主机的系统上运行，请在所支持的最老发行版上构建。默认 `AppRun` 会优先使用随包的库，并在当前目录下带着传入的参数启动程序。插件依赖的共享库会复制到 `usr/lib`，`files/` 覆盖树已经提供的除外。`make_config.yaml` 额外的键包括 `include`（额外的共享库，通过 `locate` 查找，此时需要安装 `locate`）和 `actions`。
+需要 `appimagetool` 和 `ldd`。AppImage 只能在 glibc 不旧于构建主机的系统上运行，请在所支持的最老发行版上构建。默认 `AppRun` 会优先使用随包的库，并在当前目录下带着传入的参数启动程序。插件依赖的共享库会复制到 `usr/lib`，`files/` 覆盖树已经提供的除外。`make_config.yaml` 额外的键包括 `include`（额外的共享库，通过 `locate` 查找，此时需要安装 `locate`）、`actions`（由 `label`、`name` 和 `arguments` 组成的条目，写成 `[Desktop Action]` 段）以及 `supported_mime_type`。AppImage 的 `make_config.yaml` 没有 `package_name`。
 
 如需嵌入[更新信息](https://github.com/AppImage/AppImageSpec/blob/master/draft.md#update-information)，在 `.fastforge/config.yaml` 的 `env:` 或环境变量中设置 `UPDATE_INFORMATION`。安装了 `zsyncmake` 时，`appimagetool` 还会在 AppImage 旁生成 `.zsync` 文件。如需使用其他 AppImage runtime，用同样的方式设置 `APPIMAGETOOL_RUNTIME_FILE`。
 
@@ -93,7 +93,7 @@ env:
 
 ## DEB
 
-需要 `dpkg-deb`（Debian/Ubuntu 上由 `dpkg-dev` 提供）。文件属主为 root。默认包名为可执行文件名转为小写，并把 Debian 不允许的字符（如 `_`）替换为 `-`。`Version` 保留构建号（`1.2.3+4`），预发布版本中的 `-` 写成 `~`。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `libgtk-3-0`；设为空列表可以去掉。`/usr/bin` 链接由包管理器拥有并负责卸载清理。旧 Dart 包的 `postrm` 可能在升级时删除它，因此默认 `postinst` 会在配置阶段、执行 `postinstall_scripts` 之前，仅在入口缺失时补回链接。已有文件及符号链接（包括失效链接）均保留，覆盖树提供的链接目标也会保留。原生 `postinst` 会替换默认脚本，需要自行处理这项升级兼容；仅配置了 `postuninstall_scripts` 时才生成 `postrm`。`make_config.yaml` 额外的键包括 `maintainer`、`co_authors`、`priority`、`section` 和 `dependencies`。
+需要 `dpkg-deb`（Debian/Ubuntu 上由 `dpkg-dev` 提供）。文件属主为 root。默认包名为可执行文件名转为小写，并把 Debian 不允许的字符（如 `_`）替换为 `-`。`Version` 保留构建号（`1.2.3+4`），预发布版本中的 `-` 写成 `~`。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `libgtk-3-0`；设为空列表可以去掉。`/usr/bin` 链接由包管理器拥有并负责卸载清理。旧 Dart 包的 `postrm` 可能在升级时删除它，因此默认 `postinst` 会在配置阶段、执行 `postinstall_scripts` 之前，仅在入口缺失时补回链接。已有文件及符号链接（包括失效链接）均保留，覆盖树提供的链接目标也会保留。原生 `postinst` 会替换默认脚本，需要自行处理这项升级兼容；仅配置了 `postuninstall_scripts` 时才生成 `postrm`。`make_config.yaml` 额外的键包括 `maintainer`、`co_authors`、`priority`、`section`、`essential`、`installed_size`、`postinstall_scripts`、`postuninstall_scripts`、`supported_mime_type`、`actions`、`startup_wm_class`，以及依赖关系列表 `dependencies`、`pre_dependencies`、`recommended_dependencies`、`suggested_dependencies`、`enhances`、`breaks`、`conflicts`、`provides`、`replaces`、`build_dependencies` 和 `build_dependencies_indep`。
 
 ## RPM
 
@@ -109,13 +109,13 @@ cp -a ${PACKAGING_DIRECTORY}/. %{buildroot}/
 %files -f ${RPM_FILE_LIST}
 ```
 
-清单包含文件、链接以及包自己创建的所有目录（如 `/opt/<binary>`、`/etc/<app id>`），但不占用 `/usr/share/applications` 等系统目录。两行 `%global` 把随包的 Flutter 引擎和插件排除在自动生成的 `Provides` 和 `Requires` 之外，GTK、glibc 等系统库依赖仍会保留。`RPM_PRIVATE_LIBS` 列出 bundle 中的库，并已按 spec 的需要转义。生成的 spec 也会这样处理，并关闭 debuginfo 包和 `.build-id` 链接，否则带有相同引擎的多个应用会冲突。`Version` 为构建名，其中的 `-` 转为 `~`；`Release` 为构建号。这些变量同时设置在 rpmbuild 的环境中，因此也可以使用 `%{getenv:APP_VERSION}`。产物会从任意 `RPMS/<arch>/` 目录中查找，spec 可以自行设置 `BuildArch`。`make_config.yaml` 额外的键包括 `summary`、`group`、`vendor`、`packager`、`license`、`url`、`requires` 和 `build_arch`。
+清单包含文件、链接以及包自己创建的所有目录（如 `/opt/<binary>`、`/etc/<app id>`），但不占用 `/usr/share/applications` 等系统目录。两行 `%global` 把随包的 Flutter 引擎和插件排除在自动生成的 `Provides` 和 `Requires` 之外，GTK、glibc 等系统库依赖仍会保留。`RPM_PRIVATE_LIBS` 列出 bundle 中的库，并已按 spec 的需要转义。生成的 spec 也会这样处理，并关闭 debuginfo 包和 `.build-id` 链接，否则带有相同引擎的多个应用会冲突。默认包名为 `pubspec.yaml` 中的名称。`Version` 为构建名，其中的 `-` 转为 `~`；`Release` 为构建号按 `.` 分隔的第一段（没有构建号时为 `1`），后接 `%{?dist}`。这些变量同时设置在 rpmbuild 的环境中，因此也可以使用 `%{getenv:APP_VERSION}`。产物会从任意 `RPMS/<arch>/` 目录中查找，spec 可以自行设置 `BuildArch`。`make_config.yaml` 额外的键包括 `summary`、`description`、`group`、`vendor`、`packager`、`packager_email`、`license`、`url`、`requires`、`build_requires`、`build_arch`、`postinstall_scripts`（`%post`）、`postun` 和 `postuninstall_scripts`（`%postun`）、`spec_macros`（追加在生成的 `%global` 宏之后的行）、`supported_mime_type` 以及 `actions`。
 
 RPM 保留 `/opt/<binary>` 安装目录。包名与程序名不同的项目同时提供 `/usr/bin/<binary>` 和旧版 `/usr/bin/<package>` 启动命令，均指向原生安装目录。迁移时保持包名不变，RPM 升级才能清理旧包拥有的 `/usr/share/<package>` 文件；额外的非托管文件或自定义卸载脚本需要项目自行迁移。
 
 ## Pacman
 
-需要支持 zstd 的 `bsdtar`，不使用 `makepkg`。产物是属主为 root 的 `.pkg.tar.zst` 归档，包含 `.MTREE`、`.PKGINFO`、`.INSTALL`（如有）以及包根目录。生成的 `.PKGINFO` 使用 makepkg 的格式，每个值一行 `key = value`。`pkgver` 为 `<构建名>-<构建号>`，构建名中的 `-` 会被去掉。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `gtk3`；设为空列表可以去掉。`make_config.yaml` 额外的键包括 `maintainer`、`licenses`、`groups`、`dependencies`、`optional_dependencies` 和 `postinstall_scripts`。
+需要支持 zstd 的 `bsdtar`，不使用 `makepkg`。产物是属主为 root 的 `.pkg.tar.zst` 归档，包含 `.MTREE`、`.PKGINFO`、`.INSTALL`（如有）以及包根目录。生成的 `.PKGINFO` 使用 makepkg 的格式，每个值一行 `key = value`。默认包名为可执行文件名。`pkgver` 为 `<构建名>-<release>`，构建名中的 `-` 会被去掉；release 为构建号按 `.` 分隔的第一段，没有构建号时为 `1`。设置了 `SOURCE_DATE_EPOCH` 时，`builddate` 使用该值。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `gtk3`；设为空列表可以去掉。`make_config.yaml` 额外的键包括 `maintainer`、`licenses`、`groups`、`dependencies`、`optional_dependencies`、`conflicts`、`provides`、`replaces`、`supported_mime_type`、`actions`，以及用于生成 `.INSTALL` 的 `postinstall_scripts`、`postupgrade_scripts` 和 `postuninstall_scripts`。
 
 Pacman 旧字段 `installed_size` 和 `options` 现在会输出迁移提示。`size` 按实际暂存内容计算字节数；`options` 属于 makepkg，不能作为 PKGINFO 元数据。需要的预处理应移到钩子或工作流。
 
@@ -130,6 +130,6 @@ Pacman 旧字段 `installed_size` 和 `options` 现在会输出迁移提示。`s
 
 ## ZIP 和 direct
 
-`zip` 把 bundle 目录压缩为归档；`direct` 把它直接复制到 `dist/<version>/`。两者都不需要额外工具。
+`zip` 把 bundle 目录压缩为归档；`direct` 把它直接复制到 `dist/<version>/` 下以产物名（不含扩展名）命名的目录。两者都不需要额外工具。
 
 返回[打包器总览](README.md)。

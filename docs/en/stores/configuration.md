@@ -42,7 +42,7 @@ stores:
 | `auth.key_path`                   | Path to the `.p8` private key                                              |
 | `auth.username` / `auth.password` | Compatible username and app-specific-password authentication               |
 | `apps[].bundle_id`                | Preferred application identifier                                           |
-| `apps[].app_id`                   | Fallback identifier used by catalog commands when the bundle ID is missing |
+| `apps[].app_id`                   | Fallback identifier used by catalog commands when the bundle ID is missing; `store list` shows only `bundle_id` |
 | `apps[].sku` / `apps[].name`      | Optional metadata                                                          |
 | `apps[].platform`                 | App Store platform (`IOS`, `MAC_OS`, `TV_OS`, or `VISION_OS`); defaults to `IOS` |
 
@@ -67,7 +67,7 @@ stores:
 | `apps[].package_name`       | Android package name                             |
 | `apps[].name`               | Optional display name                            |
 
-`auth` fields support complete `${ENV_NAME}` references. Empty fields fall back to these environment variables:
+`auth` fields support complete `${ENV_NAME}` references; a reference to an unset variable is kept as literal text. Missing or empty fields fall back to these environment variables:
 
 | Store       | Field                  | Fallback environment variables                                     |
 | ----------- | ---------------------- | ------------------------------------------------------------------ |

@@ -34,6 +34,6 @@ fastforge publish \
 
 凭证优先使用进程环境变量，不要把密钥写入版本库。
 
-上传构建不等于在商店中发布：提交审核、分阶段发布和商店元数据由 `fastforge appstore` 与 `fastforge googleplay` 处理，见[商店](../stores/README.md)。
+上传构建不等于在商店中发布：提交审核、分阶段发布和商店元数据由 `fastforge appstore`、`fastforge googleplay` 与 `fastforge appgallery` 处理，见[商店](../stores/README.md)。
 
 需要组合多个步骤时，使用[本地工作流](../workflows.md)。

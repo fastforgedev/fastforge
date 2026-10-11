@@ -32,7 +32,7 @@ fastforge appstore app list
 fastforge appstore app view com.example.myapp
 ```
 
-`view` accepts either a bundle ID or an App Store app ID.
+`view` accepts a numeric App Store app ID, a bundle ID, an SKU, or an app name, tried in that order; a value that matches more than one app fails. Every `--app` option below resolves apps the same way.
 
 “Set up a Store app” can mean three different operations:
 
@@ -56,7 +56,7 @@ fastforge appstore build wait <build-id> --timeout 30m
 ```
 
 - Uploads run `xcrun altool` and therefore require macOS. A `.pkg` file is uploaded as a macOS app; any other file as an iOS app.
-- `build wait` polls every 30 seconds until the processing state is `VALID`, and fails on `FAILED`, `INVALID`, or timeout. `--timeout` defaults to `30m` and accepts `m` or `s` suffixes.
+- `build wait` polls every 30 seconds until the processing state is `VALID`, and fails on `FAILED`, `INVALID`, or timeout. `--timeout` defaults to `30m` and accepts `m` or `s` suffixes; a bare number means seconds.
 - `build upload --wait` uses a fixed 30-minute timeout and waits for the most recently uploaded build of the app. If the new build is not listed yet, it may pick an older build; when that matters, use `build list` and then `build wait <build-id>`.
 - Fastforge has no TestFlight commands (beta groups, testers, beta review). Use App Store Connect or the raw API for them.
 
@@ -70,6 +70,8 @@ fastforge appstore version submit 1.0.0 \
   --build <build-id> \
   --wait
 ```
+
+`version view` and `version submit` accept a version string or a numeric App Store version ID.
 
 `version submit` associates the build, creates a review submission for the version's platform, adds the version item, and submits it for review.
 
@@ -96,7 +98,9 @@ fastforge appstore submission cancel <submission-id>
 ```
 
 - `list` can filter by `--platform` and `--state`. States: `READY_FOR_REVIEW`, `WAITING_FOR_REVIEW`, `IN_REVIEW`, `UNRESOLVED_ISSUES`, `CANCELING`, `COMPLETING`, `COMPLETE`.
+- `create` omits the platform when `--platform` is not given, leaving it to App Store Connect.
 - `remove-item` takes a submission item ID as listed by `items`.
+- `submit --wait` polls every 30 seconds until the submission reaches `WAITING_FOR_REVIEW`, `IN_REVIEW`, `COMPLETING`, or `COMPLETE`, and fails on `UNRESOLVED_ISSUES`, `CANCELING`, or timeout (`--timeout`, default `30m`).
 - `add-item --item-type` accepts `appStoreVersions`, `appCustomProductPageVersions`, `appStoreVersionExperiments`, `appStoreVersionExperimentsV2`, `appEvents`, `backgroundAssetVersions`, `gameCenterAchievementVersions`, `gameCenterActivityVersions`, `gameCenterChallengeVersions`, `gameCenterLeaderboardSetVersions`, and `gameCenterLeaderboardVersions`.
 
 ## Catalog
@@ -106,10 +110,10 @@ See [Unified Catalog](catalog.md) for App Store metadata, categories, screenshot
 ## Raw API
 
 ```bash
-fastforge appstore api get --help
-fastforge appstore api post --help
-fastforge appstore api patch --help
-fastforge appstore api delete --help
+fastforge appstore api get /v1/apps --query 'filter[bundleId]=com.example.myapp'
+fastforge appstore api patch /v1/appStoreVersions/<version-id> --input version.json
 ```
+
+Supported methods are `get`, `post`, `patch`, and `delete`. The path must start with `/v1/`, `--query KEY=VALUE` can be repeated, and `post`/`patch` accept `--input` pointing to a JSON request body file. The response is pretty-printed as JSON.
 
 The raw API supports App Store Connect resources without typed commands. Automation scripts should prefer existing typed commands.

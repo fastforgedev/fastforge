@@ -16,7 +16,7 @@ export PGYER_API_KEY=pgyer-api-key
 fastforge publish --path dist/app.apk --target pgyer
 ```
 
-文件扩展名（例如 `apk`、`ipa`）会作为蒲公英的构建类型提交，请保证扩展名准确。上传后 Fastforge 会轮询构建信息（最多 10 次，每次间隔 3 秒）。发布结果为 `http://www.pgyer.com/<build key>`。
+文件扩展名（例如 `apk`、`ipa`）会作为蒲公英的构建类型提交，请保证扩展名准确。上传后 Fastforge 每 3 秒查询一次构建信息，蒲公英仍在处理时最多重试 10 次。发布结果为 `http://www.pgyer.com/<build key>`。
 
 ## 可选参数
 

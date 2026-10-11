@@ -38,7 +38,7 @@ pub struct PackageArgs {
         short,
         long = "targets",
         alias = "target",
-        value_name = "apk,aab,app,appimage,deb,dmg,exe,hap,ipa,msix,pkg,rpm,zip"
+        value_name = "apk,aab,app,appimage,custom,deb,direct,dmg,exe,hap,ipa,msix,pacman,pkg,rpm,zip"
     )]
     pub targets: Option<String>,
     #[arg(long = "channel")]

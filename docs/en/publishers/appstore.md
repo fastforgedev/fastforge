@@ -37,7 +37,7 @@ The username and app-specific password are required together.
 fastforge publish --path dist/MyApp.ipa --target appstore
 ```
 
-The publisher also accepts the `key-id` (or `api-key`), `issuer-id` (or `api-issuer`), `key-path`, `username`, and `password` arguments. Avoid passing sensitive credentials this way, since they end up in command history.
+The publisher also accepts the `key-id` (or `api-key`), `issuer-id` (or `api-issuer`), `key-path`, `username`, and `password` arguments. Avoid passing sensitive credentials this way, since they end up in command history. The publishing result is `https://appstoreconnect.apple.com/apps`.
 
 ## Subsequent Management
 

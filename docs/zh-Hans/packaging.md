@@ -55,6 +55,7 @@ fastforge package --platform macos --targets dmg,zip
 | ------------------------------------- | ------------------------------------------------------ |
 | `--channel <CHANNEL>`                 | 渠道名；在默认产物名中替代 flavor 段                   |
 | `--artifact-name <TEMPLATE>`          | Mustache 产物名模板（见下文）                          |
+| `--output <DIR>`                      | 输出目录（见下文）                                     |
 | `--skip-clean`                        | 构建前跳过 `flutter clean`                             |
 | `--build-target <PATH>`               | 自定义 Flutter 入口                                    |
 | `--build-flavor <FLAVOR>`             | flavor（原生 Gradle 项目同样使用）                     |
@@ -63,6 +64,7 @@ fastforge package --platform macos --targets dmg,zip
 | `--build-dart-define <KEY=VALUE>`     | 编译变量；可重复                                       |
 | `--flutter-build-args <ARG,...>`      | 其他构建参数，`flag` 或 `key=value`，以逗号分隔        |
 | `--hook-pre` / `--hook-post`          | 打包器执行前 / 后运行的 shell 命令                     |
+| `--host <NAME\|auto>`                 | 在[远程主机](remote-hosts.md)上打包并取回产物          |
 
 没有专用参数的选项，例如 `profile`、`obfuscate`、`split-debug-info=<dir>` 或 `export-method=app-store`，可以通过 `--flutter-build-args` 传入。
 
@@ -76,7 +78,7 @@ fastforge package --platform macos --targets dmg,zip
 {{name}}{{#flavor}}-{{flavor}}{{/flavor}}-{{build_name}}{{#has_build_number}}+{{build_number}}{{/has_build_number}}{{#is_profile}}-{{build_mode}}{{/is_profile}}-{{platform}}{{#is_installer}}-setup{{/is_installer}}{{#ext}}.{{ext}}{{/ext}}
 ```
 
-设置 channel 后，`{{channel}}` 会替代 flavor 段。`--artifact-name` 可用的变量有 `name`、`version`、`build_name`、`build_number`、`build_mode`、`platform`、`flavor`、`channel`、`ext`，以及布尔值 `is_installer`（仅 `exe`）、`is_profile` 和 `has_build_number`。
+设置 channel 后，`{{channel}}` 会替代 flavor 段。`ext` 为格式名，但 AppImage 为 `AppImage`、Pacman 为 `pkg.tar.zst`、`custom` 为 `output_extension`；`direct` 没有扩展名，产物是一个目录。`--artifact-name` 可用的变量有 `name`、`version`、`build_name`、`build_number`、`build_mode`、`platform`、`flavor`、`channel`、`ext`，以及布尔值 `is_installer`（仅 `exe`）、`is_profile` 和 `has_build_number`。
 
 ### 格式配置
 
@@ -92,7 +94,7 @@ Fastforge 在原始打包文件中以 `${NAME}` 的形式提供以下变量，�
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `APP_NAME`、`APP_BINARY_NAME`                             | `pubspec.yaml` 中的名称和可执行文件名                                                  |
 | `APP_VERSION`、`BUILD_NAME`、`BUILD_NUMBER`               | `1.2.3+4`、`1.2.3`、`4`；没有构建号时 `BUILD_NUMBER` 为空                               |
-| `APP_DISPLAY_NAME`                                        | `project.display_name`，其次 `make_config.yaml` 的 `display_name`，最后为 `APP_NAME`    |
+| `APP_DISPLAY_NAME`                                        | `project.display_name`，其次 Linux `make_config.yaml` 的 `display_name`，最后为 `APP_NAME` |
 | `APP_DESCRIPTION`、`APP_HOMEPAGE`                         | `project.description` / `project.homepage`，其次取自 `pubspec.yaml`                     |
 | `APP_ID`                                                  | `project.app_id`；Linux 其次取 `linux/CMakeLists.txt` 的 `APPLICATION_ID`，最后为可执行文件名；Windows EXE/MSIX 使用最终安装器或清单标识 |
 | `APP_LICENSE`、`APP_MAINTAINER`                           | `project.license`（SPDX 表达式）和 `project.maintainer`（`姓名 <邮箱>`）                |

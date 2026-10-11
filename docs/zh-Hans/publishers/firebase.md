@@ -35,6 +35,8 @@ fastforge publish --path dist/app.apk --target firebase \
 
 在 `fastforge/publish` 工作流 action 和 `fastforge release` 中，请以 `app` 参数传入应用 ID。
 
+发布结果为 Firebase 控制台的 App Distribution 地址。
+
 ## Firebase Hosting
 
 Target：`firebase-hosting`

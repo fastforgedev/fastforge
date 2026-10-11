@@ -34,6 +34,6 @@ fastforge publish \
 
 Prefer process environment variables for credentials. Do not commit secrets to the repository.
 
-Uploading a build is not the same as releasing it in a store: review submission, staged rollouts, and store metadata are handled by `fastforge appstore` and `fastforge googleplay`; see [Stores](../stores/README.md).
+Uploading a build is not the same as releasing it in a store: review submission, staged rollouts, and store metadata are handled by `fastforge appstore`, `fastforge googleplay`, and `fastforge appgallery`; see [Stores](../stores/README.md).
 
 Use [Local Workflows](../workflows.md) to combine multiple steps.

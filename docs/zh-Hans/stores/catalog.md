@@ -44,9 +44,9 @@ fastforge appstore catalog push \
   --dry-run
 ```
 
-`--output` 和 `--input` 是根目录，命令会在其后追加 bundle ID 目录。`--platform` 默认 `IOS`；省略 `--version` 时拉取该平台的全部版本。
+`--app` 接受与 `appstore app view` 相同的标识。`--output` 和 `--input` 是根目录，命令会在其后追加解析出的 bundle ID 目录。`--platform` 默认 `IOS`；省略 `--version` 时拉取该平台的全部版本。
 
-Catalog pull 会先在目标目录旁生成完整快照，所有必要请求和写入成功后才替换整个 `<bundle-id>/` 目录。pull 失败时会丢弃 staging 文件并保留上一次快照。pull 成功时，新快照之外的内容都会被移除，包括其他平台、其他版本以及未提交的本地修改。若使用尚无此行为的旧版或 unofficial 二进制，失败可能留下部分文件：不要执行 push；先确认版本目录以及存在截图时的 `.manifest.yaml` 完整，或重新拉取到新目录。
+Catalog pull 会先在目标目录旁生成完整快照，所有必要请求和写入成功后才替换整个 `<bundle-id>/` 目录。pull 失败时会丢弃 staging 文件并保留上一次快照。pull 成功时，新快照之外的内容都会被移除，包括其他平台、其他版本以及未提交的本地修改。单个截图或 preview 下载失败只会输出警告并缺少该文件；尚无下载地址的媒体会写成空的占位文件。push 前请检查这两种情况。若使用尚无此行为的旧版或 unofficial 二进制，失败可能留下部分文件：不要执行 push；先确认版本目录以及存在截图时的 `.manifest.yaml` 完整，或重新拉取到新目录。
 
 目录结构：
 
@@ -87,7 +87,7 @@ push 行为：
 - 更新 `app_info.yaml` 与 `info/<locale>.yaml`，并创建缺失的语言；不会删除远端语言。
 - `version.yaml` 只推送 `copyright`。远端不存在对应版本的目录会被跳过；push 不会创建版本。
 - `localization.yaml` 会更新有变化的字段并创建缺失的语言；不会删除远端语言。
-- 截图按包含文件的 display type 目录同步（仅支持 PNG 或 JPEG）：未变化的文件按校验和复用，新文件上传，本地没有对应文件的远端截图会被删除，顺序按本地文件名排列。空目录或缺失目录不会改动对应的远端截图集。
+- 截图按包含文件的 display type 目录同步（仅支持 PNG 或 JPEG，其他非隐藏文件会导致 push 失败），缺失的截图集会被创建：未变化的文件按校验和复用，新文件上传，本地没有对应文件的远端截图会被删除，顺序按本地文件名排列。空目录或缺失目录不会改动对应的远端截图集。
 - preview 只拉取，不推送。
 - `review.yaml` 会被更新或创建。`review.d/` 只更新已有附件，不会上传新附件。
 
@@ -135,5 +135,5 @@ push 在单个 edit 中执行，结束时自动提交：
 1. `pull` 获取最新远端状态。App Store 需拉取所需的每个平台和版本，会共用目录时使用不同根目录；Google Play 请拉取到空目录。
 2. 在独立分支编辑 YAML 和图片。
 3. 校验 diff。从非空目录中删除截图会同时删除远端截图；删除整个语言或图片目录不会删除任何远端内容。
-4. 使用独立商店命令的 `push --dry-run` 预览。dry run 只列出每个文件的计划操作，不是字段级 diff；App Store 会把 `info/` 下每个语言都列为 `create`，即使远端已存在。
+4. 使用独立商店命令的 `push --dry-run` 预览。dry run 只列出每个文件的计划操作，不是字段级 diff；App Store 会把 `info/` 下每个语言以及每个版本的 `localization.yaml` 都列为 `create`，即使远端已存在。
 5. 确认后执行实际 push。

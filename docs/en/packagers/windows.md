@@ -60,15 +60,15 @@ Source: "${PACKAGING_DIRECTORY}\*"; DestDir: "{app}"; Flags: ignoreversion recur
 Name: "{autoprograms}\${APP_DISPLAY_NAME}"; Filename: "{app}\${EXECUTABLE_NAME}"
 ```
 
-Inno constants such as `{app}` and preprocessor syntax remain unchanged. The rendered script sits next to the staged directory; use `${PACKAGING_DIRECTORY}` for application files and compiler resources. `EXECUTABLE_NAME` prefers `<APP_BINARY_NAME>.exe` over bundled helper executables. Without a raw script, the generated script uses the project metadata, with ARM64 or x64 architecture settings derived from the build output.
+Inno constants such as `{app}` and preprocessor syntax remain unchanged. The rendered script sits next to the staged directory; use `${PACKAGING_DIRECTORY}` for application files and compiler resources. `EXECUTABLE_NAME` prefers `<APP_BINARY_NAME>.exe` over bundled helper executables. Without a raw script, the generated script uses the project metadata, with ARM64 or x64 architecture settings derived from the build output. Without `setup_icon_file` or `project.icon`, its setup icon is `windows/runner/resources/app_icon.ico` when present.
 
-Legacy `make_config.yaml` keys include `app_id`, `publisher_name`, `publisher_url`, `display_name`, `executable_name`, `install_dir_name`, `setup_icon_file`, `locales`, `create_desktop_icon`, `launch_at_startup`, `privileges_required`, and `script_template`. The legacy custom script still uses Liquid syntax.
+Legacy `make_config.yaml` keys include `app_id`, `publisher_name`, `publisher_url`, `display_name`, `executable_name`, `install_dir_name`, `setup_icon_file`, `locales`, `create_desktop_icon`, `launch_at_startup`, `privileges_required`, `architectures_allowed`, `architectures_install_in_64bit_mode`, and `script_template`, a file name in `windows/packaging/exe/`. The legacy custom script still uses Liquid syntax.
 
 ## MSIX
 
 Requires Windows SDK `makeappx` on `PATH`, plus `signtool` when signing. The Rust CLI always packages natively, including projects that depend on the Dart `msix` package.
 
-Place a native manifest at `msix/AppxManifest.xml`. Substituted variable values in this file are XML-escaped automatically; XML markup is preserved. Use `${APP_ID}` for the identity, `${PACKAGE_VERSION}` for the four-part version, `${PACKAGE_ARCH}` for the target architecture, `${EXECUTABLE_NAME}` for the executable, and `${MSIX_PUBLISHER}` for the publisher. The identity must meet MSIX naming rules; for example, use `dev.example.demo` without underscores.
+Place a native manifest at `msix/AppxManifest.xml`; without it, an `AppxManifest.xml` already in the bundle or a `files/` overlay is kept instead of generating one. Substituted variable values in this file are XML-escaped automatically; XML markup is preserved. Use `${APP_ID}` for the identity, `${PACKAGE_VERSION}` for the four-part version, `${PACKAGE_ARCH}` for the target architecture, `${EXECUTABLE_NAME}` for the executable, and `${MSIX_PUBLISHER}` for the publisher. The identity must meet MSIX naming rules; for example, use `dev.example.demo` without underscores.
 
 Missing metadata is generated from legacy settings, then `project:`, then defaults. The default identity is `com.flutter.<app name without underscores>` and the default version is `a.b.c.0` (the build number is not used). The default publisher is `CN=Publisher`; set `MSIX_PUBLISHER` to match the signing certificate or Store identity. Logo assets come from `logo_path`, then `project.icon`, then the Flutter runner icon, then a placeholder. Existing assets take precedence over generation.
 
@@ -79,14 +79,14 @@ env:
   MSIX_CERTIFICATE_PASSWORD: ${MSIX_CERTIFICATE_PASSWORD}
 ```
 
-These variables may also be supplied directly through the process environment. Certificate settings can still be provided through legacy `certificate_path`, `certificate_password`, and `signtool_options`. Explicit packager settings take precedence, followed by the environment variables and legacy settings. Without signing configuration, the package is unsigned and a warning is printed. Legacy `store: true` or `sign_msix: false` skips signing.
+These variables may also be supplied directly through the process environment. Certificate settings can still be provided through legacy `certificate_path`, `certificate_password`, and `signtool_options`. Explicit packager settings take precedence, followed by the environment variables and legacy settings. `signtool_options` replaces the default `sign /fd SHA256 /a /f <certificate> /p <password>` arguments. Without signing configuration, the package is unsigned and a warning is printed. Legacy `store: true` or `sign_msix: false` skips signing.
 
-**Compatibility change:** Rust no longer invokes `dart run msix:create` or uses its bundled test certificate. `debug` and `install_certificate` do not install certificates and print a migration warning when enabled. Install development certificates separately. `trim_logo` defaults to `true`: transparent borders are cropped before generated assets are resized; set it to `false` to preserve padding. Assets supplied by the bundle or overlays are preserved. Capabilities, file associations, protocols, aliases, and startup settings can be expressed directly in the manifest; their existing legacy keys remain supported for generated manifests.
+**Compatibility change:** Rust no longer invokes `dart run msix:create` or uses its bundled test certificate. `debug` and `install_certificate` do not install certificates and print a migration warning when enabled. Install development certificates separately. `trim_logo` defaults to `true`: transparent borders are cropped before generated assets are resized; set it to `false` to preserve padding. Assets supplied by the bundle or overlays are preserved. Capabilities, file associations, protocols, aliases, and startup settings can be expressed directly in the manifest; their existing legacy keys remain supported for generated manifests. The generated manifest reads `display_name`, `publisher_display_name`, `identity_name`, `msix_version`, `architecture`, `languages`, `capabilities`, `file_extension`, `protocol_activation`, `execution_alias` (or `add_execution_alias`), `enable_at_startup`, and `publisher`. `output_path`, `output_name`, and `build_windows` are ignored; the artifact uses Fastforge's output directory and name.
 
 Generated capabilities use the Windows schema namespaces and place device capabilities last, regardless of input order. Repeated names are removed, including the automatically added `runFullTrust`. Unknown names and devices requiring child elements (such as `usb`) require a raw `AppxManifest.xml`; they fail with an actionable error instead of being emitted as ordinary capabilities.
 
 ## ZIP and direct
 
-`zip` archives the runner directory; `direct` copies it to `dist/<version>/` without an archive. Both need no extra tools.
+`zip` archives the runner directory; `direct` copies it to a directory named after the artifact (without an extension) in `dist/<version>/`. Both need no extra tools.
 
 Return to the [packager overview](README.md).

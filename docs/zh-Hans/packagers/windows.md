@@ -60,15 +60,15 @@ Source: "${PACKAGING_DIRECTORY}\*"; DestDir: "{app}"; Flags: ignoreversion recur
 Name: "{autoprograms}\${APP_DISPLAY_NAME}"; Filename: "{app}\${EXECUTABLE_NAME}"
 ```
 
-`{app}` 等 Inno 常量和预处理语法保持原样。渲染后的脚本位于暂存目录旁，应用文件和编译资源请通过 `${PACKAGING_DIRECTORY}` 引用。`EXECUTABLE_NAME` 优先使用 `<APP_BINARY_NAME>.exe`，避免选到随包附带的辅助程序。没有原生脚本时，默认脚本使用项目元数据，并从构建路径判断 ARM64 或 x64。
+`{app}` 等 Inno 常量和预处理语法保持原样。渲染后的脚本位于暂存目录旁，应用文件和编译资源请通过 `${PACKAGING_DIRECTORY}` 引用。`EXECUTABLE_NAME` 优先使用 `<APP_BINARY_NAME>.exe`，避免选到随包附带的辅助程序。没有原生脚本时，默认脚本使用项目元数据，并从构建路径判断 ARM64 或 x64。未设置 `setup_icon_file` 和 `project.icon` 时，若存在 `windows/runner/resources/app_icon.ico`，则用作安装程序图标。
 
-旧 `make_config.yaml` 支持 `app_id`、`publisher_name`、`publisher_url`、`display_name`、`executable_name`、`install_dir_name`、`setup_icon_file`、`locales`、`create_desktop_icon`、`launch_at_startup`、`privileges_required` 和 `script_template` 等字段；旧自定义脚本继续使用 Liquid 语法。
+旧 `make_config.yaml` 支持 `app_id`、`publisher_name`、`publisher_url`、`display_name`、`executable_name`、`install_dir_name`、`setup_icon_file`、`locales`、`create_desktop_icon`、`launch_at_startup`、`privileges_required`、`architectures_allowed`、`architectures_install_in_64bit_mode` 和 `script_template`（`windows/packaging/exe/` 中的文件名）等字段；旧自定义脚本继续使用 Liquid 语法。
 
 ## MSIX
 
 需要 `PATH` 中的 Windows SDK `makeappx`，签名时还需要 `signtool`。Rust CLI 统一使用原生打包流程，项目是否依赖 Dart `msix` 包不再影响打包路径。
 
-将原生清单放在 `msix/AppxManifest.xml`。这个文件中的变量值会自动进行 XML 转义，XML 标记保持原样。使用 `${APP_ID}` 作为应用标识、`${PACKAGE_VERSION}` 作为四段版本、`${PACKAGE_ARCH}` 作为架构、`${EXECUTABLE_NAME}` 作为可执行文件名、`${MSIX_PUBLISHER}` 作为发布者。标识需符合 MSIX 命名规则，例如不含下划线的 `dev.example.demo`。
+将原生清单放在 `msix/AppxManifest.xml`；没有该文件时，构建输出或 `files/` 覆盖层中已有的 `AppxManifest.xml` 会被保留，不再生成清单。这个文件中的变量值会自动进行 XML 转义，XML 标记保持原样。使用 `${APP_ID}` 作为应用标识、`${PACKAGE_VERSION}` 作为四段版本、`${PACKAGE_ARCH}` 作为架构、`${EXECUTABLE_NAME}` 作为可执行文件名、`${MSIX_PUBLISHER}` 作为发布者。标识需符合 MSIX 命名规则，例如不含下划线的 `dev.example.demo`。
 
 未提供的元数据依次从旧配置、`project:` 和默认值生成。默认标识为 `com.flutter.<去掉下划线的应用名>`，版本为 `a.b.c.0`，不使用构建号。发布者默认为 `CN=Publisher`，应通过 `MSIX_PUBLISHER` 设置为与签名证书或商店身份一致的值。图标依次取 `logo_path`、`project.icon`、Flutter runner 图标或占位图；已提供的图标优先于自动生成。
 
@@ -79,14 +79,14 @@ env:
   MSIX_CERTIFICATE_PASSWORD: ${MSIX_CERTIFICATE_PASSWORD}
 ```
 
-这些变量也可直接通过进程环境传入。旧 `certificate_path`、`certificate_password` 和 `signtool_options` 继续支持。优先级为显式 packager 参数、环境变量、旧配置。未提供签名配置时生成未签名包并输出警告；旧 `store: true` 或 `sign_msix: false` 会跳过签名。
+这些变量也可直接通过进程环境传入。旧 `certificate_path`、`certificate_password` 和 `signtool_options` 继续支持。优先级为显式 packager 参数、环境变量、旧配置。`signtool_options` 会替换默认的 `sign /fd SHA256 /a /f <证书> /p <密码>` 参数。未提供签名配置时生成未签名包并输出警告；旧 `store: true` 或 `sign_msix: false` 会跳过签名。
 
-**兼容性变化：** Rust 不再运行 `dart run msix:create`，也不再使用其内置测试证书。`debug` 和 `install_certificate` 不会安装证书，启用时会输出迁移提示；开发证书需单独安装。`trim_logo` 默认开启：生成图标前裁掉透明边缘，再等比缩放；设为 `false` 可保留留白。构建产物或覆盖文件提供的图片会保留。capability、文件关联、协议、执行别名和开机启动可直接写入清单；默认生成清单时仍支持对应旧字段。
+**兼容性变化：** Rust 不再运行 `dart run msix:create`，也不再使用其内置测试证书。`debug` 和 `install_certificate` 不会安装证书，启用时会输出迁移提示；开发证书需单独安装。`trim_logo` 默认开启：生成图标前裁掉透明边缘，再等比缩放；设为 `false` 可保留留白。构建产物或覆盖文件提供的图片会保留。capability、文件关联、协议、执行别名和开机启动可直接写入清单；默认生成清单时仍支持对应旧字段。生成的清单读取 `display_name`、`publisher_display_name`、`identity_name`、`msix_version`、`architecture`、`languages`、`capabilities`、`file_extension`、`protocol_activation`、`execution_alias`（或 `add_execution_alias`）、`enable_at_startup` 和 `publisher`。`output_path`、`output_name` 和 `build_windows` 会被忽略，产物使用 Fastforge 的输出目录和产物名。
 
 生成的 capability 使用 Windows 清单要求的命名空间，并统一把设备能力放在末尾，不受输入顺序影响。重复项会去重，包括自动添加的 `runFullTrust`。未知名称及需要子元素的设备（如 `usb`）须使用原生 `AppxManifest.xml`；此时会明确报错，而不会猜测成普通 capability。
 
 ## ZIP 和 direct
 
-`zip` 把 runner 目录压缩为归档；`direct` 把它直接复制到 `dist/<version>/`。两者都不需要额外工具。
+`zip` 把 runner 目录压缩为归档；`direct` 把它直接复制到 `dist/<version>/` 下以产物名（不含扩展名）命名的目录。两者都不需要额外工具。
 
 返回[打包器总览](README.md)。

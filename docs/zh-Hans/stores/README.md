@@ -48,4 +48,6 @@ fastforge store list
 - `--debug`
 - `--no-color`
 
-`appstore` 与 `googleplay` 还支持 `--limit <LIMIT>`；`appgallery` 只有 `package list` 自带 `--limit` 和 `--offset`。`appstore` 接受 `--paginate`，但该选项目前不起作用。
+`--json` 接受逗号分隔的字段列表，以 JSON 输出类型化查询结果中选定的字段（字段不存在时会报错并列出可用字段）；原始 `api`、`catalog` 与 `appgallery release` 命令会忽略该选项。`--verbose`、`--debug` 与 `--no-color` 可被接受，但目前不起作用。
+
+`appstore` 与 `googleplay` 还支持 `--limit <LIMIT>`。`appstore` 会把它传给 `app list`、`build list`、`version list`、`submission list` 和 `submission items`；`googleplay` 目前不使用该选项。`appgallery` 只有 `package list` 自带 `--limit` 和 `--offset`。`appstore` 接受 `--paginate`，但该选项目前不起作用。

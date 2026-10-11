@@ -18,7 +18,7 @@ Flutter Builder 调用项目环境中的 Flutter CLI，负责执行平台构建�
 | --------- | ------------ | -------------- |
 | `android` | `apk`        | APK            |
 | `android` | `aab`        | AAB            |
-| `ios`     | `ipa` 或省略 | IPA            |
+| `ios`     | `ipa` 或省略 | IPA（使用 `no-codesign` 时为 `.app`） |
 | `macos`   | 可省略       | `.app`         |
 | `windows` | 可省略       | Windows bundle |
 | `linux`   | 可省略       | Linux bundle   |
@@ -42,6 +42,14 @@ fastforge build --platform ios --target ipa \
 
 也可以使用 `--build-export-method`。`fastforge package` 没有 `--build-export-method` 参数，请改用 `--flutter-build-args export-method=app-store`。
 
+如需不签名构建，传入 `--flutter-build-args no-codesign`，此时无需导出配置。Flutter 在生成 Xcode archive 后停止，构建结果是其中的 `.app`（[IPA 打包器](../packagers/ios.md#ipa)会将其封装为未签名的 IPA）：
+
+```bash
+fastforge build --platform ios --target ipa --flutter-build-args no-codesign
+```
+
+Android APK：默认以通用 APK 作为构建结果；使用 `--flutter-build-args split-per-abi` 时，改为按 ABI 拆分的各个 APK，见 [APK 打包器](../packagers/android.md#apk)。
+
 ## 构建参数
 
 | Fastforge 参数                  | 作用                           | 适用命令           |
@@ -60,15 +68,15 @@ fastforge build --platform ios --target ipa \
 | `--build-profile`               | 使用 Profile 模式              | `build`            |
 | `--flutter-build-args`          | 逗号分隔的其他构建参数         | `build`、`package` |
 
-`--flutter-build-args` 中，无等号条目按布尔开关处理，`key=value` 按键值参数处理。值本身包含逗号时不应使用该入口。在 `package` 中，没有专用参数的选项可以通过它传入，例如 `profile` 或 `obfuscate,split-debug-info=build/symbols`。
+`--flutter-build-args` 中，无等号条目按布尔开关处理，`key=value` 按键值参数处理。值本身包含逗号时不应使用该入口；在 `build` 中，值也不能包含 `=`。在 `package` 中，没有专用参数的选项可以通过它传入，例如 `profile` 或 `obfuscate,split-debug-info=build/symbols`。
 
 ## 产物定位
 
 | 平台            | 默认查找位置                                                         |
 | --------------- | -------------------------------------------------------------------- |
-| Android APK     | `build/app/outputs/flutter-apk/`                                     |
+| Android APK     | `build/app/outputs/flutter-apk/`（通用 APK；使用 `split-per-abi` 时为拆分 APK） |
 | Android AAB     | `build/app/outputs/bundle/<mode>/` 或 `<flavor><Mode>/`              |
-| iOS             | `build/ios/ipa/`（最新的 `.ipa`）                                    |
+| iOS             | `build/ios/ipa/`（最新的 `.ipa`）；使用 `no-codesign` 时为 `build/ios/archive/*.xcarchive/Products/Applications/` 中的 `.app` |
 | macOS           | `build/macos/Build/Products/<Mode>[-<flavor>]/`                      |
 | Windows         | `build/windows/<arch>/runner/<Mode>/`（Flutter 3.15 以前为 `build/windows/runner/<Mode>/`） |
 | Linux           | `build/linux/<arch>/<mode>/bundle/`                                  |

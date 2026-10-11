@@ -34,9 +34,9 @@ DMG is a common disk image distribution format for macOS. The current release us
 fastforge package --targets dmg
 ```
 
-The contents of `macos/packaging/dmg/` (background, icons, and so on) are copied next to the `.app`. If `macos/packaging/dmg/make_config.yaml` exists, it is used as an appdmg-style specification (`title`, `icon`, `background`, `icon-size`, `window`, `contents`, and so on), with paths relative to that directory. Otherwise Fastforge uses a default layout with the app and an `/Applications` link, plus `background.png` when present.
+The contents of `macos/packaging/dmg/` (background, icons, and so on) are copied next to the `.app`. If `macos/packaging/dmg/make_config.yaml` exists, it is used as an appdmg-style specification, with paths relative to that directory. The keys are `title` and `contents` (both required), `icon`, `background`, `background-color`, `icon-size`, `window` (`position`, `size`), `format` (default `UDZO`), `filesystem` (`HFS+` or `APFS`), and `code-sign` (`signing-identity`, optional `identifier`), which signs the DMG with `codesign`. Unknown keys fail packaging; the older appdmg format with `app` and `icons` is also accepted. Otherwise Fastforge uses a default layout with the app and an `/Applications` link, plus `background.png` when present.
 
-Additional steps such as signing and notarization can be run through a post-package hook (`--hook-post`, or `package.hooks.post` in a release job).
+Additional steps such as notarization can be run through a post-package hook (`--hook-post`, or `package.hooks.post` in a release job).
 
 ## PKG
 

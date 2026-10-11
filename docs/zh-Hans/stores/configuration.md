@@ -42,7 +42,7 @@ stores:
 | `auth.key_path`                   | `.p8` 私钥路径                              |
 | `auth.username` / `auth.password` | 用户名与 app-specific password 兼容认证     |
 | `apps[].bundle_id`                | 首选应用标识                                |
-| `apps[].app_id`                   | bundle id 缺失时 catalog 命令使用的回退标识 |
+| `apps[].app_id`                   | bundle id 缺失时 catalog 命令使用的回退标识；`store list` 只显示 `bundle_id` |
 | `apps[].sku` / `apps[].name`      | 可选元数据                                  |
 | `apps[].platform`                 | App Store 平台：`IOS`、`MAC_OS`、`TV_OS` 或 `VISION_OS`；默认 `IOS` |
 
@@ -67,7 +67,7 @@ stores:
 | `apps[].package_name`       | Android 包名                              |
 | `apps[].name`               | 可选显示名称                              |
 
-`auth` 字段支持完整的 `${ENV_NAME}` 引用。字段为空时会回退读取以下环境变量：
+`auth` 字段支持完整的 `${ENV_NAME}` 引用；引用的变量未设置时会保留原文。字段缺失或为空时会回退读取以下环境变量：
 
 | 商店        | 字段                   | 回退环境变量                                                       |
 | ----------- | ---------------------- | ------------------------------------------------------------------ |

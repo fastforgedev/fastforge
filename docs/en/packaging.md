@@ -55,6 +55,7 @@ To inspect a Flutter Builder result separately, run `fastforge build`; see [Buil
 | ------------------------------------- | --------------------------------------------------------------------------- |
 | `--channel <CHANNEL>`                 | Channel name; replaces the flavor segment of the default artifact name      |
 | `--artifact-name <TEMPLATE>`          | Mustache artifact-name template (see below)                                 |
+| `--output <DIR>`                      | Output directory (see below)                                                |
 | `--skip-clean`                        | Skip `flutter clean` before building                                        |
 | `--build-target <PATH>`               | Custom Flutter entry point                                                  |
 | `--build-flavor <FLAVOR>`             | Flavor (also used by native Gradle projects)                                |
@@ -63,6 +64,7 @@ To inspect a Flutter Builder result separately, run `fastforge build`; see [Buil
 | `--build-dart-define <KEY=VALUE>`     | Compile-time variable; repeatable                                           |
 | `--flutter-build-args <ARG,...>`      | Other build arguments: `flag` or `key=value`, comma-separated               |
 | `--hook-pre` / `--hook-post`          | Shell commands run before / after the packager                              |
+| `--host <NAME\|auto>`                 | Package on a [remote host](remote-hosts.md) and fetch the artifacts back    |
 
 Arguments without a dedicated flag, such as `profile`, `obfuscate`, `split-debug-info=<dir>`, or `export-method=app-store`, can be passed through `--flutter-build-args`.
 
@@ -76,7 +78,7 @@ The default artifact name template is:
 {{name}}{{#flavor}}-{{flavor}}{{/flavor}}-{{build_name}}{{#has_build_number}}+{{build_number}}{{/has_build_number}}{{#is_profile}}-{{build_mode}}{{/is_profile}}-{{platform}}{{#is_installer}}-setup{{/is_installer}}{{#ext}}.{{ext}}{{/ext}}
 ```
 
-When a channel is set, `{{channel}}` replaces the flavor segment. Available variables for `--artifact-name`: `name`, `version`, `build_name`, `build_number`, `build_mode`, `platform`, `flavor`, `channel`, `ext`, and the booleans `is_installer` (only `exe`), `is_profile`, and `has_build_number`.
+When a channel is set, `{{channel}}` replaces the flavor segment. `ext` is the format name, except `AppImage` for AppImage, `pkg.tar.zst` for Pacman, and `output_extension` for `custom`; `direct` has no extension and produces a directory. Available variables for `--artifact-name`: `name`, `version`, `build_name`, `build_number`, `build_mode`, `platform`, `flavor`, `channel`, `ext`, and the booleans `is_installer` (only `exe`), `is_profile`, and `has_build_number`.
 
 ### Format Configuration
 
@@ -92,7 +94,7 @@ Fastforge provides these variables to raw packaging files as `${NAME}`. It also 
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `APP_NAME`, `APP_BINARY_NAME`                             | The `pubspec.yaml` name and the executable name                                                     |
 | `APP_VERSION`, `BUILD_NAME`, `BUILD_NUMBER`               | `1.2.3+4`, `1.2.3`, `4`; `BUILD_NUMBER` is empty without a build number                             |
-| `APP_DISPLAY_NAME`                                        | `project.display_name`, else `display_name` from `make_config.yaml`, else `APP_NAME`                |
+| `APP_DISPLAY_NAME`                                        | `project.display_name`, else `display_name` from a Linux `make_config.yaml`, else `APP_NAME`        |
 | `APP_DESCRIPTION`, `APP_HOMEPAGE`                         | `project.description` / `project.homepage`, else `pubspec.yaml`                                    |
 | `APP_ID`                                                  | `project.app_id`; Linux falls back to `APPLICATION_ID` from `linux/CMakeLists.txt`, then the binary name. Windows EXE/MSIX use the resolved installer/manifest identity |
 | `APP_LICENSE`, `APP_MAINTAINER`                           | `project.license` (an SPDX expression) and `project.maintainer` (`Name <email>`)                    |

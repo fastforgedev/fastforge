@@ -18,7 +18,7 @@ The builder reads `version` from `pubspec.yaml` and appends `--build-name` and `
 | --------- | ---------------- | -------------- |
 | `android` | `apk`            | APK            |
 | `android` | `aab`            | AAB            |
-| `ios`     | `ipa` or omitted | IPA            |
+| `ios`     | `ipa` or omitted | IPA (`.app` with `no-codesign`) |
 | `macos`   | May be omitted   | `.app`         |
 | `windows` | May be omitted   | Windows bundle |
 | `linux`   | May be omitted   | Linux bundle   |
@@ -42,6 +42,14 @@ fastforge build --platform ios --target ipa \
 
 You can also use `--build-export-method`. With `fastforge package`, which has no `--build-export-method` flag, use `--flutter-build-args export-method=app-store`.
 
+To build without signing, pass `--flutter-build-args no-codesign`; no export configuration is needed. Flutter stops after the Xcode archive, and the build result is the `.app` inside it (the [IPA packager](../packagers/ios.md#ipa) wraps it into an unsigned IPA):
+
+```bash
+fastforge build --platform ios --target ipa --flutter-build-args no-codesign
+```
+
+Android APKs: the universal APK is the build result by default. With `--flutter-build-args split-per-abi`, the per-ABI split APKs are the result instead; see the [APK packager](../packagers/android.md#apk).
+
 ## Build Options
 
 | Fastforge option                | Effect                                 | Available on         |
@@ -60,15 +68,15 @@ You can also use `--build-export-method`. With `fastforge package`, which has no
 | `--build-profile`               | Use Profile mode                       | `build`              |
 | `--flutter-build-args`          | Other build arguments, comma-separated | `build`, `package`   |
 
-Within `--flutter-build-args`, entries without an equals sign are treated as boolean switches, while `key=value` entries become key-value arguments. Do not use this option when a value itself contains a comma. On `package`, use it for options that have no dedicated flag, such as `profile` or `obfuscate,split-debug-info=build/symbols`.
+Within `--flutter-build-args`, entries without an equals sign are treated as boolean switches, while `key=value` entries become key-value arguments. Do not use this option when a value itself contains a comma; on `build`, a value also cannot contain `=`. On `package`, use it for options that have no dedicated flag, such as `profile` or `obfuscate,split-debug-info=build/symbols`.
 
 ## Artifact Locations
 
 | Platform        | Default search location                                          |
 | --------------- | ---------------------------------------------------------------- |
-| Android APK     | `build/app/outputs/flutter-apk/`                                 |
+| Android APK     | `build/app/outputs/flutter-apk/` (universal APK, or split APKs with `split-per-abi`) |
 | Android AAB     | `build/app/outputs/bundle/<mode>/` or `<flavor><Mode>/`          |
-| iOS             | `build/ios/ipa/` (newest `.ipa`)                                 |
+| iOS             | `build/ios/ipa/` (newest `.ipa`); with `no-codesign`, the `.app` in `build/ios/archive/*.xcarchive/Products/Applications/` |
 | macOS           | `build/macos/Build/Products/<Mode>[-<flavor>]/`                  |
 | Windows         | `build/windows/<arch>/runner/<Mode>/` (Flutter < 3.15: `build/windows/runner/<Mode>/`) |
 | Linux           | `build/linux/<arch>/<mode>/bundle/`                              |

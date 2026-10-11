@@ -18,13 +18,14 @@
 Ship every app faster to your users — Build, package, and publish with one clear configuration. Target popular distribution formats and app stores while fitting naturally into your CI/CD pipeline.
 
 > [!WARNING]
-> **Rust Migration In Progress:** The core of Fastforge is being rewritten in [Rust](https://www.rust-lang.org/) to deliver better performance, a smaller install footprint, and zero runtime dependencies on the Dart SDK. The new implementation lives in the [`crates/`](./crates) directory and is being developed in parallel with the existing Dart packages.
+> **Rust Migration In Progress:** The core of Fastforge is being rewritten in [Rust](https://www.rust-lang.org/) to deliver better performance, a smaller install footprint, and zero runtime dependencies on the Dart SDK. The native CLI lives in [`apps/cli/`](./apps/cli) with its core libraries in [`crates/`](./crates), and is developed in parallel with the existing Dart packages.
 >
 > **What this means for you:**
 >
 > - The current Dart-based CLI (`dart pub global activate fastforge`) continues to work and receives bug fixes.
-> - The Rust CLI will be released as a native binary — no Dart or Flutter SDK required to run it.
+> - The Rust CLI is released as a native binary — no Dart or Flutter SDK required to run it. See the [installation guide](docs/en/installation.md).
 > - APIs and configuration formats are designed to remain compatible; any breaking changes will be clearly announced.
+> - `distribute_options.yaml` and the `release` command are deprecated: they keep working for compatibility but get no new features. New configuration goes in `.fastforge/` (project) or `~/.fastforge/` (machine), and new automation in [local workflows](docs/en/workflows.md).
 > - Contributions, feedback, and bug reports on the Rust implementation are very welcome — see the [Contributing](#contributing) section.
 
 ---
@@ -47,29 +48,34 @@ English | [简体中文](./README-ZH.md)
 
 ### Supported Package Formats
 
-- **Android**: [AAB](https://fastforge.dev/makers/aab), [APK](https://fastforge.dev/makers/apk)
-- **iOS**: [IPA](https://fastforge.dev/makers/ipa)
-- **OpenHarmony**: [HAP](https://fastforge.dev/makers/hap), [APP](https://fastforge.dev/makers/app)
-- **Linux**: [AppImage](https://fastforge.dev/makers/appimage), [DEB](https://fastforge.dev/makers/deb), [RPM](https://fastforge.dev/makers/rpm), Pacman
-- **macOS**: [DMG](https://fastforge.dev/makers/dmg), [PKG](https://fastforge.dev/makers/pkg)
-- **Windows**: [EXE](https://fastforge.dev/makers/exe), [MSIX](https://fastforge.dev/makers/msix)
-- **Universal**: [ZIP](https://fastforge.dev/makers/zip)
+- **Android**: [AAB](docs/en/packagers/android.md#aab), [APK](docs/en/packagers/android.md#apk)
+- **iOS**: [IPA](docs/en/packagers/ios.md#ipa)
+- **OpenHarmony**: [HAP](docs/en/packagers/ohos.md), [APP](docs/en/packagers/ohos.md)
+- **Linux**: [AppImage](docs/en/packagers/linux.md#appimage), [DEB](docs/en/packagers/linux.md#deb), [RPM](docs/en/packagers/linux.md#rpm), [Pacman](docs/en/packagers/linux.md#pacman), [ZIP](docs/en/packagers/linux.md#zip-and-direct)
+- **macOS**: [DMG](docs/en/packagers/macos.md#dmg), [PKG](docs/en/packagers/macos.md#pkg), [ZIP](docs/en/packagers/macos.md#zip)
+- **Windows**: [EXE](docs/en/packagers/windows.md#exe), [MSIX](docs/en/packagers/windows.md#msix), [ZIP](docs/en/packagers/windows.md#zip-and-direct)
+- **Web**: [ZIP](docs/en/packagers/web.md)
+- **Any platform**: [custom](docs/en/packaging.md#custom-format) packaging commands; `direct` (the unpacked build output) on Linux, Windows and Web
 - More formats coming soon...
 
 ### Supported Distribution Platforms
 
-- [App Store](https://fastforge.dev/publishers/appstore)
-- [Firebase](https://fastforge.dev/publishers/firebase)
-- [Firebase Hosting](https://fastforge.dev/publishers/firebase-hosting)
-- [FIR](https://fastforge.dev/publishers/fir)
-- [GitHub Releases](https://fastforge.dev/publishers/github)
-- [PGYER](https://fastforge.dev/publishers/pgyer)
-- [Play Store](https://fastforge.dev/publishers/playstore)
-- [Qiniu](https://fastforge.dev/publishers/qiniu)
-- [Vercel](https://fastforge.dev/publishers/vercel)
+- [App Store](docs/en/publishers/appstore.md)
+- [AppGallery](docs/en/publishers/appgallery.md)
+- [Firebase](docs/en/publishers/firebase.md)
+- [Firebase Hosting](docs/en/publishers/firebase.md#firebase-hosting)
+- [FIR](docs/en/publishers/fir.md)
+- [GitHub Releases](docs/en/publishers/github.md)
+- [PGYER](docs/en/publishers/pgyer.md)
+- [Play Store](docs/en/publishers/playstore.md)
+- [Vercel](docs/en/publishers/vercel.md)
+- Object storage: [S3 / MinIO](docs/en/publishers/s3.md#s3--minio), [Qiniu](docs/en/publishers/s3.md#qiniu), [Alibaba Cloud OSS](docs/en/publishers/s3.md#alibaba-cloud-oss), [Tencent Cloud COS](docs/en/publishers/s3.md#tencent-cloud-cos)
+- [Custom](docs/en/publishers/custom.md) shell command
 - More platforms coming soon...
 
 ## Installation
+
+The native CLI installs as a standalone binary; see the [installation guide](docs/en/installation.md). The Dart CLI installs with:
 
 ```bash
 dart pub global activate fastforge
@@ -83,6 +89,8 @@ dart pub global activate fastforge
 > 4. Restart your terminal, then try `fastforge --help`
 
 ## Quick Start
+
+> **Note:** This quick start uses the deprecated `distribute_options.yaml` and `release` command, which still work in both CLIs. For new projects, see [Getting Started](docs/en/getting-started.md) and [local workflows](docs/en/workflows.md).
 
 1. Add `distribute_options.yaml` to your project root:
 

@@ -118,7 +118,7 @@ Optional inputs:
 | `hook-pre`      | Shell command to run before packaging   |
 | `hook-post`     | Shell command to run after packaging    |
 
-`skip-clean` and `channel` only affect Flutter projects; native Gradle and Xcode projects ignore them. Unlike `fastforge package`, the action does not read `distribute_options.yaml`: the output directory comes from `output` and variables from the process environment.
+`skip-clean` and `channel` only affect Flutter projects; native Gradle and Xcode projects ignore them. Unlike `fastforge package`, the action does not read `distribute_options.yaml`: the output directory comes from `output`, and variables come from the workflow, job and step `env` merged with the process environment (the process environment wins on conflicts).
 
 The active builder determines the fields accepted by `build-args`. See [Gradle Builder](builders/gradle.md), [Xcode Builder](builders/xcode.md), and [Flutter Builder](builders/flutter.md).
 
@@ -180,8 +180,10 @@ The action outputs `message`.
 The engine follows GitHub Actions syntax. Besides the two Fastforge actions it supports:
 
 - `run` steps (with `shell`, `working-directory`, `env`), plus `if`, `continue-on-error`, and `timeout-minutes` on steps
-- job `needs`, `if`, `outputs`, and `strategy.matrix`; `${{ }}` expressions over `inputs`, `env`, `steps`, `needs`, `matrix`, and `github`
+- job `needs`, `if`, `outputs`, and `strategy.matrix`; `${{ }}` expressions over `inputs`, `env`, `steps`, `needs`, `matrix`, `strategy`, `job`, `runner`, and `github` (`secrets` and `vars` always evaluate to empty strings)
 - `uses:` resolves, in order, to a built-in action (`fastforge/package`, `fastforge/publish`, `actions/checkout`, `actions/cache`, `actions/upload-artifact`, `actions/download-artifact`), a local `./path` action with an `action.yml`, a `docker://image`, or a remote `owner/repo@ref` action. Remote actions are fetched over the network and cached in `~/.minact/actions`.
+
+Jobs run on this machine. `runs-on` does not select a runner: a label that doesn't match this machine only prints a warning. A job with `container:` runs its steps in that Docker image, and `services:` are not started. The engine keeps its scratch files in `.minact/_work/` under the workspace.
 
 A build system Fastforge does not integrate can run as a `run` step, with its artifact path passed to a `fastforge/publish` step.
 
@@ -193,5 +195,5 @@ The workflow engine creates execution layers from dependencies and reports job, 
 
 - `build-args` and `publish-args` must be valid JSON, not YAML objects.
 - The built-in package action has the same current packaging coverage as the CLI.
-- Pass publishing credentials through environment variables on the running process.
+- Pass publishing credentials through environment variables on the running process. `fastforge/publish` reads only the process environment, not `env:` from the workflow, and `with` values are printed in the run log.
 - When multiple workflows exist, use `--file` explicitly to avoid ambiguity.

@@ -35,6 +35,8 @@ fastforge publish --path dist/app.apk --target firebase \
 
 In the `fastforge/publish` workflow action and in `fastforge release`, pass the app ID as the `app` parameter.
 
+The publishing result is the Firebase console App Distribution URL.
+
 ## Firebase Hosting
 
 Target: `firebase-hosting`

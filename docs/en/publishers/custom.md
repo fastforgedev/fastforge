@@ -23,4 +23,4 @@ The custom command can read:
 
 Argument keys are converted to uppercase and non-alphanumeric characters are replaced with underscores. For example, `release-channel` becomes `PUBLISH_ARG_RELEASE_CHANNEL`.
 
-The command's output is captured rather than streamed. Publishing fails if the command exits with a nonzero status, and the error includes its standard output and standard error. On success, the trimmed standard output becomes the publishing result's `message`.
+The command's output is captured rather than streamed. Publishing fails if the command exits with a nonzero status, and the error includes its standard output and standard error. On success, the trimmed standard output becomes the publishing result's `message` (`Published successfully.` when the output is empty).

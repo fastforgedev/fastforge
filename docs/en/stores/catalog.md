@@ -44,9 +44,9 @@ fastforge appstore catalog push \
   --dry-run
 ```
 
-`--output` and `--input` are roots; the bundle ID directory is appended. `--platform` defaults to `IOS`, and omitting `--version` pulls every version for that platform.
+`--app` accepts the same identifiers as `appstore app view`. `--output` and `--input` are roots; the resolved bundle ID directory is appended. `--platform` defaults to `IOS`, and omitting `--version` pulls every version for that platform.
 
-Catalog pull stages a complete snapshot beside the destination and replaces the entire `<bundle-id>/` directory only after every required request and write succeeds. A failed pull discards its staged files and preserves the previous snapshot. A successful pull removes anything not in the new snapshot, including other platforms, other versions, and uncommitted local edits. When using older or unofficial binaries without this behavior, a failed pull may leave partial files: do not push, and first confirm the expected version directories and `.manifest.yaml` (when screenshots exist), or pull again into a new directory.
+Catalog pull stages a complete snapshot beside the destination and replaces the entire `<bundle-id>/` directory only after every required request and write succeeds. A failed pull discards its staged files and preserves the previous snapshot. A successful pull removes anything not in the new snapshot, including other platforms, other versions, and uncommitted local edits. A failed screenshot or preview download only prints a warning and leaves that file out, and media that has no download URL yet is written as an empty placeholder file; check for both before pushing. When using older or unofficial binaries without this behavior, a failed pull may leave partial files: do not push, and first confirm the expected version directories and `.manifest.yaml` (when screenshots exist), or pull again into a new directory.
 
 Directory structure:
 
@@ -87,7 +87,7 @@ Push behavior:
 - `app_info.yaml` and `info/<locale>.yaml` are updated; missing locales are created. Remote locales are never deleted.
 - Only `copyright` from `version.yaml` is pushed. A version directory without a matching remote version is skipped; push does not create versions.
 - `localization.yaml` updates changed fields and creates missing locales. Remote locales are never deleted.
-- Screenshots are synchronized per display-type directory that contains files (PNG or JPEG only): unchanged files are reused by checksum, new files are uploaded, remote screenshots without a local file are deleted, and order follows local file names. An empty or missing directory leaves the remote set unchanged.
+- Screenshots are synchronized per display-type directory that contains files (PNG or JPEG only; any other non-hidden file fails the push). Missing screenshot sets are created: unchanged files are reused by checksum, new files are uploaded, remote screenshots without a local file are deleted, and order follows local file names. An empty or missing directory leaves the remote set unchanged.
 - Previews are pulled but not pushed.
 - `review.yaml` is updated or created. `review.d/` only updates existing attachments; new attachments are not uploaded.
 
@@ -135,5 +135,5 @@ Push runs in a single edit that is committed automatically at the end:
 1. Run `pull` to retrieve the latest remote state. For App Store, pull each platform and version you need, using separate roots if they would share a directory. For Google Play, pull into an empty directory.
 2. Edit YAML and images on a separate branch.
 3. Review the diff. Removing a screenshot from a non-empty directory deletes it remotely; removing a whole locale or image directory deletes nothing remotely.
-4. Preview with the individual store command's `push --dry-run`. Dry run lists the planned actions for each file, not a field-level diff; App Store lists every `info/` locale as `create` even when it already exists.
+4. Preview with the individual store command's `push --dry-run`. Dry run lists the planned actions for each file, not a field-level diff; App Store lists every `info/` locale and version `localization.yaml` as `create` even when it already exists.
 5. Run the actual push after confirmation.

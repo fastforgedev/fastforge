@@ -37,7 +37,7 @@ export APPSTORE_PASSWORD=app-specific-password
 fastforge publish --path dist/MyApp.ipa --target appstore
 ```
 
-发布器也接受 `key-id`（或 `api-key`）、`issuer-id`（或 `api-issuer`）、`key-path`、`username`、`password` 参数。敏感凭证不建议这样传递，以免写入命令历史。
+发布器也接受 `key-id`（或 `api-key`）、`issuer-id`（或 `api-issuer`）、`key-path`、`username`、`password` 参数。敏感凭证不建议这样传递，以免写入命令历史。发布结果为 `https://appstoreconnect.apple.com/apps`。
 
 ## 后续管理
 

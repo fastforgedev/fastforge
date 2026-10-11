@@ -26,6 +26,7 @@ fastforge host doctor mac-mini
 hosts:
   - name: mac-mini
     transport: ssh            # 默认值
+    os: unix                  # 或 windows；未设置时由 `host doctor` 识别
     host: 192.168.1.20        # 也可以是 ~/.ssh/config 中的别名
     user: builder
     port: 22
@@ -38,7 +39,17 @@ hosts:
       PATH: ~/fvm/default/bin:$PATH
 ```
 
-远程命令在用户的登录 shell（`$SHELL -l`）中执行，因此 `.zprofile`、`.profile` 里的 `PATH` 设置会生效（用引号写成 `~/...` 的条目也会被展开）。只在 `.zshrc` 中配置的工具找不到，请用 `env` 补充。`host doctor` 会列出主机能找到的工具。
+远程命令在用户的登录 shell（`$SHELL -l`）中执行，因此 `.zprofile`、`.profile` 里的 `PATH` 设置会生效（用引号写成 `~/...` 的条目也会被展开）。只在 `.zshrc` 中配置的工具找不到，请用 `env` 补充。`host doctor` 会列出主机能找到的工具（`flutter`、`dart`、`xcodebuild`、`java`、`hvigorw`），并识别主机支持的平台：始终包括 `android` 和 `web`，另加主机系统对应的平台（`macos`、`linux` 或 `windows`）；Mac 上有 `xcodebuild` 时加上 `ios`，找到 `hvigorw` 时加上 `ohos`。
+
+其他主机命令：
+
+```bash
+fastforge host list                                    # 名称、目标地址、平台、workdir
+fastforge host remove mac-mini
+fastforge host add mac-mini builder@mac.local:2222 --force   # 替换已有条目
+```
+
+`host add` 还支持 `--identity-file`、`--workdir`、`--fastforge`、`--platforms`、`--os` 和 `--env KEY=VALUE`（可重复），与上面的字段一一对应。`--transport local` 添加的主机不经过 SSH，直接在本机运行远端一侧，用于测试。
 
 ## 在主机上打包
 
@@ -71,6 +82,8 @@ fastforge run -p ios -d <device-id> --host mac-mini
 `run --host` 会同步项目，并在主机上执行 `fastforge run`，连接到当前终端，`flutter run` 的按键照常可用。每次热重载（`r`）或热重启（`R`）前，fastforge 会先同步本地改动：在本地改代码，在远端重载。
 
 运行过程中输出的回环地址（VM Service、DevTools、web 服务）会通过 `ssh -L` 转发到本机的相同端口，可以直接在本地打开。`-p web` 且未指定 `-d` 时，主机用 `web-server` 设备提供页面，在本机打开输出的 `http://localhost:<port>` 即可。
+
+与 `package` 一样，路径参数（`-t`/`--target`、`--dart-define-from-file`）必须位于同步的项目内。
 
 说明：
 
@@ -108,7 +121,7 @@ fastforge run -p windows --host windows-laptop --remote-window
 
 ## 同步范围
 
-同步是增量的：只发送自上次同步以来变化的文件（大小、修改时间、可执行位），本地删除的文件会在远端删除。在主机上被改动的文件会在下次同步时重新发送。
+同步是增量的：只发送自上次同步以来变化的文件（大小、修改时间、可执行位或符号链接目标），本地删除的文件会在远端删除。在主机上被改动的文件会在下次同步时重新发送。
 
 不同步的内容：
 
@@ -131,10 +144,10 @@ fastforge host exec mac-mini -- flutter doctor -v
 fastforge host exec mac-mini --no-sync -- ls build
 ```
 
-`exec` 会先同步（除非指定 `--no-sync`），再通过登录 shell 在远端工作区执行命令。参数与 `ssh` 一样用空格拼接。`exec` 不转发环境变量。
+`exec` 会先同步（除非指定 `--no-sync`），再通过登录 shell 在远端工作区执行命令。参数与 `ssh` 一样用空格拼接。`forward_env` 和 `env` 对 `exec` 都不生效。
 
 ## 安全
 
 - 转发的变量通过 SSH 通道的 stdin 传输，不出现在命令行中，因此不会出现在主机的进程列表里。只发送 `forward_env` 中列出的变量。
 - 同步的工作区会保留在主机上。请不要把密钥放进项目，或者把它们加入忽略规则。
-- SSH 连接通过 `~/.fastforge/ssh` 中的套接字共享一分钟（`ControlMaster`）。
+- SSH 连接通过 `~/.fastforge/ssh` 中的套接字共享一分钟（`ControlMaster`）。本机为 Windows 时不共享连接，因为 Windows 的 OpenSSH 客户端不支持。

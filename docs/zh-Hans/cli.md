@@ -3,7 +3,7 @@
 [English](../en/cli.md) | 简体中文
 
 ```text
-fastforge <COMMAND>
+fastforge [OPTIONS] <COMMAND>
 ```
 
 全局参数：
@@ -15,7 +15,7 @@ fastforge <COMMAND>
 | `--no-version-check` | 跳过每次运行命令前的更新检查（默认开启）                 |
 | `--version-check`    | 重新开启更新检查（覆盖前面的 `--no-version-check`）      |
 
-运行命令前，fastforge 会查询 GitHub Releases 是否有新版本，并在 stderr 打印升级提示（或"已是最新版本"）。检查 5 秒超时，失败不会影响命令执行。设置 `GITHUB_TOKEN` 可避免 GitHub API 限流。
+运行命令前（`upgrade` 和 `version-check` 除外，它们自行检查），fastforge 会查询 GitHub Releases 是否有新版本，并在 stderr 打印升级提示（或"已是最新版本"）。检查 5 秒超时，失败不会影响命令执行。设置 `GITHUB_TOKEN` 可避免 GitHub API 限流。
 
 顶层命令：
 
@@ -48,7 +48,7 @@ fastforge studio doctor --dir /path/to/project
 
 不带子命令时，Studio 会启动本地服务并打开浏览器；`serve` 显式启动同一服务。两种方式均支持 `--port`（默认 `7391`）、`--no-open` 和 `--web-root`。`doctor` 检查项目的商店凭据，支持 `--dir`（默认为当前目录）。
 
-从源码运行时，先执行 `pnpm studio:build` 构建 Web 界面，或在开发时另行运行 `pnpm studio:dev`。详见 [Studio 开发文档](../../apps/studio-cli/README.md)。
+`--web-root` 默认指向构建该二进制的源码目录中的 `apps/studio-web/dist/client`；发布版二进制不内置 Web 界面，需要显式传入 `--web-root`。没有已构建的 Web 界面时，Studio 只提供 API 和一个占位页面。从源码运行时，先执行 `pnpm studio:build` 构建 Web 界面，或在开发时另行运行 `pnpm studio:dev`。详见 [Studio 开发文档](../../apps/studio-cli/README.md)。
 
 ## `analyze`
 
@@ -166,7 +166,7 @@ fastforge run [OPTIONS] [-- <FLUTTER_ARGS>...]
 | `--dart-define <KEY=VALUE>`      | 编译期变量；可重复                                       |
 | `--dart-define-from-file <PATH>` | 编译期变量文件                                           |
 | `--host <NAME\|auto>`            | 在远程主机上运行（见[远程主机](remote-hosts.md#在主机上运行应用)） |
-| `--remote-window`                | 配合 `--host`：应用运行起来后，在本机显示它的窗口（见[在本机显示窗口](remote-hosts.md#在本机显示窗口)） |
+| `--remote-window`                | 配合 `--host`：应用运行起来后，在本机显示它的窗口；目前仅支持 Windows 主机（见[在本机显示窗口](remote-hosts.md#在本机显示窗口)） |
 
 用这些参数加上 `--` 之后的全部参数执行 `flutter run`。既没有 `-p` 也没有 `-d` 时由 Flutter 选择设备。环境变量原样传入，不读取 `distribute_options.yaml`。目前只支持 Flutter 项目。
 
@@ -179,7 +179,7 @@ fastforge publish [OPTIONS]
 | 参数                         | 说明                                        |
 | ---------------------------- | ------------------------------------------- |
 | `--path <PATH>`              | 文件或目录路径；必填                        |
-| `-t, --targets <TARGET,...>` | 逗号分隔的发布 target（别名 `--target`）    |
+| `-t, --targets <TARGET,...>` | 逗号分隔的发布 target（别名 `--target`）；必填 |
 | `--app-version <VERSION>`    | 传给发布器的应用版本                        |
 | `--publish-arg <KEY=VALUE>`  | 发布器参数；可重复                          |
 

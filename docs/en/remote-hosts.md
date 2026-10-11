@@ -26,6 +26,7 @@ Hosts are stored per machine in `~/.fastforge/hosts.yaml` (override with `FASTFO
 hosts:
   - name: mac-mini
     transport: ssh            # default
+    os: unix                  # or windows; detected by `host doctor` when unset
     host: 192.168.1.20        # or an alias from ~/.ssh/config
     user: builder
     port: 22
@@ -38,7 +39,17 @@ hosts:
       PATH: ~/fvm/default/bin:$PATH
 ```
 
-Remote commands run in the user's login shell (`$SHELL -l`), so `PATH` entries from `.zprofile`/`.profile` apply (entries written as a quoted `~/...` are expanded too). Tools set up only in `.zshrc` are not found; add them with `env`. `host doctor` lists which tools the host can see.
+Remote commands run in the user's login shell (`$SHELL -l`), so `PATH` entries from `.zprofile`/`.profile` apply (entries written as a quoted `~/...` are expanded too). Tools set up only in `.zshrc` are not found; add them with `env`. `host doctor` lists which tools the host can see (`flutter`, `dart`, `xcodebuild`, `java`, `hvigorw`) and detects its platforms: always `android` and `web`, plus the host OS (`macos`, `linux` or `windows`), `ios` on a Mac with `xcodebuild`, and `ohos` when `hvigorw` is found.
+
+Other host commands:
+
+```bash
+fastforge host list                                    # name, destination, platforms, workdir
+fastforge host remove mac-mini
+fastforge host add mac-mini builder@mac.local:2222 --force   # replace an existing entry
+```
+
+`host add` also takes `--identity-file`, `--workdir`, `--fastforge`, `--platforms`, `--os` and `--env KEY=VALUE` (repeatable), matching the keys above. `--transport local` adds a host that runs the remote side on this machine without SSH, for testing.
 
 ## Packaging on a host
 
@@ -71,6 +82,8 @@ fastforge run -p ios -d <device-id> --host mac-mini
 `run --host` syncs the project and runs `fastforge run` on the host, attached to your terminal: the `flutter run` keys work as usual. Before each hot reload (`r`) or hot restart (`R`), fastforge syncs your local changes, so you edit locally and reload remotely.
 
 Loopback URLs the run prints (VM service, DevTools, the web server) are forwarded to the same ports on this machine with `ssh -L`, so they open locally. For `-p web` without `-d`, the host serves the app with the `web-server` device; open the printed `http://localhost:<port>` here.
+
+As with `package`, path options (`-t`/`--target`, `--dart-define-from-file`) must point inside the synced project.
 
 Notes:
 
@@ -108,7 +121,7 @@ Problems are shown in the run's output. The log of this machine's side is writte
 
 ## What gets synced
 
-Syncs are incremental: only files that changed (size, modification time, executable bit) since the last sync are sent, and files deleted locally are removed remotely. Files changed on the host are sent again on the next sync.
+Syncs are incremental: only files that changed (size, modification time, executable bit, or symbolic link target) since the last sync are sent, and files deleted locally are removed remotely. Files changed on the host are sent again on the next sync.
 
 Excluded:
 
@@ -131,10 +144,10 @@ fastforge host exec mac-mini -- flutter doctor -v
 fastforge host exec mac-mini --no-sync -- ls build
 ```
 
-`exec` syncs first (unless `--no-sync`), then runs the command in the remote workspace through the login shell. The arguments are joined with spaces, like `ssh`. Variables are not forwarded.
+`exec` syncs first (unless `--no-sync`), then runs the command in the remote workspace through the login shell. The arguments are joined with spaces, like `ssh`. Neither `forward_env` nor `env` applies to `exec`.
 
 ## Security
 
 - Forwarded variables are sent through the SSH channel's stdin, not the command line, so they don't show in the host's process list. Only variables listed in `forward_env` are sent.
 - The synced workspace persists on the host. Keep secrets out of the project or ignore them.
-- SSH connections are shared for a minute (`ControlMaster`) through sockets in `~/.fastforge/ssh`.
+- SSH connections are shared for a minute (`ControlMaster`) through sockets in `~/.fastforge/ssh`. Sharing is off when this machine runs Windows, whose OpenSSH client doesn't support it.

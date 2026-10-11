@@ -3,7 +3,7 @@
 English | [简体中文](../zh-Hans/cli.md)
 
 ```text
-fastforge <COMMAND>
+fastforge [OPTIONS] <COMMAND>
 ```
 
 Global options:
@@ -15,7 +15,7 @@ Global options:
 | `--no-version-check` | Skip the update check that runs before every command (on by default)    |
 | `--version-check`    | Re-enable the update check (overrides an earlier `--no-version-check`) |
 
-Before running a command, fastforge checks GitHub releases for a newer version and prints an upgrade hint (or a "latest version" note) to stderr. The check times out after 5 seconds and never fails the command. Set `GITHUB_TOKEN` to avoid GitHub API rate limits.
+Before running a command (other than `upgrade` and `version-check`, which run their own check), fastforge checks GitHub releases for a newer version and prints an upgrade hint (or a "latest version" note) to stderr. The check times out after 5 seconds and never fails the command. Set `GITHUB_TOKEN` to avoid GitHub API rate limits.
 
 Top-level commands:
 
@@ -48,7 +48,7 @@ fastforge studio doctor --dir /path/to/project
 
 Without a subcommand, Studio starts its local server and opens the browser. `serve` explicitly starts the same server. Both accept `--port` (default `7391`), `--no-open`, and `--web-root`. `doctor` checks the project’s store credentials and accepts `--dir` (defaults to the current directory).
 
-In a source checkout, run `pnpm studio:build` first to build the web client, or run `pnpm studio:dev` separately during development. See the [Studio development guide](../../apps/studio-cli/README.md).
+`--web-root` defaults to `apps/studio-web/dist/client` in the checkout the binary was built from; release binaries do not bundle the web client, so pass `--web-root` explicitly. Without a built client, Studio serves only its API and a placeholder page. In a source checkout, run `pnpm studio:build` first to build the web client, or run `pnpm studio:dev` separately during development. See the [Studio development guide](../../apps/studio-cli/README.md).
 
 ## `analyze`
 
@@ -166,7 +166,7 @@ fastforge run [OPTIONS] [-- <FLUTTER_ARGS>...]
 | `--dart-define <KEY=VALUE>`      | Compile-time variable; repeatable                                        |
 | `--dart-define-from-file <PATH>` | File of compile-time variables                                           |
 | `--host <NAME\|auto>`            | Run on a remote host (see [Remote Hosts](remote-hosts.md#running-the-app-on-a-host)) |
-| `--remote-window`                | With `--host`: once the app runs, show its window on this machine (see [Showing the window here](remote-hosts.md#showing-the-window-here)) |
+| `--remote-window`                | With `--host`: once the app runs, show its window on this machine; Windows hosts only for now (see [Showing the window here](remote-hosts.md#showing-the-window-here)) |
 
 Runs `flutter run` with these options, plus everything after `--`. Without `-p` and `-d`, Flutter picks the device. The environment is passed through unchanged; `distribute_options.yaml` is not read. Only Flutter projects are supported for now.
 
@@ -179,7 +179,7 @@ fastforge publish [OPTIONS]
 | Option                         | Description                                                |
 | ------------------------------ | ---------------------------------------------------------- |
 | `--path <PATH>`                | File or directory path; required                           |
-| `-t, --targets <TARGET,...>`   | Comma-separated publishing targets (alias `--target`)      |
+| `-t, --targets <TARGET,...>`   | Comma-separated publishing targets (alias `--target`); required |
 | `--app-version <VERSION>`      | App version passed to publishers                           |
 | `--publish-arg <KEY=VALUE>`    | Publisher argument; repeatable                             |
 

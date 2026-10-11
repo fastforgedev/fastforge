@@ -13,12 +13,13 @@
 让每一个应用更快抵达用户 — 用一套清晰的配置完成构建、打包与发布。覆盖主流分发格式和应用市场，也能自然融入团队的 CI/CD 流程。
 
 > [!WARNING]
-> **Rust 迁移进行中：** Fastforge 的核心正在用 [Rust](https://www.rust-lang.org/) 重写，以实现更好的性能、更小的安装体积，以及对 Dart SDK 零运行时依赖。新的实现位于 [`crates/`](./crates) 目录，与现有 Dart 包并行开发。
+> **Rust 迁移进行中：** Fastforge 的核心正在用 [Rust](https://www.rust-lang.org/) 重写，以实现更好的性能、更小的安装体积，以及对 Dart SDK 零运行时依赖。原生 CLI 位于 [`apps/cli/`](./apps/cli)，核心库位于 [`crates/`](./crates)，与现有 Dart 包并行开发。
 >
 > **这对您意味着什么：**
 > - 当前基于 Dart 的 CLI（`dart pub global activate fastforge`）仍然可用，并会持续收到问题修复。
-> - Rust CLI 将以原生二进制文件发布——运行时无需安装 Dart 或 Flutter SDK。
+> - Rust CLI 以原生二进制文件发布——运行时无需安装 Dart 或 Flutter SDK，安装方式见[安装指南](docs/zh-Hans/installation.md)。
 > - API 和配置格式设计上保持兼容；任何破坏性变更都会提前明确公告。
+> - `distribute_options.yaml` 和 `release` 命令已废弃：为兼容性继续保留，但不再增加新功能。新配置放在 `.fastforge/`（项目）或 `~/.fastforge/`（本机），新的自动化能力使用[本地工作流](docs/zh-Hans/workflows.md)。
 > - 非常欢迎对 Rust 实现提交贡献、反馈和问题报告——请参阅[参与贡献](#参与贡献)部分。
 
 ---
@@ -41,29 +42,34 @@
 
 ### 支持的打包格式
 
-- **Android**: [AAB](https://fastforge.dev/zh/makers/aab), [APK](https://fastforge.dev/zh/makers/apk)
-- **iOS**: [IPA](https://fastforge.dev/zh/makers/ipa)
-- **OpenHarmony**: [HAP](https://fastforge.dev/zh/makers/hap), [APP](https://fastforge.dev/zh/makers/app)
-- **Linux**: [AppImage](https://fastforge.dev/zh/makers/appimage), [DEB](https://fastforge.dev/zh/makers/deb), [RPM](https://fastforge.dev/zh/makers/rpm), Pacman
-- **macOS**: [DMG](https://fastforge.dev/zh/makers/dmg), [PKG](https://fastforge.dev/zh/makers/pkg)
-- **Windows**: [EXE](https://fastforge.dev/zh/makers/exe), [MSIX](https://fastforge.dev/zh/makers/msix)
-- **通用**: [ZIP](https://fastforge.dev/zh/makers/zip)
+- **Android**: [AAB](docs/zh-Hans/packagers/android.md#aab), [APK](docs/zh-Hans/packagers/android.md#apk)
+- **iOS**: [IPA](docs/zh-Hans/packagers/ios.md#ipa)
+- **OpenHarmony**: [HAP](docs/zh-Hans/packagers/ohos.md), [APP](docs/zh-Hans/packagers/ohos.md)
+- **Linux**: [AppImage](docs/zh-Hans/packagers/linux.md#appimage), [DEB](docs/zh-Hans/packagers/linux.md#deb), [RPM](docs/zh-Hans/packagers/linux.md#rpm), [Pacman](docs/zh-Hans/packagers/linux.md#pacman), [ZIP](docs/zh-Hans/packagers/linux.md#zip-和-direct)
+- **macOS**: [DMG](docs/zh-Hans/packagers/macos.md#dmg), [PKG](docs/zh-Hans/packagers/macos.md#pkg), [ZIP](docs/zh-Hans/packagers/macos.md#zip)
+- **Windows**: [EXE](docs/zh-Hans/packagers/windows.md#exe), [MSIX](docs/zh-Hans/packagers/windows.md#msix), [ZIP](docs/zh-Hans/packagers/windows.md#zip-和-direct)
+- **Web**: [ZIP](docs/zh-Hans/packagers/web.md)
+- **任意平台**: [custom](docs/zh-Hans/packaging.md#自定义格式) 自定义打包命令；Linux、Windows 和 Web 还支持 `direct`（未打包的构建输出）
 - 更多格式持续增加中...
 
 ### 支持的分发平台
 
-- [App Store](https://fastforge.dev/zh/publishers/appstore)
-- [Firebase](https://fastforge.dev/zh/publishers/firebase)
-- [Firebase Hosting](https://fastforge.dev/zh/publishers/firebase-hosting)
-- [FIR](https://fastforge.dev/zh/publishers/fir)
-- [GitHub Releases](https://fastforge.dev/zh/publishers/github)
-- [PGYER](https://fastforge.dev/zh/publishers/pgyer)
-- [Play Store](https://fastforge.dev/zh/publishers/playstore)
-- [Qiniu](https://fastforge.dev/zh/publishers/qiniu)
-- [Vercel](https://fastforge.dev/zh/publishers/vercel)
+- [App Store](docs/zh-Hans/publishers/appstore.md)
+- [AppGallery](docs/zh-Hans/publishers/appgallery.md)
+- [Firebase](docs/zh-Hans/publishers/firebase.md)
+- [Firebase Hosting](docs/zh-Hans/publishers/firebase.md#firebase-hosting)
+- [FIR](docs/zh-Hans/publishers/fir.md)
+- [GitHub Releases](docs/zh-Hans/publishers/github.md)
+- [蒲公英](docs/zh-Hans/publishers/pgyer.md)
+- [Play Store](docs/zh-Hans/publishers/playstore.md)
+- [Vercel](docs/zh-Hans/publishers/vercel.md)
+- 对象存储：[S3 / MinIO](docs/zh-Hans/publishers/s3.md#s3--minio)、[七牛云](docs/zh-Hans/publishers/s3.md#七牛云)、[阿里云 OSS](docs/zh-Hans/publishers/s3.md#阿里云-oss)、[腾讯云 COS](docs/zh-Hans/publishers/s3.md#腾讯云-cos)
+- [自定义](docs/zh-Hans/publishers/custom.md) shell 命令
 - 更多平台持续增加中...
 
 ## 安装
+
+原生 CLI 以独立二进制文件安装，见[安装指南](docs/zh-Hans/installation.md)。Dart CLI 的安装方式：
 
 ```bash
 dart pub global activate fastforge
@@ -76,6 +82,8 @@ dart pub global activate fastforge
 > 4. 重启终端，然后运行 `fastforge --help` 验证
 
 ## 快速开始
+
+> **注意：** 本节使用已废弃的 `distribute_options.yaml` 和 `release` 命令，两套 CLI 仍然支持。新项目请参阅[快速开始](docs/zh-Hans/getting-started.md)和[本地工作流](docs/zh-Hans/workflows.md)。
 
 1. 在项目根目录添加 `distribute_options.yaml` 文件:
 

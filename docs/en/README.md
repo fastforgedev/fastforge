@@ -63,7 +63,7 @@ The legacy documentation remains in [`apps/docs`](../../apps/docs/). This direct
 | Multi-store catalog sync      | Implemented                  | [Catalog](stores/catalog.md)                            |
 | Studio (local web UI)         | Implemented                  | [`fastforge studio`](cli.md#studio)                     |
 | Self-upgrade                  | Implemented                  | [`fastforge upgrade`](installation.md#upgrade)          |
-| Online version checks         | Implemented                  | Before every command, or `fastforge version-check`      |
+| Online version checks         | Implemented                  | Before most commands, or `fastforge version-check`      |
 
 ## Get Current Version Information
 

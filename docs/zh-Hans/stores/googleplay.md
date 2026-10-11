@@ -61,7 +61,7 @@ fastforge googleplay bundle upload dist/app-release.aab \
 - 只接受 `.aab` 文件。
 - 未指定 `--edit-id` 时会新建 edit；未指定 `--commit` 时该 edit 保持未提交状态，输出中会包含 edit ID。
 - 未指定 `--track` 时只上传 bundle，不会分配到任何 track。
-- `--status` 默认 `completed`；`--release-name` 默认使用 AAB 文件名。
+- `--status` 默认 `completed`；`--release-name` 默认使用去掉 `.aab` 扩展名的 AAB 文件名。
 
 ## Track
 
@@ -92,4 +92,12 @@ Track 名称包括 `internal`、`alpha`、`beta`、`production` 以及自定义 
 ## Catalog 与原始 API
 
 - Listing、图片和 track 元数据同步见[统一 Catalog](catalog.md)。
-- 未封装接口可以通过 `fastforge googleplay api` 调用。
+- 未封装接口可以通过 `fastforge googleplay api` 调用：
+
+```bash
+fastforge googleplay api get /applications/com.example.myapp/edits/<edit-id>/tracks
+fastforge googleplay api put /applications/com.example.myapp/edits/<edit-id>/tracks/beta \
+  --input track.json
+```
+
+支持的方法为 `get`、`post`、`put`、`patch` 和 `delete`。路径相对于 `androidpublisher/v3`，且必须以 `/applications/` 开头；`--query KEY=VALUE` 可重复传入，`post`/`put`/`patch` 可用 `--input` 指定 JSON 请求体文件。
