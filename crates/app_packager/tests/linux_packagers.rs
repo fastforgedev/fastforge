@@ -138,7 +138,17 @@ fn has(tool: &str) -> bool {
         .is_ok_and(|s| s.success())
 }
 
+fn is_root() -> bool {
+    Command::new("id")
+        .arg("-u")
+        .output()
+        .is_ok_and(|out| out.status.success() && out.stdout == b"0\n")
+}
+
 fn userns() -> bool {
+    if is_root() {
+        return true;
+    }
     Command::new("unshare")
         .args(["-r", "true"])
         .status()
@@ -161,12 +171,14 @@ fn run(program: &str, args: &[&str]) -> String {
 
 /// Runs `program args` as root in a user namespace; returns (success, output).
 fn as_root(program: &str, args: &[&str]) -> (bool, String) {
-    let out = Command::new("unshare")
-        .arg("-r")
-        .arg(program)
-        .args(args)
-        .output()
-        .unwrap();
+    let mut command = if is_root() {
+        Command::new(program)
+    } else {
+        let mut command = Command::new("unshare");
+        command.args(["-r", program]);
+        command
+    };
+    let out = command.args(args).output().unwrap();
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),
@@ -182,6 +194,10 @@ fn as_root_ok(program: &str, args: &[&str]) -> String {
 }
 
 fn skip(what: &str) {
+    assert!(
+        std::env::var_os("FASTFORGE_REQUIRE_NATIVE_TESTS").is_none(),
+        "required native check skipped: {what}"
+    );
     eprintln!("skipped: {}", what);
 }
 
@@ -408,6 +424,10 @@ fn pacman_follows_makepkg_conventions() {
     let hookdir = root.join("hooks");
     let cachedir = root.join("cache");
     std::fs::create_dir_all(&cachedir).unwrap();
+    let supports_sandbox = Command::new("pacman")
+        .args(["--disable-sandbox", "--version"])
+        .output()
+        .is_ok_and(|out| out.status.success());
     let pacman = |args: &[&str]| -> (bool, String) {
         let mut all = vec![
             "--root",
@@ -422,10 +442,12 @@ fn pacman_follows_makepkg_conventions() {
             s(&cachedir),
             // The download sandbox switches users, which a user namespace
             // cannot do.
-            "--disable-sandbox",
             "--noconfirm",
             "--noscriptlet",
         ];
+        if supports_sandbox {
+            all.push("--disable-sandbox");
+        }
         all.extend_from_slice(args);
         as_root("pacman", &all)
     };
@@ -450,6 +472,113 @@ fn pacman_follows_makepkg_conventions() {
     assert!(!root.join("opt/hola").exists());
     assert!(root.join("usr/bin/hola").symlink_metadata().is_err());
     assert!(root.join(format!("{}.pacsave", CONF)).is_file());
+}
+
+/// Reproduce Dart's installed RPM layout, then upgrade with the native
+/// packager. Package identity differs from the binary name deliberately.
+#[test]
+#[ignore = "needs Linux with rpmbuild, rpm and root or unshare"]
+fn rpm_upgrades_dart_layout_and_preserves_the_old_launch_command() {
+    if !has("rpmbuild") || !has("rpm") || !userns() {
+        return skip("legacy RPM upgrade needs rpmbuild, rpm and root or unshare");
+    }
+    let project = project();
+    let legacy_build = project.root.join("legacy");
+    for dir in ["BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"] {
+        std::fs::create_dir_all(legacy_build.join(dir)).unwrap();
+    }
+    let spec = legacy_build.join("SPECS/legacy.spec");
+    write(
+        &spec,
+        format!(
+            r#"%global debug_package %{{nil}}
+%global _build_id_links none
+Name: hola-package
+Version: 1.2.2
+Release: 1
+Summary: Legacy Dart layout
+License: MIT
+%description
+Legacy Dart layout
+%install
+mkdir -p %{{buildroot}}/usr/share/hola-package %{{buildroot}}/usr/bin
+cp -a {}/. %{{buildroot}}/usr/share/hola-package/
+ln -s /usr/share/hola-package/hola %{{buildroot}}/usr/bin/hola-package
+%files
+/usr/share/hola-package
+/usr/bin/hola-package
+"#,
+            project.root.join("build/bundle").display()
+        ),
+    );
+    run(
+        "rpmbuild",
+        &[
+            "--define",
+            &format!("_topdir {}", legacy_build.display()),
+            "-bb",
+            s(&spec),
+        ],
+    );
+    let legacy = std::fs::read_dir(legacy_build.join("RPMS"))
+        .unwrap()
+        .flatten()
+        .flat_map(|dir| std::fs::read_dir(dir.path()).unwrap().flatten())
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "rpm"))
+        .unwrap();
+    write(
+        &project.root.join("linux/packaging/rpm/make_config.yaml"),
+        "package_name: hola-package\n",
+    );
+    let native = package(&project, &LinuxRpmPackager, "rpm", "1.2.3+4");
+    let target = tempfile::tempdir().unwrap();
+    let root = target.path();
+    as_root_ok("rpm", &["--root", s(root), "--initdb"]);
+    as_root_ok(
+        "rpm",
+        &[
+            "--root",
+            s(root),
+            "--nosignature",
+            "-i",
+            "--nodeps",
+            s(&legacy),
+        ],
+    );
+    assert!(root.join("usr/share/hola-package/hola").is_file());
+    as_root_ok(
+        "rpm",
+        &[
+            "--root",
+            s(root),
+            "--nosignature",
+            "-U",
+            "--nodeps",
+            s(&native),
+        ],
+    );
+    assert!(
+        !root.join("usr/share/hola-package").exists(),
+        "legacy bundle was left behind"
+    );
+    for command in ["hola", "hola-package"] {
+        assert_eq!(
+            std::fs::read_link(root.join("usr/bin").join(command)).unwrap(),
+            Path::new("/opt/hola/hola")
+        );
+    }
+    assert!(root.join("opt/hola/hola").is_file());
+    as_root_ok(
+        "rpm",
+        &["--root", s(root), "--nosignature", "-e", "hola-package"],
+    );
+    for path in ["opt/hola", "usr/bin/hola", "usr/bin/hola-package"] {
+        assert!(
+            root.join(path).symlink_metadata().is_err(),
+            "left behind {path}"
+        );
+    }
 }
 
 #[test]

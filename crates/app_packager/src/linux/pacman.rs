@@ -33,7 +33,7 @@ pub struct LinuxPacmanPackager;
 
 /// Schema of `linux/packaging/pacman/make_config.yaml`, mirroring Dart's
 /// `MakePacmanConfig.fromJson`. `installed_size` and `options` (a `makepkg`
-/// setting) are accepted but unused: the size is computed.
+/// setting) are accepted with migration warnings: the size is computed.
 #[derive(Debug, Default, Deserialize)]
 pub struct PacmanMakeConfig {
     pub display_name: Option<String>,
@@ -80,6 +80,17 @@ fn pacman_version(app_version: &str) -> String {
 }
 
 impl PacmanMakeConfig {
+    fn migration_warnings(&self) -> Vec<&'static str> {
+        let mut warnings = Vec::new();
+        if self.installed_size.is_some() {
+            warnings.push("pacman: installed_size is ignored; size is computed from the installed payload in bytes. Remove installed_size from make_config.yaml.");
+        }
+        if self.options.is_some() {
+            warnings.push("pacman: options is a makepkg setting, not PKGINFO metadata. Native packaging uses bsdtar; remove options and perform the required processing in a pre-package hook or workflow.");
+        }
+        warnings
+    }
+
     fn load() -> Result<Self, PackageError> {
         Ok(
             load_make_config(Path::new("linux/packaging/pacman/make_config.yaml"))?
@@ -266,11 +277,14 @@ impl AppPackager for LinuxPacmanPackager {
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
         let make_config = PacmanMakeConfig::load()?;
+        for warning in make_config.migration_warnings() {
+            eprintln!("[fastforge] warning: {warning}");
+        }
         // The artifact uses makepkg's `.pkg.tar.zst` extension.
         let mut effective = config.clone();
         effective.package_format = PACKAGE_EXTENSION.to_string();
-        let pkg_dir = effective.packaging_dir();
-        let output_file = effective.output_file();
+        let pkg_dir = effective.packaging_dir()?;
+        let output_file = effective.output_file()?;
         // bsdtar runs in the package root, so it needs an absolute path.
         let archive_path = std::path::absolute(&output_file)?;
         let binary_name = &config.app_binary_name;
@@ -373,6 +387,20 @@ impl AppPackager for LinuxPacmanPackager {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_makepkg_settings_have_actionable_warnings() {
+        let config: super::PacmanMakeConfig =
+            serde_yaml::from_str("installed_size: 10\noptions: [strip]\n").unwrap();
+        let warnings = config.migration_warnings();
+        assert_eq!(warnings.len(), 2);
+        assert!(warnings[0].contains("computed"));
+        assert!(warnings[1].contains("pre-package hook or workflow"));
+        assert!(
+            super::PacmanMakeConfig::default()
+                .migration_warnings()
+                .is_empty()
+        );
+    }
     use super::*;
     use std::path::PathBuf;
 

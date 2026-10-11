@@ -935,6 +935,7 @@ dependencies = [
 name = "fastforge_core"
 version = "0.1.0"
 dependencies = [
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml",

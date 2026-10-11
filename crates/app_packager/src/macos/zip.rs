@@ -38,7 +38,7 @@ impl AppPackager for MacOSZipPackager {
     }
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
-        let pkg_dir = config.packaging_dir();
+        let pkg_dir = config.packaging_dir()?;
 
         // Find the .app bundle
         let app_bundle = std::fs::read_dir(&config.build_output_dir)?
@@ -53,7 +53,7 @@ impl AppPackager for MacOSZipPackager {
             &pkg_dir.display().to_string(),
         ]))?;
 
-        let output_file = config.output_file();
+        let output_file = config.output_file()?;
         // 7z runs with its cwd set to pkg_dir, so a relative output_file would
         // resolve inside pkg_dir (and then get deleted by the cleanup below)
         // instead of landing at the intended destination.

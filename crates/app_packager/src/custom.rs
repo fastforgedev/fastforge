@@ -88,7 +88,7 @@ impl AppPackager for CustomPackager {
         // the `custom` placeholder format.
         let mut effective = config.clone();
         effective.package_format = self.output_extension.clone();
-        let output_path = effective.output_file();
+        let output_path = effective.output_file()?;
 
         let build_name = effective
             .app_version
@@ -243,6 +243,10 @@ mod tests {
         };
 
         let result = packager.package(&config).unwrap();
+        assert_eq!(
+            result.config.as_ref().unwrap().package_format,
+            packager.output_extension
+        );
         let artifact = &result.artifacts[0];
         assert!(artifact.exists(), "script should create the artifact");
         assert!(

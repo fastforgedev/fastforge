@@ -180,7 +180,7 @@ impl AppPackager for MacOSPkgPackager {
             .first_build_output_file()
             .ok_or_else(|| PackageError::General("no build output files".into()))?;
 
-        let output_file = config.output_file();
+        let output_file = config.output_file()?;
         let unsigned_path = unsigned_pkg_path(&output_file);
 
         run(Command::new("xcrun").args(productbuild_args(

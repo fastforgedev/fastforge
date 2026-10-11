@@ -161,3 +161,5 @@ Hooks also receive the [packaging variables](#packaging-variables) that apply to
 ## Automation
 
 Use [Local Workflows](workflows.md) to combine multiple packaging targets, publishing operations, or other commands. The `fastforge/package` action requires `platform` and a single `target`, and accepts `output` (default `dist/`), `artifact-name`, `channel`, `skip-clean`, `build-target`, `hook-pre`, `hook-post`, and `build-args` (a JSON object string for all other build arguments, such as `{"flavor":"dev","dart-define":{"APP_ENV":"dev"}}`).
+
+Artifact templates reject unknown names, unclosed/mismatched sections, partials and delimiter changes. Known optional variables (`flavor`, `channel`, `build_number`, `ext`) may be empty. Comments, nested sections, inverted sections and unescaped variables remain supported. Package result JSON uses a stable common schema and effective common settings.

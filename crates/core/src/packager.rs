@@ -75,7 +75,7 @@ fn artifact_variables(config: &PackageConfig) -> Vec<(&'static str, MustacheValu
 /// `MakeConfig.outputArtifactPath`: a custom `artifact_name` template wins,
 /// otherwise the channel template (when a channel is set) or the default one.
 /// See [`render_mustache`] for the supported syntax.
-fn render_artifact_name(config: &PackageConfig) -> String {
+fn render_artifact_name(config: &PackageConfig) -> Result<String, PackageError> {
     let template = match (&config.artifact_name, &config.channel) {
         (Some(template), _) => template.as_str(),
         (None, Some(_)) => ARTIFACT_NAME_WITH_CHANNEL_TEMPLATE,
@@ -98,111 +98,93 @@ enum MustacheNode {
     },
 }
 
-/// Parses a mustache template into a node tree. Malformed input is handled
-/// leniently: an unterminated `{{` is literal text, stray closing tags are
-/// dropped and unclosed sections end at the end of the template.
-fn parse_mustache(template: &str) -> Vec<MustacheNode> {
-    // Stack of (section name, inverted, children); the root has no name.
+/// Parses the supported Mustache syntax, rejecting mistakes before packaging.
+fn parse_mustache(template: &str) -> Result<Vec<MustacheNode>, PackageError> {
+    let error =
+        |message: String| PackageError::General(format!("Invalid artifact_name: {message}"));
     let mut stack: Vec<(Option<String>, bool, Vec<MustacheNode>)> = vec![(None, false, vec![])];
     let mut rest = template;
-
-    fn push(stack: &mut [(Option<String>, bool, Vec<MustacheNode>)], node: MustacheNode) {
-        if let Some(top) = stack.last_mut() {
-            top.2.push(node);
-        }
-    }
-
     while let Some(start) = rest.find("{{") {
         if start > 0 {
-            push(&mut stack, MustacheNode::Text(rest[..start].to_string()));
+            stack
+                .last_mut()
+                .unwrap()
+                .2
+                .push(MustacheNode::Text(rest[..start].into()));
         }
         let after = &rest[start + 2..];
-        // Triple mustache `{{{name}}}` (unescaped).
-        if let Some(inner) = after.strip_prefix('{')
-            && let Some(end) = inner.find("}}}")
-        {
-            push(
-                &mut stack,
-                MustacheNode::Variable {
-                    name: inner[..end].trim().to_string(),
-                    escape: false,
-                },
-            );
-            rest = &inner[end + 3..];
+        let triple = after.starts_with('{');
+        let after = if triple { &after[1..] } else { after };
+        let close = if triple { "}}}" } else { "}}" };
+        let end = after
+            .find(close)
+            .ok_or_else(|| error("unclosed tag".into()))?;
+        let tag = after[..end].trim();
+        rest = &after[end + close.len()..];
+        if !triple && tag.starts_with('!') {
             continue;
         }
-        let Some(end) = after.find("}}") else {
-            push(&mut stack, MustacheNode::Text(rest[start..].to_string()));
-            rest = "";
-            break;
-        };
-        let tag = after[..end].trim();
-        rest = &after[end + 2..];
-
-        let mut chars = tag.chars();
-        match chars.next() {
-            Some('#') | Some('^') => {
-                let inverted = tag.starts_with('^');
-                stack.push((Some(chars.as_str().trim().to_string()), inverted, vec![]));
-            }
-            Some('/') => {
-                let name = chars.as_str().trim();
-                // Close the innermost matching section (and anything unclosed
-                // inside it); ignore stray closing tags.
-                if let Some(pos) = stack
-                    .iter()
-                    .rposition(|(n, _, _)| n.as_deref() == Some(name))
-                    && pos > 0
-                {
-                    while stack.len() > pos {
-                        let (name, inverted, children) = stack.pop().unwrap();
-                        push(
-                            &mut stack,
-                            MustacheNode::Section {
-                                name: name.unwrap_or_default(),
-                                inverted,
-                                children,
-                            },
-                        );
-                    }
-                }
-            }
-            Some('&') => push(
-                &mut stack,
-                MustacheNode::Variable {
-                    name: chars.as_str().trim().to_string(),
-                    escape: false,
-                },
-            ),
-            // Comments, partials and delimiter changes render nothing.
-            Some('!') | Some('>') | Some('=') => {}
-            _ => push(
-                &mut stack,
-                MustacheNode::Variable {
-                    name: tag.to_string(),
-                    escape: true,
-                },
-            ),
+        if tag.is_empty() || tag.contains(['{', '}']) {
+            return Err(error("empty or malformed tag".into()));
         }
-    }
-    if !rest.is_empty() {
-        push(&mut stack, MustacheNode::Text(rest.to_string()));
-    }
-    while stack.len() > 1 {
-        let (name, inverted, children) = stack.pop().unwrap();
-        push(
-            &mut stack,
-            MustacheNode::Section {
-                name: name.unwrap_or_default(),
+        let prefix = tag.chars().next().unwrap();
+        let name = if !triple && matches!(prefix, '#' | '^' | '/' | '&') {
+            tag[1..].trim()
+        } else {
+            tag
+        };
+        if !triple && matches!(prefix, '>' | '=') {
+            return Err(error(
+                "partials and delimiter changes are unsupported".into(),
+            ));
+        }
+        let known = [
+            "is_installer",
+            "is_profile",
+            "has_build_number",
+            "name",
+            "version",
+            "build_name",
+            "build_number",
+            "build_mode",
+            "platform",
+            "flavor",
+            "channel",
+            "ext",
+        ];
+        if !known.contains(&name) && !(name == "." && stack.len() > 1) {
+            return Err(error(format!("unknown variable `{name}`")));
+        }
+        if !triple && matches!(prefix, '#' | '^') {
+            stack.push((Some(name.into()), prefix == '^', vec![]));
+        } else if !triple && prefix == '/' {
+            if stack.len() == 1 || stack.last().unwrap().0.as_deref() != Some(name) {
+                return Err(error(format!("unexpected closing section `{name}`")));
+            }
+            let (name, inverted, children) = stack.pop().unwrap();
+            stack.last_mut().unwrap().2.push(MustacheNode::Section {
+                name: name.unwrap(),
                 inverted,
                 children,
-            },
-        );
+            });
+        } else {
+            stack.last_mut().unwrap().2.push(MustacheNode::Variable {
+                name: name.into(),
+                escape: !triple && prefix != '&',
+            });
+        }
     }
-    stack
-        .pop()
-        .map(|(_, _, children)| children)
-        .unwrap_or_default()
+    if stack.len() > 1 {
+        return Err(error(format!(
+            "unclosed section `{}`",
+            stack.last().unwrap().0.as_deref().unwrap()
+        )));
+    }
+    let mut nodes = stack.pop().unwrap().2;
+    if !rest.is_empty() {
+        nodes.push(MustacheNode::Text(rest.into()));
+    }
+    Ok(nodes)
 }
 
 /// HTML-escapes a value exactly like Dart's `mustache_template`
@@ -254,8 +236,7 @@ fn render_mustache_nodes(
         match node {
             MustacheNode::Text(text) => out.push_str(text),
             MustacheNode::Variable { name, escape } => {
-                // Unknown variables render empty (Dart's strict mode would
-                // throw; the Rust CLI stays lenient).
+                // Names are validated even inside inactive sections during parsing.
                 if let Some(value) = mustache_lookup(name, variables, stack) {
                     let rendered = value.render();
                     if *escape {
@@ -290,12 +271,15 @@ fn render_mustache_nodes(
 /// Minimal mustache renderer matching Dart's `mustache_template` for the
 /// artifact-name use case: `{{var}}` (HTML-escaped), `{{{var}}}` / `{{&var}}`
 /// (unescaped), `{{#section}}`/`{{^inverted}}` sections (nested allowed),
-/// `{{.}}` and `{{! comments }}`. Unknown variables render empty.
-fn render_mustache(template: &str, variables: &[(&'static str, MustacheValue)]) -> String {
-    let nodes = parse_mustache(template);
+/// `{{.}}` and `{{! comments }}`. Unknown variables are errors.
+fn render_mustache(
+    template: &str,
+    variables: &[(&'static str, MustacheValue)],
+) -> Result<String, PackageError> {
+    let nodes = parse_mustache(template)?;
     let mut out = String::new();
     render_mustache_nodes(&nodes, variables, &mut Vec::new(), &mut out);
-    out
+    Ok(out)
 }
 
 #[derive(Debug, Clone)]
@@ -320,7 +304,7 @@ pub struct PackageConfig {
 }
 
 impl PackageConfig {
-    pub fn output_file_name(&self) -> String {
+    pub fn output_file_name(&self) -> Result<String, PackageError> {
         render_artifact_name(self)
     }
 
@@ -332,15 +316,16 @@ impl PackageConfig {
         dir
     }
 
-    pub fn output_file(&self) -> PathBuf {
-        self.version_output_dir().join(self.output_file_name())
+    pub fn output_file(&self) -> Result<PathBuf, PackageError> {
+        let name = self.output_file_name()?;
+        Ok(self.version_output_dir().join(name))
     }
 
-    pub fn packaging_dir(&self) -> PathBuf {
+    pub fn packaging_dir(&self) -> Result<PathBuf, PackageError> {
         let stem = if self.package_format.is_empty() {
-            format!("{}_direct", self.output_file_name())
+            format!("{}_direct", self.output_file_name()?)
         } else {
-            self.output_file_name().replace(
+            self.output_file_name()?.replace(
                 &format!(".{}", self.package_format),
                 &format!("_{}", self.package_format),
             )
@@ -350,7 +335,7 @@ impl PackageConfig {
             std::fs::remove_dir_all(&dir).ok();
         }
         std::fs::create_dir_all(&dir).ok();
-        dir
+        Ok(dir)
     }
 
     /// Looks up a variable in `environment`, then the process environment.
@@ -371,13 +356,18 @@ impl PackageConfig {
     /// mirroring Dart's `DefaultMakeResultResolver`: an empty
     /// `package_format` means the artifact is a directory, otherwise a file.
     pub fn resolve_result(&self, artifact: PathBuf) -> Result<PackageResult, PackageError> {
-        PackageResult::resolve(artifact, self.package_format.is_empty())
+        let mut result = PackageResult::resolve(artifact, self.package_format.is_empty())?;
+        result.config = Some(self.clone());
+        Ok(result)
     }
 }
 
 #[derive(Debug)]
 pub struct PackageResult {
     pub artifacts: Vec<PathBuf>,
+    /// Effective common settings, including packager overrides. Environment
+    /// and signing credentials must never be emitted by result serializers.
+    pub config: Option<PackageConfig>,
 }
 
 impl PackageResult {
@@ -394,6 +384,7 @@ impl PackageResult {
         }
         Ok(Self {
             artifacts: vec![artifact],
+            config: None,
         })
     }
 }
@@ -456,7 +447,7 @@ mod tests {
     #[test]
     fn default_artifact_name() {
         assert_eq!(
-            base_config().output_file_name(),
+            base_config().output_file_name().unwrap(),
             "hello_world-1.2.3+4-linux-setup.deb"
         );
     }
@@ -466,7 +457,7 @@ mod tests {
         let mut config = base_config();
         config.flavor = Some("dev".to_string());
         assert_eq!(
-            config.output_file_name(),
+            config.output_file_name().unwrap(),
             "hello_world-dev-1.2.3+4-linux-setup.deb"
         );
     }
@@ -477,7 +468,7 @@ mod tests {
         config.flavor = Some("dev".to_string());
         config.channel = Some("beta".to_string());
         assert_eq!(
-            config.output_file_name(),
+            config.output_file_name().unwrap(),
             "hello_world-beta-1.2.3+4-linux-setup.deb"
         );
     }
@@ -486,7 +477,10 @@ mod tests {
     fn artifact_name_template_variables() {
         let mut config = base_config();
         config.artifact_name = Some("{{name}}_{{build_name}}_amd64.{{ext}}".to_string());
-        assert_eq!(config.output_file_name(), "hello_world_1.2.3_amd64.deb");
+        assert_eq!(
+            config.output_file_name().unwrap(),
+            "hello_world_1.2.3_amd64.deb"
+        );
     }
 
     #[test]
@@ -498,7 +492,7 @@ mod tests {
         );
         // Matches Dart's default template output exactly
         assert_eq!(
-            config.output_file_name(),
+            config.output_file_name().unwrap(),
             "hello_world-1.2.3+4-linux-setup.deb"
         );
     }
@@ -507,7 +501,7 @@ mod tests {
     fn artifact_name_literal_passthrough() {
         let mut config = base_config();
         config.artifact_name = Some("MyApp-Installer.deb".to_string());
-        assert_eq!(config.output_file_name(), "MyApp-Installer.deb");
+        assert_eq!(config.output_file_name().unwrap(), "MyApp-Installer.deb");
     }
 
     #[test]
@@ -517,17 +511,23 @@ mod tests {
         config.build_mode = "profile".to_string();
         config.is_installer = false;
         config.package_format = String::new();
-        assert_eq!(config.output_file_name(), "hello_world-1.2.3-profile-linux");
+        assert_eq!(
+            config.output_file_name().unwrap(),
+            "hello_world-1.2.3-profile-linux"
+        );
     }
 
     #[test]
     fn artifact_name_inverted_sections() {
         let mut config = base_config();
         config.artifact_name =
-            Some("{{name}}{{^flavor}}-noflavor{{/flavor}}{{^is_profile}}-rel{{/is_profile}}{{^is_installer}}-portable{{/is_installer}}{{^unknown}}-u{{/unknown}}".to_string());
-        assert_eq!(config.output_file_name(), "hello_world-noflavor-rel-u");
+            Some("{{name}}{{^flavor}}-noflavor{{/flavor}}{{^is_profile}}-rel{{/is_profile}}{{^is_installer}}-portable{{/is_installer}}".to_string());
+        assert_eq!(
+            config.output_file_name().unwrap(),
+            "hello_world-noflavor-rel"
+        );
         config.flavor = Some("dev".to_string());
-        assert_eq!(config.output_file_name(), "hello_world-rel-u");
+        assert_eq!(config.output_file_name().unwrap(), "hello_world-rel");
     }
 
     #[test]
@@ -536,7 +536,7 @@ mod tests {
         config.flavor = Some("a/b&<c>\"d'".to_string());
         config.artifact_name = Some("{{flavor}}|{{{flavor}}}|{{&flavor}}|{{ flavor }}".to_string());
         assert_eq!(
-            config.output_file_name(),
+            config.output_file_name().unwrap(),
             "a&#x2F;b&amp;&lt;c&gt;&quot;d&#x27;|a/b&<c>\"d'|a/b&<c>\"d'|a&#x2F;b&amp;&lt;c&gt;&quot;d&#x27;"
         );
     }
@@ -547,24 +547,40 @@ mod tests {
         let mut config = base_config();
         config.flavor = Some(String::new());
         config.artifact_name = Some("x{{#flavor}}-[{{flavor}}{{.}}]{{/flavor}}".to_string());
-        assert_eq!(config.output_file_name(), "x-[]");
+        assert_eq!(config.output_file_name().unwrap(), "x-[]");
     }
 
     #[test]
-    fn artifact_name_unknown_and_bool_variables() {
+    fn artifact_name_bool_variables() {
         let mut config = base_config();
         config.artifact_name =
-            Some("{{missing}}{{a.b}}{{is_installer}}-{{has_build_number}}{{! comment }}{{#is_installer}}-{{.}}{{/is_installer}}".to_string());
-        assert_eq!(config.output_file_name(), "true-true-true");
+            Some("{{is_installer}}-{{has_build_number}}{{! a {braced} comment }}{{#is_installer}}-{{.}}{{/is_installer}}".to_string());
+        assert_eq!(config.output_file_name().unwrap(), "true-true-true");
     }
 
     #[test]
-    fn artifact_name_malformed_templates_are_lenient() {
+    fn artifact_name_rejects_typos_and_malformed_templates() {
         let mut config = base_config();
-        config.artifact_name = Some("{{name}}{{/nope}}{{#is_installer}}-x".to_string());
-        assert_eq!(config.output_file_name(), "hello_world-x");
-        config.artifact_name = Some("{{name}}-{{oops".to_string());
-        assert_eq!(config.output_file_name(), "hello_world-{{oops");
+        for template in [
+            "{{unknown}}",
+            "{{a.b}}",
+            "{{#flavor}}{{typo}}{{/flavor}}",
+            "{{name}}{{/name}}",
+            "{{#flavor}}x",
+            "{{#flavor}}{{#name}}x{{/flavor}}{{/name}}",
+            "{{name}}-{{oops",
+            "{{{name}}",
+            "{{}}",
+            "{{>partial}}",
+            "{{=foo=}}",
+        ] {
+            config.artifact_name = Some(template.into());
+            assert!(config.output_file_name().is_err(), "{template}");
+        }
+        config.artifact_name = Some("{{name}}{{build_number}}{{flavor}}{{channel}}{{ext}}".into());
+        config.app_version = "1.2.3".into();
+        config.package_format.clear();
+        assert_eq!(config.output_file_name().unwrap(), "hello_world");
     }
 
     #[test]

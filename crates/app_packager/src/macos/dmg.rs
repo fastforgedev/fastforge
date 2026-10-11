@@ -29,7 +29,7 @@ impl AppPackager for MacOSDmgPackager {
     }
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
-        let pkg_dir = config.packaging_dir();
+        let pkg_dir = config.packaging_dir()?;
         // Dart deletes the packaging directory in a `finally` block, so it is
         // cleaned up even when DMG creation fails.
         let result = make_dmg(config, &pkg_dir);
@@ -75,7 +75,7 @@ fn make_dmg(config: &PackageConfig, pkg_dir: &Path) -> Result<std::path::PathBuf
         run_cp_r_dir_contents(dmg_assets, pkg_dir)?;
     }
 
-    let output_file = config.output_file();
+    let output_file = config.output_file()?;
 
     // Prefer the project's `macos/packaging/dmg/make_config.yaml` (same
     // appdmg-format schema as Dart's `MakeDmgConfig`: title, icon,

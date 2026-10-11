@@ -71,6 +71,14 @@ pub trait AppPublisher {
         config: PublishConfig,
         on_progress: Option<PublishProgressCallback>,
     ) -> Result<PublishResult, PublishError> {
+        if let Some(version) = config.app_version.as_deref().or_else(|| {
+            config
+                .publish_arguments
+                .as_ref()
+                .and_then(|args| args.get("app-version").map(String::as_str))
+        }) {
+            crate::AppVersion::parse(version).map_err(PublishError::General)?;
+        }
         self.perform_publish(&config, on_progress.as_ref())
     }
 }

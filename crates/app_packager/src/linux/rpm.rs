@@ -380,8 +380,8 @@ impl AppPackager for LinuxRpmPackager {
         let make_config = RpmMakeConfig::load()?;
         // rpmbuild needs absolute paths (Dart uses
         // `packagingDirectory.absolute.path`).
-        let pkg_dir = std::path::absolute(config.packaging_dir())?;
-        let output_file = config.output_file();
+        let pkg_dir = std::path::absolute(config.packaging_dir()?)?;
+        let output_file = config.output_file()?;
         let rpmbuild_dir = pkg_dir.join("rpmbuild");
         for sub in &["BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"] {
             std::fs::create_dir_all(rpmbuild_dir.join(sub))?;
@@ -424,6 +424,9 @@ impl AppPackager for LinuxRpmPackager {
             },
             || make_config.desktop_file(config, raw.app_id()),
         )?;
+        // Dart installed /usr/bin/<package>, which may differ from the
+        // executable name. Keep that command usable across a native upgrade.
+        install_command_alias(&root, raw.package_name(), binary_name)?;
         // Fix lib_*_plugin.so RPATHs pointing at the build directory
         sanitize_bundle_rpaths(&root.join(&layout.bundle_dir))?;
         std::fs::write(&file_list, staging::rpm_file_list(&root)?)?;
@@ -461,6 +464,22 @@ impl AppPackager for LinuxRpmPackager {
     }
 }
 
+fn install_command_alias(root: &Path, package: &str, binary: &str) -> Result<(), PackageError> {
+    if package != binary {
+        if package.is_empty() || package.contains(['/', '\\']) || matches!(package, "." | "..") {
+            return Err(PackageError::General(
+                "RPM package_name must be a file name".into(),
+            ));
+        }
+        let link = root.join("usr/bin").join(package);
+        // Explicit file overlays retain precedence.
+        if link.symlink_metadata().is_err() {
+            staging::symlink(&format!("/opt/{binary}/{binary}"), &link)?;
+        }
+    }
+    Ok(())
+}
+
 /// The first `.rpm` file (by path) under `dir`.
 fn find_rpm(dir: &Path) -> Option<std::path::PathBuf> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
@@ -483,6 +502,24 @@ fn find_rpm(dir: &Path) -> Option<std::path::PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[cfg(unix)]
+    fn command_alias_preserves_dart_package_name_and_overlay_precedence() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("usr/bin")).unwrap();
+        super::install_command_alias(tmp.path(), "hola-package", "hola").unwrap();
+        assert_eq!(
+            std::fs::read_link(tmp.path().join("usr/bin/hola-package")).unwrap(),
+            Path::new("/opt/hola/hola")
+        );
+        std::fs::write(tmp.path().join("usr/bin/custom"), "overlay").unwrap();
+        super::install_command_alias(tmp.path(), "custom", "hola").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("usr/bin/custom")).unwrap(),
+            "overlay"
+        );
+        assert!(super::install_command_alias(tmp.path(), "../bad", "hola").is_err());
+    }
     use super::*;
     use std::path::PathBuf;
 

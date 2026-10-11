@@ -408,8 +408,8 @@ impl AppPackager for WindowsExePackager {
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
         let make_config = ExeMakeConfig::load()?;
-        let pkg_dir = config.packaging_dir();
-        let output_file = config.output_file();
+        let pkg_dir = config.packaging_dir()?;
+        let output_file = config.output_file()?;
         let mut raw = RawPackaging::load(config, &pkg_dir)?;
         let iscc_path = resolve_iscc_path(
             raw.value(INNO_SETUP_ENV_VAR)
@@ -465,7 +465,7 @@ fn prepare_script(
     pkg_dir: &Path,
     iscc_path: &str,
 ) -> Result<String, PackageError> {
-    let output_file = config.output_file();
+    let output_file = config.output_file()?;
     // Absolute setup icon path (mirrors Dart, which joins with cwd);
     // empty when not configured.
     let setup_icon_file = make_config
@@ -655,7 +655,8 @@ mod tests {
             },
             &config,
             &root,
-        );
+        )
+        .unwrap();
         let mc = ExeMakeConfig {
             script_template: Some("does-not-exist.iss".into()),
             ..Default::default()
@@ -690,7 +691,8 @@ mod tests {
             },
             &config,
             &root,
-        );
+        )
+        .unwrap();
         let script =
             prepare_script(&config, &ExeMakeConfig::default(), &mut raw, &root, "iscc").unwrap();
         assert!(script.contains("AppName=Demo App\n"));

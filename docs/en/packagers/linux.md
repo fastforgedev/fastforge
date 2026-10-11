@@ -104,9 +104,13 @@ cp -a ${PACKAGING_DIRECTORY}/. %{buildroot}/
 
 The list owns the files, links, and every directory the package creates, such as `/opt/<binary>` or `/etc/<app id>`, but not system directories such as `/usr/share/applications`. The two `%global` lines keep the bundled Flutter engine and plugins out of the automatic `Provides` and `Requires`. System libraries such as GTK and glibc stay required. `RPM_PRIVATE_LIBS` lists the bundle's libraries, escaped for a spec. The generated spec does this too, and turns off debuginfo packages and `.build-id` links, which would clash between apps that ship the same engine. `Version` is the build name, with `-` turned into `~`, and `Release` is the build number. The variables are also set in rpmbuild's environment, so `%{getenv:APP_VERSION}` works. The artifact is taken from any `RPMS/<arch>/` directory, so a spec may set its own `BuildArch`. Additional `make_config.yaml` keys include `summary`, `group`, `vendor`, `packager`, `license`, `url`, `requires`, and `build_arch`.
 
+RPM keeps `/opt/<binary>` as the bundle directory. When the package name differs from the binary, both `/usr/bin/<binary>` and the legacy `/usr/bin/<package>` command point to the native bundle. Keep the package name unchanged during migration so RPM can remove the old owned `/usr/share/<package>` files on upgrade. Custom unowned files or uninstall scripts require project-specific migration.
+
 ## Pacman
 
 Requires `bsdtar` with zstd support; `makepkg` is not used. The artifact is a `.pkg.tar.zst` archive owned by root, with `.MTREE`, `.PKGINFO`, `.INSTALL` when there is one, and the package root. The generated `.PKGINFO` uses makepkg's format, one `key = value` line per value. `pkgver` is `<build name>-<build number>`, with `-` removed from the build name. Without `dependencies` in `make_config.yaml`, the package depends on `gtk3`; an empty list opts out. Additional `make_config.yaml` keys include `maintainer`, `licenses`, `groups`, `dependencies`, `optional_dependencies`, and `postinstall_scripts`.
+
+The legacy Pacman `installed_size` and `options` settings now produce migration warnings. `size` is measured from the staged payload in bytes; `options` belongs to makepkg and cannot be represented in PKGINFO. Move required preprocessing to hooks or workflows.
 
 ## ZIP and direct
 

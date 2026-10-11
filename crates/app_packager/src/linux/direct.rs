@@ -25,7 +25,7 @@ impl AppPackager for LinuxDirectPackager {
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
         // The destination directory uses the rendered artifact name (no
         // extension for direct output).
-        let dst = config.output_file();
+        let dst = config.output_file()?;
         copy_dir_contents(&config.build_output_dir, &dst)?;
         config.resolve_result(dst)
     }

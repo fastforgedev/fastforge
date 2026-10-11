@@ -89,42 +89,49 @@ pub(crate) struct AppVersion {
 }
 
 impl AppVersion {
-    pub fn parse(text: &str) -> Self {
-        let text = text.trim().to_string();
-        let (without_build, build) = match text.split_once('+') {
-            Some((left, build)) => (left, build.to_string()),
-            None => (text.as_str(), String::new()),
-        };
-        let core = without_build
-            .split_once('-')
-            .map_or(without_build, |(core, _)| core)
-            .to_string();
-        Self { text, core, build }
+    pub fn parse(text: &str) -> Result<Self, PublishError> {
+        let version = fastforge_core::AppVersion::parse(text).map_err(PublishError::General)?;
+        Ok(Self {
+            text: version.text,
+            core: version.core,
+            build: version.build_number.unwrap_or_default(),
+        })
     }
 }
 
 /// The app version to publish: `config.app_version`, then the `app-version`
 /// publish argument, then the `version` of `pubspec.yaml` in the current
 /// directory (Dart's `PublishConfig` fallback).
-pub(crate) fn resolve_app_version(config: &PublishConfig) -> Option<AppVersion> {
-    config
+pub(crate) fn resolve_app_version(
+    config: &PublishConfig,
+) -> Result<Option<AppVersion>, PublishError> {
+    let version = match config
         .app_version
         .clone()
-        .filter(|value| !value.trim().is_empty())
         .or_else(|| argument(config, &["app-version"]))
-        .or_else(|| pubspec_version(Path::new("pubspec.yaml")))
+    {
+        Some(version) => Some(version),
+        None => pubspec_version(Path::new("pubspec.yaml"))?,
+    };
+    version
         .map(|version| AppVersion::parse(&version))
+        .transpose()
 }
 
-fn pubspec_version(path: &Path) -> Option<String> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let pubspec: serde_yaml::Value = serde_yaml::from_str(&content).ok()?;
-    let version = match pubspec.get("version")? {
-        serde_yaml::Value::String(value) => value.clone(),
-        serde_yaml::Value::Number(value) => value.to_string(),
-        _ => return None,
+fn pubspec_version(path: &Path) -> Result<Option<String>, PublishError> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.into()),
     };
-    Some(version).filter(|value| !value.trim().is_empty())
+    let pubspec: serde_yaml::Value = serde_yaml::from_str(&content).map_err(to_publish_error)?;
+    match pubspec.get("version") {
+        None => Ok(None),
+        Some(serde_yaml::Value::String(version)) => Ok(Some(version.clone())),
+        Some(_) => Err(PublishError::General(
+            "pubspec.yaml version must be a string".into(),
+        )),
+    }
 }
 
 // ── Uploads ───────────────────────────────────────────────────────────────────
@@ -272,17 +279,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn explicit_invalid_version_is_an_error_instead_of_pubspec_fallback() {
+        let config = PublishConfig {
+            app_version: Some("1.2.3+4+5".into()),
+            ..Default::default()
+        };
+        assert!(
+            resolve_app_version(&config)
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid app version")
+        );
+        let config = PublishConfig {
+            publish_arguments: Some([("app-version".into(), "1.2".into())].into()),
+            ..Default::default()
+        };
+        assert!(resolve_app_version(&config).is_err());
+    }
+
+    #[test]
     fn app_version_parses_core_and_build() {
-        let version = AppVersion::parse("1.2.3+45");
+        let version = AppVersion::parse("1.2.3+45").unwrap();
         assert_eq!(version.text, "1.2.3+45");
         assert_eq!(version.core, "1.2.3");
         assert_eq!(version.build, "45");
 
-        let version = AppVersion::parse("2.0.0-beta.1");
+        let version = AppVersion::parse("2.0.0-beta.1").unwrap();
         assert_eq!(version.core, "2.0.0");
         assert_eq!(version.build, "");
 
-        let version = AppVersion::parse("2.0.0-beta.1+7.8");
+        let version = AppVersion::parse("2.0.0-beta.1+7.8").unwrap();
         assert_eq!(version.core, "2.0.0");
         assert_eq!(version.build, "7.8");
     }

@@ -81,7 +81,9 @@ env:
 
 这些变量也可直接通过进程环境传入。旧 `certificate_path`、`certificate_password` 和 `signtool_options` 继续支持。优先级为显式 packager 参数、环境变量、旧配置。未提供签名配置时生成未签名包并输出警告；旧 `store: true` 或 `sign_msix: false` 会跳过签名。
 
-**兼容性变化：** Rust 不再运行 `dart run msix:create`，也不再使用其内置测试证书。`debug` 和 `install_certificate` 不会安装证书，`trim_logo` 不会应用；开发证书需单独安装。capability、文件关联、协议、执行别名和开机启动可直接写入清单；默认生成清单时仍支持对应旧字段。
+**兼容性变化：** Rust 不再运行 `dart run msix:create`，也不再使用其内置测试证书。`debug` 和 `install_certificate` 不会安装证书，启用时会输出迁移提示；开发证书需单独安装。`trim_logo` 默认开启：生成图标前裁掉透明边缘，再等比缩放；设为 `false` 可保留留白。构建产物或覆盖文件提供的图片会保留。capability、文件关联、协议、执行别名和开机启动可直接写入清单；默认生成清单时仍支持对应旧字段。
+
+生成的 capability 使用 Windows 清单要求的命名空间，并统一把设备能力放在末尾，不受输入顺序影响。重复项会去重，包括自动添加的 `runFullTrust`。未知名称及需要子元素的设备（如 `usb`）须使用原生 `AppxManifest.xml`；此时会明确报错，而不会猜测成普通 capability。
 
 ## ZIP 和 direct
 

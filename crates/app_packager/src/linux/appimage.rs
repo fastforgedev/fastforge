@@ -238,9 +238,9 @@ impl AppPackager for LinuxAppImagePackager {
         // overrides packageFormat to `AppImage` for the output file).
         let mut effective = config.clone();
         effective.package_format = "AppImage".to_string();
-        let output_file = effective.output_file();
+        let output_file = effective.output_file()?;
 
-        let pkg_dir = config.packaging_dir();
+        let pkg_dir = config.packaging_dir()?;
         let app_name = &config.app_name;
 
         let app_dir = pkg_dir.join(format!("{}.AppDir", app_name));

@@ -15,6 +15,22 @@ const CPU_TYPE_ARM64: u32 = 0x0100_000c;
 const PLATFORM_IOS: u32 = 2;
 
 #[test]
+fn ipa_build_number_preserves_apple_dotted_version() {
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("dotted.ipa");
+    write_zip(
+        &path,
+        &[(
+            "Payload/Fixture.app/Info.plist",
+            INFO_PLIST
+                .replace("<string>77</string>", "<string>7.8.9</string>")
+                .into_bytes(),
+        )],
+    );
+    assert_eq!(analyze(&path)["buildNumber"], "7.8.9");
+}
+
+#[test]
 fn ipa_analysis_reports_bundle_identity() {
     let temp = TempDir::new().expect("temp dir");
     let data = analyze(&build_ipa(temp.path()));

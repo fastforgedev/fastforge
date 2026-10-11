@@ -91,7 +91,7 @@ impl GitHubConfig {
         }
 
         let release_title = argument(config, &["release-title", "github-release-title"]);
-        let release_title = match resolve_app_version(config) {
+        let release_title = match resolve_app_version(config)? {
             Some(version) => Some(release_title_for(release_title.as_deref(), &version)),
             // Dart leaves the title unset without a version (-> latest
             // release); an explicit title is kept as-is here instead.

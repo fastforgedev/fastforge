@@ -64,7 +64,7 @@ fn native_exe_install_uninstall_and_msix_unpack() {
     std::env::set_current_dir(root).unwrap();
     write(
         &root.join("pubspec.yaml"),
-        "name: demo\nversion: 1.2.3+4\ndev_dependencies:\n  msix: any\n",
+        "name: demo\nversion: 1.2.3+4\ndev_dependencies:\n  msix: any\nmsix_config:\n  capabilities: microphone,picturesLibrary,internetClient,runFullTrust\n  trim_logo: true\n",
     );
     write(
         &root.join(".fastforge/config.yaml"),
@@ -188,6 +188,15 @@ fn native_exe_install_uninstall_and_msix_unpack() {
         }
         if std::env::var_os("MSIX_CERTIFICATE_PATH").is_some() {
             assert!(unpack.join("AppxSignature.p7x").is_file());
+            if std::env::var_os("FASTFORGE_TEST_MSIX_INSTALL").is_some() {
+                run(Command::new("signtool").args(["verify", "/pa"]).arg(&msix));
+                // This opt-in test requires the caller to trust a disposable
+                // development certificate. Packaging itself never installs it.
+                run(Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command",
+                    "$ErrorActionPreference='Stop'; $manifest=[xml](Get-Content -LiteralPath $env:TEST_MANIFEST); $name=$manifest.Package.Identity.Name; try { Add-AppxPackage -Path $env:TEST_MSIX; if (!(Get-AppxPackage -Name $name)) { throw 'MSIX package not registered' } } finally { Get-AppxPackage -Name $name | Remove-AppxPackage }"])
+                    .env("TEST_MANIFEST", unpack.join("AppxManifest.xml"))
+                    .env("TEST_MSIX", &msix));
+            }
         }
         println!(
             "MSIX {variant} pack, sign (when configured) and unpack: {}",

@@ -161,3 +161,5 @@ fastforge package --targets zip \
 ## 自动化
 
 需要组合多个打包目标、发布或其他命令时，使用[本地工作流](workflows.md)。`fastforge/package` action 要求提供 `platform` 和单个 `target`，并接受 `output`（默认 `dist/`）、`artifact-name`、`channel`、`skip-clean`、`build-target`、`hook-pre`、`hook-post` 和 `build-args`（JSON object 字符串，承载其他所有构建参数，如 `{"flavor":"dev","dart-define":{"APP_ENV":"dev"}}`）。
+
+产物模板会拒绝未知变量、未闭合或不匹配的区块、partial 及分隔符修改；已知可选变量（`flavor`、`channel`、`build_number`、`ext`）允许缺失。仍支持注释、嵌套／反向区块和不转义变量。打包 JSON 使用统一的公共字段，反映最终公共配置。

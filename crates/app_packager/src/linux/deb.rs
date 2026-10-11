@@ -306,8 +306,8 @@ impl AppPackager for LinuxDebPackager {
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
         let make_config = DebMakeConfig::load()?;
-        let pkg_dir = config.packaging_dir();
-        let output_file = config.output_file();
+        let pkg_dir = config.packaging_dir()?;
+        let output_file = config.output_file()?;
         let binary_name = &config.app_binary_name;
         let layout = Layout::system(binary_name);
         let raw = RawPackaging::load(

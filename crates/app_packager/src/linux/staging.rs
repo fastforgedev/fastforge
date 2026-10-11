@@ -135,7 +135,7 @@ pub(crate) fn stage(
 }
 
 #[cfg(unix)]
-fn symlink(target: &str, link: &Path) -> Result<(), PackageError> {
+pub(super) fn symlink(target: &str, link: &Path) -> Result<(), PackageError> {
     if link.symlink_metadata().is_ok() {
         std::fs::remove_file(link)?;
     }
@@ -144,7 +144,7 @@ fn symlink(target: &str, link: &Path) -> Result<(), PackageError> {
 }
 
 #[cfg(not(unix))]
-fn symlink(_target: &str, _link: &Path) -> Result<(), PackageError> {
+pub(super) fn symlink(_target: &str, _link: &Path) -> Result<(), PackageError> {
     Ok(())
 }
 

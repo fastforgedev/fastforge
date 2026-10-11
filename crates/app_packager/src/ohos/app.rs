@@ -21,7 +21,7 @@ impl AppPackager for OHOSAppPackager {
         let src = config
             .first_build_output_file()
             .ok_or_else(|| PackageError::General("no build output files".into()))?;
-        let dst = config.output_file();
+        let dst = config.output_file()?;
         std::fs::copy(src, &dst)?;
         config.resolve_result(dst)
     }

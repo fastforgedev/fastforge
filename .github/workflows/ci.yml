@@ -36,6 +36,44 @@ jobs:
       - name: Run cargo check
         run: cargo check --workspace --exclude studio-api --all-targets
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run native library and CLI regressions
+        run: |
+          cargo test -p fastforge_core -p fastforge_app_analyzer -p fastforge_app_builder -p fastforge_app_packager -p fastforge_app_publisher --lib
+          cargo test -p fastforge_cli --bin fastforge
+          cargo test -p fastforge_app_analyzer --test ios_analyzer
+          cargo test -p fastforge_app_packager --test windows_packagers
+
+  linux-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install native tools
+        run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools zlib1g-dev
+      - name: Check packages and install, upgrade, remove in temporary roots
+        run: |
+          sudo env "PATH=$PATH" "RUSTUP_HOME=$HOME/.rustup" "CARGO_HOME=$HOME/.cargo" FASTFORGE_REQUIRE_NATIVE_TESTS=1 cargo test -p fastforge_app_packager --test linux_packagers deb_follows -- --ignored --nocapture --test-threads=1
+          sudo env "PATH=$PATH" "RUSTUP_HOME=$HOME/.rustup" "CARGO_HOME=$HOME/.cargo" FASTFORGE_REQUIRE_NATIVE_TESTS=1 cargo test -p fastforge_app_packager --test linux_packagers rpm_ -- --ignored --nocapture --test-threads=1
+
+  arch-package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install Rust and packaging tools
+        run: pacman -Syu --noconfirm rust libarchive git
+      - uses: actions/checkout@v4
+      - name: Check pacman install, upgrade and remove
+        env:
+          FASTFORGE_REQUIRE_NATIVE_TESTS: "1"
+        run: cargo test -p fastforge_app_packager --test linux_packagers pacman_follows -- --ignored --nocapture --test-threads=1
+
   build:
     needs: check
     runs-on: ubuntu-latest
@@ -58,6 +96,43 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check the CLI for Windows
         run: cargo check -p fastforge_cli --bin fastforge
+      - name: Install Inno Setup and locate the Windows SDK
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Append
+          $sdk = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Directory |
+            Sort-Object Name -Descending |
+            Where-Object { Test-Path (Join-Path $_.FullName 'x64\makeappx.exe') } |
+            Select-Object -First 1
+          if (!$sdk) { throw 'Windows SDK makeappx missing' }
+          (Join-Path $sdk.FullName 'x64') | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Run Windows libraries and installer regressions with disposable signing identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo test -p fastforge_core -p fastforge_app_builder -p fastforge_app_packager -p fastforge_app_publisher --lib
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=Fastforge CI' -CertStoreLocation Cert:\CurrentUser\My -KeyUsage DigitalSignature -HashAlgorithm SHA256 -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}CA=false')
+          $pfx = Join-Path $env:RUNNER_TEMP 'fastforge-ci.pfx'
+          $cer = Join-Path $env:RUNNER_TEMP 'fastforge-ci.cer'
+          try {
+            Export-PfxCertificate -Cert $cert -FilePath $pfx -Password (ConvertTo-SecureString 'ci-only' -AsPlainText -Force) | Out-Null
+            Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+            Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+            Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+            $env:MSIX_CERTIFICATE_PATH = $pfx
+            $env:MSIX_CERTIFICATE_PASSWORD = 'ci-only'
+            $env:MSIX_PUBLISHER = 'CN=Fastforge CI'
+            $env:FASTFORGE_TEST_MSIX_INSTALL = '1'
+            cargo test -p fastforge_app_packager --test windows_native -- --ignored --nocapture --test-threads=1
+            if ($LASTEXITCODE) { throw 'Windows native installer checks failed' }
+          } finally {
+            foreach ($store in @('CurrentUser\My', 'LocalMachine\Root', 'LocalMachine\TrustedPeople')) {
+              Remove-Item "Cert:\$store\$($cert.Thumbprint)" -ErrorAction SilentlyContinue
+            }
+            Remove-Item $pfx, $cer -ErrorAction SilentlyContinue
+          }
 
   studio-worker:
     runs-on: ubuntu-latest

@@ -19,12 +19,12 @@ pub(crate) struct RawPackaging {
 
 impl RawPackaging {
     pub fn load(config: &PackageConfig, root: &Path) -> Result<Self, PackageError> {
-        Ok(Self::new(
+        Self::new(
             Path::new(".fastforge/packaging/windows").join(&config.package_format),
             ProjectSettings::load()?,
             config,
             root,
-        ))
+        )
     }
 
     pub fn new(
@@ -32,7 +32,7 @@ impl RawPackaging {
         settings: ProjectSettings,
         config: &PackageConfig,
         root: &Path,
-    ) -> Self {
+    ) -> Result<Self, PackageError> {
         let mut variables = config.package_variables(&settings);
         let arch = architecture(&config.build_output_dir);
         variables.insert("PACKAGE_ARCH".into(), arch.into());
@@ -59,13 +59,13 @@ impl RawPackaging {
         variables.insert("PACKAGING_DIRECTORY".into(), absolute(root));
         variables.insert(
             "OUTPUT_ARTIFACT_PATH".into(),
-            absolute(&config.output_file()),
+            absolute(&config.output_file()?),
         );
-        Self {
+        Ok(Self {
             dir,
             settings,
             variables,
-        }
+        })
     }
 
     pub fn template(&self, suffixes: &[&str]) -> Result<Option<PathBuf>, PackageError> {
@@ -186,7 +186,8 @@ pub(super) mod tests {
             ProjectSettings::default(),
             &config,
             &tmp.path().join("stage"),
-        );
+        )
+        .unwrap();
         write(&config.build_output_dir.join("runner.exe"), b"exe\0");
         write(&config.build_output_dir.join("data/app.txt"), "bundle");
         write(
@@ -219,7 +220,8 @@ pub(super) mod tests {
         let mut settings = ProjectSettings::default();
         settings.env.insert("TEST_VALUE".into(), "project".into());
         let dir = tmp.path().join("exe");
-        let raw = RawPackaging::new(dir.clone(), settings, &config, &tmp.path().join("stage"));
+        let raw =
+            RawPackaging::new(dir.clone(), settings, &config, &tmp.path().join("stage")).unwrap();
         write(&dir.join("a.iss"), "");
         write(&dir.join("b.iss"), "");
         assert!(

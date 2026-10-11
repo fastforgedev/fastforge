@@ -104,9 +104,13 @@ cp -a ${PACKAGING_DIRECTORY}/. %{buildroot}/
 
 清单包含文件、链接以及包自己创建的所有目录（如 `/opt/<binary>`、`/etc/<app id>`），但不占用 `/usr/share/applications` 等系统目录。两行 `%global` 把随包的 Flutter 引擎和插件排除在自动生成的 `Provides` 和 `Requires` 之外，GTK、glibc 等系统库依赖仍会保留。`RPM_PRIVATE_LIBS` 列出 bundle 中的库，并已按 spec 的需要转义。生成的 spec 也会这样处理，并关闭 debuginfo 包和 `.build-id` 链接，否则带有相同引擎的多个应用会冲突。`Version` 为构建名，其中的 `-` 转为 `~`；`Release` 为构建号。这些变量同时设置在 rpmbuild 的环境中，因此也可以使用 `%{getenv:APP_VERSION}`。产物会从任意 `RPMS/<arch>/` 目录中查找，spec 可以自行设置 `BuildArch`。`make_config.yaml` 额外的键包括 `summary`、`group`、`vendor`、`packager`、`license`、`url`、`requires` 和 `build_arch`。
 
+RPM 保留 `/opt/<binary>` 安装目录。包名与程序名不同的项目同时提供 `/usr/bin/<binary>` 和旧版 `/usr/bin/<package>` 启动命令，均指向原生安装目录。迁移时保持包名不变，RPM 升级才能清理旧包拥有的 `/usr/share/<package>` 文件；额外的非托管文件或自定义卸载脚本需要项目自行迁移。
+
 ## Pacman
 
 需要支持 zstd 的 `bsdtar`，不使用 `makepkg`。产物是属主为 root 的 `.pkg.tar.zst` 归档，包含 `.MTREE`、`.PKGINFO`、`.INSTALL`（如有）以及包根目录。生成的 `.PKGINFO` 使用 makepkg 的格式，每个值一行 `key = value`。`pkgver` 为 `<构建名>-<构建号>`，构建名中的 `-` 会被去掉。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `gtk3`；设为空列表可以去掉。`make_config.yaml` 额外的键包括 `maintainer`、`licenses`、`groups`、`dependencies`、`optional_dependencies` 和 `postinstall_scripts`。
+
+Pacman 旧字段 `installed_size` 和 `options` 现在会输出迁移提示。`size` 按实际暂存内容计算字节数；`options` 属于 makepkg，不能作为 PKGINFO 元数据。需要的预处理应移到钩子或工作流。
 
 ## ZIP 和 direct
 

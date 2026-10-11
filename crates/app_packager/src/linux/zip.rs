@@ -23,7 +23,7 @@ impl AppPackager for LinuxZipPackager {
     }
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
-        let output_file = config.output_file();
+        let output_file = config.output_file()?;
         zip_dir_contents(&config.build_output_dir, &output_file)?;
         config.resolve_result(output_file)
     }

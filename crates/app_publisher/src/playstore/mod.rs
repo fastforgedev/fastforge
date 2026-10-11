@@ -39,6 +39,7 @@ impl AppPublisher for PlayStorePublisher {
         config: &PublishConfig,
         on_progress: Option<&PublishProgressCallback>,
     ) -> Result<PublishResult, PublishError> {
+        let app_version = resolve_app_version(config)?.map(|version| version.text);
         let artifact_path = artifact_path(config)?;
         ensure_bundle_extension(artifact_path)?;
         let publish_config = PlayStoreConfig::from_config(config)?;
@@ -57,7 +58,6 @@ impl AppPublisher for PlayStorePublisher {
         )?;
 
         if let Some(track) = publish_config.track.as_deref().filter(|t| !t.is_empty()) {
-            let app_version = resolve_app_version(config).map(|version| version.text);
             let release_name = build_release_name(artifact_path, app_version.as_deref());
             update_track(
                 &client,

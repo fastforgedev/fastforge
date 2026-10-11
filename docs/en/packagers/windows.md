@@ -81,7 +81,9 @@ env:
 
 These variables may also be supplied directly through the process environment. Certificate settings can still be provided through legacy `certificate_path`, `certificate_password`, and `signtool_options`. Explicit packager settings take precedence, followed by the environment variables and legacy settings. Without signing configuration, the package is unsigned and a warning is printed. Legacy `store: true` or `sign_msix: false` skips signing.
 
-**Compatibility change:** Rust no longer invokes `dart run msix:create` or uses its bundled test certificate. `debug` and `install_certificate` do not install certificates; `trim_logo` is not applied. Install development certificates separately. Capabilities, file associations, protocols, aliases, and startup settings can be expressed directly in the manifest; their existing legacy keys remain supported for generated manifests.
+**Compatibility change:** Rust no longer invokes `dart run msix:create` or uses its bundled test certificate. `debug` and `install_certificate` do not install certificates and print a migration warning when enabled. Install development certificates separately. `trim_logo` defaults to `true`: transparent borders are cropped before generated assets are resized; set it to `false` to preserve padding. Assets supplied by the bundle or overlays are preserved. Capabilities, file associations, protocols, aliases, and startup settings can be expressed directly in the manifest; their existing legacy keys remain supported for generated manifests.
+
+Generated capabilities use the Windows schema namespaces and place device capabilities last, regardless of input order. Repeated names are removed, including the automatically added `runFullTrust`. Unknown names and devices requiring child elements (such as `usb`) require a raw `AppxManifest.xml`; they fail with an actionable error instead of being emitted as ordinary capabilities.
 
 ## ZIP and direct
 

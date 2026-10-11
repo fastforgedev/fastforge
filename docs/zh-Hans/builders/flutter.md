@@ -92,3 +92,5 @@ OpenHarmony 的 `<flavor>` 默认为 `default`。macOS 会优先匹配 `macos/Ru
 - Android、Web 和 OpenHarmony 构建器不设置固定宿主限制，但仍依赖对应平台工具链。
 
 `fastforge build` 在不支持的宿主上会失败；`fastforge package` 则输出警告并跳过该 target，继续执行并以状态码 0 退出。
+
+Flutter pubspec 版本必须使用 `major.minor.patch[-prerelease][+build]`。无效版本会在调用 Flutter 前报错。版本没有 `+build` 时，Fastforge 不再传入默认 `--build-number`，由 Flutter 使用平台默认值；显式构建参数仍优先。

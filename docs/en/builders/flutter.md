@@ -92,3 +92,5 @@ Fastforge reports a failure if the build command succeeds but no artifact is fou
 - Android, Web, and OpenHarmony builders do not enforce a fixed host, but still require the relevant platform toolchains.
 
 `fastforge build` fails on an unsupported host. `fastforge package` skips such a target with a warning and continues, exiting with status 0.
+
+Flutter pubspec versions must use `major.minor.patch[-prerelease][+build]`. Invalid versions fail before invoking Flutter. Without `+build`, Fastforge does not supply a default `--build-number`; Flutter chooses its platform default. Explicit build arguments still win.

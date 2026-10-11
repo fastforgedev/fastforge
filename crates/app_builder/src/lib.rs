@@ -97,12 +97,14 @@ impl FlutterAppBuilder {
         let mut build_arguments = encode_build_arguments(&config.arguments);
         // Like Dart's `AppBuilder.build`, default `--build-name` /
         // `--build-number` to the pubspec version unless given explicitly.
-        if let Some(pubspec) = PubspecInfo::load("pubspec.yaml") {
+        if let Some(pubspec) = PubspecInfo::load("pubspec.yaml")? {
             if !config.arguments.contains_key("build-name") {
                 build_arguments.extend(["--build-name".to_string(), pubspec.build_name]);
             }
-            if !config.arguments.contains_key("build-number") {
-                build_arguments.extend(["--build-number".to_string(), pubspec.build_number]);
+            if !config.arguments.contains_key("build-number")
+                && let Some(build_number) = pubspec.build_number
+            {
+                build_arguments.extend(["--build-number".to_string(), build_number]);
             }
         }
 

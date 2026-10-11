@@ -479,6 +479,9 @@ fn package_with_hooks(
     environment: HashMap<String, String>,
 ) -> Result<Vec<PathBuf>> {
     let package_format = packager.package_format().to_string();
+    package_config
+        .output_file_name()
+        .map_err(|e| anyhow!("{e}"))?;
     let pre_hooks = resolve_hooks(hooks, "pre");
     let post_hooks = resolve_hooks(hooks, "post");
 
@@ -528,11 +531,7 @@ fn package_with_hooks(
 
     println!(
         "{}",
-        serde_json::to_string_pretty(&make_result_json(
-            package_config,
-            &package_format,
-            &result.artifacts
-        ))?
+        serde_json::to_string_pretty(&make_result_json(package_config, &package_format, &result))?
     );
     if let Some(artifact) = result.artifacts.first() {
         println!(
@@ -543,8 +542,18 @@ fn package_with_hooks(
     Ok(result.artifacts)
 }
 
-/// Dart's `MakeResult.toJson()` (`config` is `MakeConfig.toJson()`).
-fn make_result_json(config: &PackageConfig, package_format: &str, artifacts: &[PathBuf]) -> Value {
+/// Stable common result schema. Format-specific metadata belongs to the
+/// artifact itself; config reports the effective common settings.
+fn make_result_json(
+    config: &PackageConfig,
+    package_format: &str,
+    result: &fastforge_core::PackageResult,
+) -> Value {
+    let package_format = result
+        .config
+        .as_ref()
+        .map_or(package_format, |config| config.package_format.as_str());
+    let config = result.config.as_ref().unwrap_or(config);
     let mut make_config = Map::new();
     let mut put = |key: &str, value: Value| {
         make_config.insert(key.to_string(), value);
@@ -596,19 +605,16 @@ fn make_result_json(config: &PackageConfig, package_format: &str, artifacts: &[P
                 .to_string(),
         ),
     );
+    if let Some((_, build)) = config.app_version.split_once('+') {
+        put("appBuildNumber", Value::String(build.to_string()));
+    }
     put(
-        "appBuildNumber",
-        Value::String(
-            config
-                .app_version
-                .rsplit('+')
-                .next()
-                .unwrap_or_default()
-                .to_string(),
-        ),
+        "appBinaryName",
+        Value::String(config.app_binary_name.clone()),
     );
 
-    let artifacts: Vec<Value> = artifacts
+    let artifacts: Vec<Value> = result
+        .artifacts
         .iter()
         .map(|path| {
             serde_json::json!({
@@ -1134,7 +1140,12 @@ impl ProjectPubspec {
     fn load() -> Result<Self> {
         let content =
             std::fs::read_to_string("pubspec.yaml").context("Failed to read pubspec.yaml")?;
-        serde_yaml::from_str(&content).context("Failed to parse pubspec.yaml")
+        let mut pubspec: Self =
+            serde_yaml::from_str(&content).context("Failed to parse pubspec.yaml")?;
+        pubspec.version = fastforge_core::AppVersion::parse(&pubspec.version)
+            .map_err(|e| anyhow!("pubspec.yaml: {e}"))?
+            .text;
+        Ok(pubspec)
     }
 }
 
@@ -1145,6 +1156,51 @@ fn default_version() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn result_json_keeps_build_numbers_optional_and_reports_effective_common_settings() {
+        let mut config = PackageConfig {
+            app_name: "demo".into(),
+            app_binary_name: "demo_binary".into(),
+            app_version: "1.2.3".into(),
+            build_mode: "release".into(),
+            platform: Platform::Linux,
+            flavor: None,
+            channel: None,
+            artifact_name: None,
+            package_format: "pkg.tar.zst".into(),
+            is_installer: false,
+            build_output_dir: "build/bundle".into(),
+            build_output_files: vec![],
+            output_dir: "dist".into(),
+            environment: [("PASSWORD".into(), "secret".into())].into(),
+        };
+        let result = fastforge_core::PackageResult {
+            artifacts: vec![],
+            config: Some(config.clone()),
+        };
+        let json = make_result_json(&config, "pacman", &result);
+        assert!(json["config"].get("appBuildNumber").is_none());
+        assert_eq!(json["config"]["appBuildName"], "1.2.3");
+        assert_eq!(json["config"]["appBinaryName"], "demo_binary");
+        assert_eq!(json["config"]["packageFormat"], "pkg.tar.zst");
+        assert!(!json.to_string().contains("secret"));
+        let mut requested = config.clone();
+        requested.app_name = "original_name".into();
+        requested.package_format = "pacman".into();
+        assert_eq!(
+            make_result_json(&requested, "pacman", &result)["config"]["appName"],
+            "demo"
+        );
+        config.app_version = "1.2.3-beta.1+7.8".into();
+        let result = fastforge_core::PackageResult {
+            artifacts: vec![],
+            config: Some(config.clone()),
+        };
+        let json = make_result_json(&config, "pacman", &result);
+        assert_eq!(json["config"]["appBuildName"], "1.2.3-beta.1");
+        assert_eq!(json["config"]["appBuildNumber"], "7.8");
+    }
 
     #[test]
     fn output_argument_wins_over_distribute_options() {

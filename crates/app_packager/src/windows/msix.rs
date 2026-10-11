@@ -70,7 +70,7 @@ msix_make_config! {
     identity_name,
     msix_version,
     logo_path,
-    /// Legacy Dart option, accepted but not applied by the native packager.
+    /// Trim transparent borders before resizing generated assets (default true).
     trim_logo,
     /// Comma-separated capability list, e.g. `"internetClient,microphone"`.
     capabilities,
@@ -219,6 +219,93 @@ fn xml_escape(value: &str) -> String {
         .replace('"', "&quot;")
 }
 
+/// Namespaces follow the Windows manifest schema. Device declarations must
+/// follow every Capability declaration, regardless of the input list order.
+fn render_capabilities(names: &[String]) -> Result<String, PackageError> {
+    let mut regular = vec!["    <rescap:Capability Name=\"runFullTrust\"/>".to_string()];
+    let mut devices = Vec::new();
+    let mut seen = std::collections::HashSet::from(["runFullTrust"]);
+    for name in names {
+        if !seen.insert(name.as_str()) {
+            continue;
+        }
+        let element = match name.as_str() {
+            "internetClient"
+            | "internetClientServer"
+            | "privateNetworkClientServer"
+            | "allJoyn"
+            | "codeGeneration" => "Capability",
+            "documentsLibrary"
+            | "picturesLibrary"
+            | "videosLibrary"
+            | "musicLibrary"
+            | "enterpriseAuthentication"
+            | "sharedUserCertificates"
+            | "userAccountInformation"
+            | "removableStorage"
+            | "appointments"
+            | "contacts"
+            | "phoneCall"
+            | "blockedChatMessages"
+            | "objects3D"
+            | "voipCall"
+            | "chat" => "uap:Capability",
+            "phoneCallHistoryPublic" | "spatialPerception" => "uap2:Capability",
+            "backgroundMediaPlayback" | "userNotificationListener" | "remoteSystem" => {
+                "uap3:Capability"
+            }
+            "recordedCallsFolder" => "mobile:Capability",
+            "lowLevelDevices" | "systemManagement" => "iot:Capability",
+            "runFullTrust"
+            | "broadFileSystemAccess"
+            | "appCapture"
+            | "extendedExecutionUnconstrained"
+            | "extendedBackgroundTaskTime"
+            | "packageManagement"
+            | "deviceManagement"
+            | "networkingVpnProvider"
+            | "inputInjectionBrokered" => "rescap:Capability",
+            "microphone" | "webcam" | "location" | "bluetooth" | "proximity" | "radios"
+            | "lowLevel" | "pointOfService" => "DeviceCapability",
+            _ => {
+                return Err(PackageError::General(format!(
+                    "Unsupported MSIX capability `{name}`. Use .fastforge/packaging/windows/msix/AppxManifest.xml for additional namespaces, custom capabilities, or devices requiring child elements."
+                )));
+            }
+        };
+        let line = format!("    <{element} Name=\"{}\"/>", xml_escape(name));
+        if element == "DeviceCapability" {
+            devices.push(line);
+        } else {
+            regular.push(line);
+        }
+    }
+    regular.extend(devices);
+    Ok(regular.join("\n"))
+}
+
+/// Preserve fully transparent images; otherwise remove only alpha-zero borders.
+fn trim_transparent_border(image: image::DynamicImage) -> image::DynamicImage {
+    let rgba = image.to_rgba8();
+    let mut bounds: Option<(u32, u32, u32, u32)> = None;
+    for (x, y, pixel) in rgba.enumerate_pixels() {
+        if pixel[3] != 0 {
+            bounds = Some(match bounds {
+                None => (x, y, x, y),
+                Some((left, top, right, bottom)) => {
+                    (left.min(x), top.min(y), right.max(x), bottom.max(y))
+                }
+            });
+        }
+    }
+    match bounds {
+        Some((left, top, right, bottom)) => {
+            image.crop_imm(left, top, right - left + 1, bottom - top + 1)
+        }
+        None => image,
+    }
+}
+
 /// Fully resolved manifest values for the native packager, with the msix
 /// pub package's defaults applied.
 #[derive(Debug, Clone, PartialEq)]
@@ -314,7 +401,7 @@ impl MsixManifest {
 
     /// Renders AppxManifest.xml. Every image it references is one of
     /// [`LOGO_ASSETS`] under `Assets\`.
-    fn render(&self) -> String {
+    fn render(&self) -> Result<String, PackageError> {
         let languages = self
             .languages
             .iter()
@@ -322,24 +409,7 @@ impl MsixManifest {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let mut capabilities: Vec<String> =
-            vec!["    <rescap:Capability Name=\"runFullTrust\"/>".to_string()];
-        for capability in &self.capabilities {
-            // Device capabilities vs regular capabilities (subset of the msix
-            // pub package's mapping; unknown names fall back to <Capability>).
-            let device_caps = ["microphone", "webcam", "location", "bluetooth"];
-            if device_caps.contains(&capability.as_str()) {
-                capabilities.push(format!(
-                    "    <DeviceCapability Name=\"{}\"/>",
-                    xml_escape(capability)
-                ));
-            } else {
-                capabilities.push(format!(
-                    "    <Capability Name=\"{}\"/>",
-                    xml_escape(capability)
-                ));
-            }
-        }
+        let capabilities = render_capabilities(&self.capabilities)?;
 
         let exe = xml_escape(&self.executable);
         let mut extensions = Vec::new();
@@ -387,13 +457,17 @@ impl MsixManifest {
             )
         };
 
-        format!(
+        Ok(format!(
             r#"<?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:uap2="http://schemas.microsoft.com/appx/manifest/uap/windows10/2"
          xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+         xmlns:mobile="http://schemas.microsoft.com/appx/manifest/mobile/windows10"
+         xmlns:iot="http://schemas.microsoft.com/appx/manifest/iot/windows10"
          xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
-         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities">
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap uap2 uap3 mobile iot desktop rescap">
   <Identity Name="{identity}" Publisher="{publisher}" Version="{version}" ProcessorArchitecture="{arch}"/>
   <Properties>
     <DisplayName>{display_name}</DisplayName>
@@ -431,8 +505,8 @@ impl MsixManifest {
             languages = languages,
             exe = exe,
             extensions = extensions_block,
-            capabilities = capabilities.join("\n"),
-        )
+            capabilities = capabilities,
+        ))
     }
 }
 
@@ -638,7 +712,7 @@ fn prepare_package(
             logo_path,
             Path::new("windows/runner/resources/app_icon.ico"),
         )?;
-        install_logo_assets(&logo, &assets)?;
+        install_logo_assets(&logo, &assets, !is_false(&mc.trim_logo))?;
     }
     let manifest_path = root.join("AppxManifest.xml");
     if let Some(template) = raw.template(&["AppxManifest.xml"])? {
@@ -654,16 +728,21 @@ fn prepare_package(
             fastforge_core::render_variables(&text, &variables),
         )?;
     } else if !manifest_path.is_file() {
-        std::fs::write(manifest_path, manifest.render())?;
+        std::fs::write(manifest_path, manifest.render()?)?;
     }
     Ok(())
 }
 
 /// Generate only assets not supplied by the bundle or an overlay. Resize
 /// without stretching and center the image on a transparent canvas.
-fn install_logo_assets(logo: &[u8], assets: &Path) -> Result<(), PackageError> {
+fn install_logo_assets(logo: &[u8], assets: &Path, trim: bool) -> Result<(), PackageError> {
     let image = image::load_from_memory(logo)
         .map_err(|e| PackageError::General(format!("MSIX logo must be a valid PNG or ICO: {e}")))?;
+    let image = if trim {
+        trim_transparent_border(image)
+    } else {
+        image
+    };
     std::fs::create_dir_all(assets)?;
     for (name, width, height) in [
         (LOGO_ASSETS[0], 50, 50),
@@ -699,7 +778,7 @@ impl WindowsMsixPackager {
         config: &PackageConfig,
         output_file: &Path,
     ) -> Result<(), PackageError> {
-        let pkg_dir = config.packaging_dir();
+        let pkg_dir = config.packaging_dir()?;
         let mut raw = RawPackaging::load(config, &pkg_dir)?;
         if let Some(publisher) = &self.publisher {
             raw.variables
@@ -842,7 +921,7 @@ impl AppPackager for WindowsMsixPackager {
                 "[fastforge] msix: debug/install_certificate are Dart-only options; install certificates separately for native packaging."
             );
         }
-        let output_file = config.output_file();
+        let output_file = config.output_file()?;
         self.create_natively(make_config, config, &output_file)?;
         config.resolve_result(output_file)
     }
@@ -854,6 +933,65 @@ mod tests {
     use super::*;
     use fastforge_core::ProjectSettings;
     use std::path::PathBuf;
+
+    #[test]
+    fn capabilities_use_schema_namespaces_and_order_independent_of_input() {
+        let names = [
+            "microphone",
+            "picturesLibrary",
+            "internetClient",
+            "broadFileSystemAccess",
+            "spatialPerception",
+            "backgroundMediaPlayback",
+            "runFullTrust",
+            "microphone",
+        ]
+        .map(String::from);
+        let xml = render_capabilities(&names).unwrap();
+        for element in [
+            "uap:Capability Name=\"picturesLibrary\"",
+            "Capability Name=\"internetClient\"",
+            "rescap:Capability Name=\"broadFileSystemAccess\"",
+            "uap2:Capability Name=\"spatialPerception\"",
+            "uap3:Capability Name=\"backgroundMediaPlayback\"",
+        ] {
+            assert!(xml.contains(element), "{xml}");
+            assert!(xml.find(element).unwrap() < xml.find("<DeviceCapability").unwrap());
+        }
+        assert_eq!(xml.matches("Name=\"runFullTrust\"").count(), 1);
+        assert_eq!(xml.matches("Name=\"microphone\"").count(), 1);
+        for unsupported in ["typo", "usb", "bluetooth.rfcomm"] {
+            let error = render_capabilities(&[unsupported.into()])
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("AppxManifest.xml"), "{error}");
+        }
+    }
+
+    #[test]
+    fn logo_trimming_removes_transparent_padding_before_resizing() {
+        let mut logo = image::RgbaImage::new(10, 10);
+        for y in 3..7 {
+            for x in 3..7 {
+                logo.put_pixel(x, y, image::Rgba([255, 0, 0, 255]));
+            }
+        }
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(logo)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        for trim in [true, false] {
+            let dir = tmp.path().join(trim.to_string());
+            install_logo_assets(bytes.get_ref(), &dir, trim).unwrap();
+            let image = image::open(dir.join(LOGO_ASSETS[1])).unwrap().to_rgba8();
+            assert_eq!(image.dimensions(), (150, 150));
+            assert_eq!(image.get_pixel(0, 0)[3] != 0, trim);
+            assert!(image.get_pixel(75, 75)[3] > 200);
+        }
+        let transparent = image::DynamicImage::ImageRgba8(image::RgbaImage::new(10, 6));
+        assert_eq!(trim_transparent_border(transparent).width(), 10);
+    }
 
     #[test]
     fn raw_manifest_escapes_values_and_preserves_supplied_assets() {
@@ -882,7 +1020,8 @@ mod tests {
             },
             &config,
             &root,
-        );
+        )
+        .unwrap();
         let mc = MsixMakeConfig {
             publisher: Some("CN=Demo & Co".into()),
             ..Default::default()
@@ -927,7 +1066,8 @@ mod tests {
             },
             &config,
             &root,
-        );
+        )
+        .unwrap();
         prepare_package(&MsixMakeConfig::default(), &config, &mut raw, &root).unwrap();
         let xml = std::fs::read_to_string(root.join("AppxManifest.xml")).unwrap();
         assert!(xml.contains("<DisplayName>Project Name</DisplayName>"));
@@ -1095,7 +1235,8 @@ msix_config:
             Some("Desc".into()),
             "hola_amigos.exe".into(),
         )
-        .render();
+        .render()
+        .unwrap();
         assert!(manifest.contains(
             r#"<Identity Name="com.acme.hola" Publisher="CN=ACME" Version="2.0.1.0" ProcessorArchitecture="arm64"/>"#
         ));
@@ -1130,7 +1271,7 @@ msix_config:
         assert_eq!(manifest.version, "1.2.3.0");
         assert_eq!(manifest.architecture, "x64");
         assert_eq!(manifest.description, "hola_amigos");
-        let xml = manifest.render();
+        let xml = manifest.render().unwrap();
         assert!(xml.contains(r#"<Resource Language="en-us"/>"#));
         assert!(!xml.contains("<Extensions>"));
     }
@@ -1144,7 +1285,8 @@ msix_config:
             None,
             "a.exe".into(),
         )
-        .render();
+        .render()
+        .unwrap();
         let mut rest = xml.as_str();
         let mut referenced = Vec::new();
         while let Some(pos) = rest.find("Assets\\") {
