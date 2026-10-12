@@ -18,6 +18,7 @@ flate2 = "1"
 crc32fast = "1"
 image = { version = "0.25", default-features = false, features = ["ico", "png"] }
 md-5 = "0.10"
+glob = "0.3.3"
 
 [dev-dependencies]
 fastforge_app_builder = { path = "../app_builder" }

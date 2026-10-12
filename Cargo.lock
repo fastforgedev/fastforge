@@ -847,6 +847,7 @@ dependencies = [
  "fastforge_app_builder",
  "fastforge_core",
  "flate2",
+ "glob",
  "image",
  "liquid",
  "md-5",

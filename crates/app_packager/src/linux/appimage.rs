@@ -221,6 +221,84 @@ fn shared_dependencies(so_path: &Path) -> Result<BTreeSet<String>, PackageError>
     Ok(parse_ldd_output(&output))
 }
 
+/// Like [`shared_dependencies`], but a file `ldd` cannot inspect, such as a
+/// static or foreign-architecture object (`not a dynamic executable`), has
+/// no dependencies to bundle instead of failing the package.
+fn plugin_dependencies(so_path: &Path) -> BTreeSet<String> {
+    shared_dependencies(so_path).unwrap_or_else(|err| {
+        eprintln!(
+            "Warning: skipping shared dependencies of {}: {}",
+            so_path.display(),
+            err
+        );
+        BTreeSet::new()
+    })
+}
+
+/// Copies shared objects into `dest`, one per file name: `ldd` can resolve
+/// the same library through two directories (`/lib` and `/usr/lib`), and
+/// the first one wins. Symlinks are followed, so the library itself lands
+/// under its soname.
+fn copy_shared_objects<'a>(
+    libs: impl IntoIterator<Item = &'a str>,
+    dest: &Path,
+) -> Result<(), PackageError> {
+    let mut copied = BTreeSet::new();
+    for lib in libs {
+        let src = Path::new(lib);
+        let Some(name) = src.file_name() else {
+            continue;
+        };
+        if !copied.insert(name.to_os_string()) {
+            continue;
+        }
+        let target = dest.join(name);
+        // A previous copy may be read-only, as system libraries often are.
+        if target.exists() {
+            std::fs::remove_file(&target)?;
+        }
+        std::fs::copy(src, &target)?;
+    }
+    Ok(())
+}
+
+fn has_glob_meta(pattern: &str) -> bool {
+    pattern.contains(['*', '?', '['])
+}
+
+/// Resolves a `make_config.yaml` `include` entry to the shared objects to
+/// bundle. An absolute path is expanded as a glob, so a wildcard pattern
+/// yields every match. Anything else is looked up with `locate`: a pattern
+/// keeps every result, a plain name only the first.
+fn resolve_include(entry: &str) -> Result<Vec<String>, PackageError> {
+    let not_found =
+        || PackageError::NotFound(format!("Can't find specified shared object {}", entry));
+    let found: Vec<String> = if Path::new(entry).is_absolute() {
+        glob::glob(entry)
+            .map_err(|err| PackageError::General(format!("Invalid include `{}`: {}", entry, err)))?
+            .filter_map(Result::ok)
+            .filter(|path| path.is_file())
+            .map(|path| path.display().to_string())
+            .collect()
+    } else {
+        let output = run_stdout(Command::new("locate").arg(entry))?;
+        let mut matches = output
+            .lines()
+            .map(str::trim)
+            .filter(|p| !p.is_empty() && !p.contains("/Trash"))
+            .map(String::from);
+        if has_glob_meta(entry) {
+            matches.collect()
+        } else {
+            matches.next().into_iter().collect()
+        }
+    };
+    if found.is_empty() {
+        return Err(not_found());
+    }
+    Ok(found)
+}
+
 impl AppPackager for LinuxAppImagePackager {
     fn name(&self) -> &str {
         "appimage"
@@ -310,7 +388,7 @@ impl AppPackager for LinuxAppImagePackager {
                     if default_shared_objects.contains(&base.as_str()) {
                         continue;
                     }
-                    let mut deps = shared_dependencies(&path)?;
+                    let mut deps = plugin_dependencies(&path);
                     deps = deps.difference(&gtk_deps).cloned().collect();
                     deps.retain(|lib| !lib.contains("libflutter_linux_gtk.so"));
                     // Libraries the `files/` overlay provides win.
@@ -322,30 +400,17 @@ impl AppPackager for LinuxAppImagePackager {
                     if deps.is_empty() {
                         continue;
                     }
-                    let mut args: Vec<String> = deps.into_iter().collect();
-                    args.push(usr_lib.display().to_string());
-                    run(Command::new("cp").args(&args))?;
+                    copy_shared_objects(deps.iter().map(String::as_str), &usr_lib)?;
                 }
             }
         }
 
-        // Copy explicitly included shared objects (resolved via `locate`)
-        for so in &make_config.include {
-            let output = run_stdout(Command::new("locate").arg(so))?;
-            let found = output
-                .lines()
-                .map(str::trim)
-                .find(|p| !p.is_empty() && !p.contains("/Trash"))
-                .ok_or_else(|| {
-                    PackageError::NotFound(format!("Can't find specified shared object {}", so))
-                })?;
-            let src = Path::new(found);
-            let base = src
-                .file_name()
-                .map(|f| f.to_string_lossy().to_string())
-                .unwrap_or_default();
-            std::fs::copy(src, usr_lib.join(base))?;
+        // Copy explicitly included shared objects.
+        let mut included = Vec::new();
+        for entry in &make_config.include {
+            included.extend(resolve_include(entry)?);
         }
+        copy_shared_objects(included.iter().map(String::as_str), &usr_lib)?;
 
         // Build the AppImage
         let mut cmd = Command::new("appimagetool");
@@ -507,6 +572,58 @@ actions:
         assert_eq!(
             deps.into_iter().collect::<Vec<_>>(),
             vec!["/lib64/libc.so.6", "/lib64/libkeybinder-3.0.so.0"]
+        );
+    }
+
+    #[test]
+    fn include_globs_absolute_paths_and_keeps_every_match() {
+        let dir = tempfile::tempdir().unwrap();
+        for sub in ["a", "b"] {
+            std::fs::create_dir_all(dir.path().join(sub)).unwrap();
+            std::fs::write(dir.path().join(sub).join(format!("lib{sub}.so")), sub).unwrap();
+        }
+        let pattern = format!("{}/*/*.so", dir.path().display());
+        let mut found = resolve_include(&pattern).unwrap();
+        found.sort();
+        assert_eq!(found.len(), 2);
+        assert!(found[0].ends_with("a/liba.so") && found[1].ends_with("b/libb.so"));
+
+        let missing = format!("{}/*/*.none", dir.path().display());
+        assert!(resolve_include(&missing).is_err());
+    }
+
+    #[test]
+    fn shared_objects_are_copied_once_per_file_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let (lib, usr_lib, dest) = (
+            dir.path().join("lib"),
+            dir.path().join("usr/lib"),
+            dir.path().join("dest"),
+        );
+        for d in [&lib, &usr_lib, &dest] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(lib.join("libfoo.so.1"), "first").unwrap();
+        std::fs::write(usr_lib.join("libfoo.so.1"), "second").unwrap();
+        let first = lib.join("libfoo.so.1").display().to_string();
+        let second = usr_lib.join("libfoo.so.1").display().to_string();
+
+        copy_shared_objects([first.as_str(), second.as_str()], &dest).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dest.join("libfoo.so.1")).unwrap(),
+            "first"
+        );
+
+        // Copying again over a read-only file from an earlier plugin works.
+        let mut perms = std::fs::metadata(dest.join("libfoo.so.1"))
+            .unwrap()
+            .permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(dest.join("libfoo.so.1"), perms).unwrap();
+        copy_shared_objects([second.as_str()], &dest).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dest.join("libfoo.so.1")).unwrap(),
+            "second"
         );
     }
 
