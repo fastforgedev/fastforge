@@ -29,6 +29,8 @@ Fastforge 会从 APK 或 IPA 中读取 bundle ID、应用名称、版本名和�
 | `version`      | 版本名                     |
 | `build_number` | 构建号                     |
 
+`changelog` 设置该版本的更新说明，例如 `--publish-arg changelog="修复启动崩溃"`。
+
 也接受连字符形式（`bundle-id`、`app-name`、`build-number`）。如果无法解析安装包，只有提供了 `bundle_id` 时才会继续上传。
 
 平台只会从 `.apk` 和 `.ipa` 扩展名推断，其他扩展名会失败。

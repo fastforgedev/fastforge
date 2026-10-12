@@ -29,6 +29,8 @@ Explicit arguments override the values read from the package:
 | `version`      | Version name     |
 | `build_number` | Build number     |
 
+`changelog` sets the release's update notes, for example `--publish-arg changelog="Fixes crash on launch"`.
+
 Hyphenated forms (`bundle-id`, `app-name`, `build-number`) are also accepted. If the package cannot be parsed, the upload continues only when `bundle_id` is provided.
 
 The platform is inferred only from the `.apk` or `.ipa` extension; other extensions fail.

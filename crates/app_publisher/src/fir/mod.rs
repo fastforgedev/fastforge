@@ -92,6 +92,7 @@ impl AppPublisher for FirPublisher {
             artifact_path,
             &app_data.cert.binary,
             &app_package,
+            argument(config, &["changelog"]),
             on_progress,
         )?;
 
@@ -239,16 +240,20 @@ fn upload_binary(
     artifact_path: &str,
     cert: &FirBinaryCert,
     app_package: &AppPackage,
+    changelog: Option<String>,
     on_progress: Option<&PublishProgressCallback>,
 ) -> Result<String, PublishError> {
     let file_name = file_name(artifact_path)?;
-    let form = Form::new()
+    let mut form = Form::new()
         .text("key", cert.key.clone())
         .text("token", cert.token.clone())
         .text("x:name", app_package.name.clone())
         .text("x:version", app_package.version.clone())
-        .text("x:build", app_package.build_number.clone())
-        .part("file", file_part(artifact_path, &file_name, on_progress)?);
+        .text("x:build", app_package.build_number.clone());
+    if let Some(changelog) = changelog {
+        form = form.text("x:changelog", changelog);
+    }
+    let form = form.part("file", file_part(artifact_path, &file_name, on_progress)?);
 
     let response = client
         .post(&cert.upload_url)
