@@ -33,7 +33,7 @@ fn publishes_windows_executable() {
 
     assert_eq!(
         result.output_directory,
-        Path::new("bin/fastforge/Release/x64/publish")
+        Path::new("./bin/fastforge/Release/x64/publish")
     );
     assert!(
         result

@@ -156,7 +156,61 @@ pub(crate) fn stage(
         );
     }
 
-    raw.install_overlay(root, layout.shared_overlay)
+    raw.install_overlay(root, layout.shared_overlay)?;
+    if layout.root_icon {
+        ensure_root_icon(root, raw.app_id())?;
+    }
+    Ok(())
+}
+
+/// An AppDir must have its icon at the root (appimagetool refuses to build
+/// otherwise). Without a configured icon, the largest hicolor PNG an
+/// overlay provides is used, else a placeholder.
+fn ensure_root_icon(root: &Path, name: &str) -> Result<(), PackageError> {
+    if ["png", "svg", "xpm"]
+        .iter()
+        .any(|ext| root.join(format!("{name}.{ext}")).is_file())
+    {
+        return Ok(());
+    }
+    let hicolor = root.join("usr/share/icons/hicolor");
+    let provided = ICON_SIZES
+        .iter()
+        .rev()
+        .map(|size| hicolor.join(format!("{size}x{size}/apps/{name}.png")))
+        .chain([hicolor.join(format!("scalable/apps/{name}.svg"))])
+        .find(|path| path.is_file());
+    if let Some(icon) = provided {
+        let ext = icon
+            .extension()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        std::fs::copy(&icon, root.join(format!("{name}.{ext}")))?;
+        return Ok(());
+    }
+    eprintln!(
+        "Warning: no icon is configured; the AppImage uses a placeholder. Set `project.icon` in .fastforge/config.yaml."
+    );
+    let side = 256;
+    let placeholder = RgbaImage::from_fn(side, side, |x, y| {
+        let inset = (side / 8)..(side - side / 8);
+        if inset.contains(&x) && inset.contains(&y) {
+            image::Rgba([0x42, 0x85, 0xf4, 0xff])
+        } else {
+            image::Rgba([0, 0, 0, 0])
+        }
+    });
+    placeholder
+        .save_with_format(root.join(format!("{name}.png")), ImageFormat::Png)
+        .map_err(|e| PackageError::General(format!("Failed to write the placeholder icon: {e}")))?;
+    let dir = hicolor.join(format!("{side}x{side}/apps"));
+    std::fs::create_dir_all(&dir)?;
+    std::fs::copy(
+        root.join(format!("{name}.png")),
+        dir.join(format!("{name}.png")),
+    )?;
+    Ok(())
 }
 
 /// The app ID GTK gives the window (the Wayland app ID and X11 WM_CLASS):
@@ -552,6 +606,32 @@ pub(crate) fn build_date() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn app_dir_gets_a_root_icon_from_the_overlay_or_a_placeholder() {
+        let tmp = tempfile::tempdir().unwrap();
+        ensure_root_icon(tmp.path(), "dev.example.app").unwrap();
+        let placeholder = image::open(tmp.path().join("dev.example.app.png")).unwrap();
+        assert_eq!(placeholder.width(), 256);
+        assert!(
+            tmp.path()
+                .join("usr/share/icons/hicolor/256x256/apps/dev.example.app.png")
+                .is_file()
+        );
+
+        let tmp = tempfile::tempdir().unwrap();
+        let svg = tmp
+            .path()
+            .join("usr/share/icons/hicolor/scalable/apps/dev.example.app.svg");
+        std::fs::create_dir_all(svg.parent().unwrap()).unwrap();
+        std::fs::write(&svg, "<svg/>").unwrap();
+        ensure_root_icon(tmp.path(), "dev.example.app").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("dev.example.app.svg")).unwrap(),
+            "<svg/>"
+        );
+        assert!(!tmp.path().join("dev.example.app.png").exists());
+    }
 
     #[test]
     fn window_app_id_follows_the_runner() {
