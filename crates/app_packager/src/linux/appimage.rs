@@ -586,7 +586,8 @@ actions:
         let mut found = resolve_include(&pattern).unwrap();
         found.sort();
         assert_eq!(found.len(), 2);
-        assert!(found[0].ends_with("a/liba.so") && found[1].ends_with("b/libb.so"));
+        assert!(Path::new(&found[0]).ends_with("a/liba.so"));
+        assert!(Path::new(&found[1]).ends_with("b/libb.so"));
 
         let missing = format!("{}/*/*.none", dir.path().display());
         assert!(resolve_include(&missing).is_err());
