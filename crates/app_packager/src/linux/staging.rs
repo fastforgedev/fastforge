@@ -128,13 +128,101 @@ pub(crate) fn stage(
 
     let desktop_dir = root.join(&layout.desktop_dir);
     std::fs::create_dir_all(&desktop_dir)?;
+    let template = raw.template(DESKTOP_TEMPLATE)?;
+    let window_id = window_app_id(Path::new("linux"), binary_name);
+    let generated = template.is_none();
     raw.write_or_generate(
-        raw.template(DESKTOP_TEMPLATE)?,
+        template,
         &desktop_dir.join(format!("{}.desktop", raw.app_id())),
-        generated_desktop,
+        || {
+            let desktop = generated_desktop();
+            if window_id == raw.app_id() {
+                desktop
+            } else {
+                with_startup_wm_class(&desktop, &window_id)
+            }
+        },
     )?;
+    if window_id != raw.app_id() {
+        eprintln!(
+            "Note: the window reports the app ID `{window_id}`, but the desktop entry is `{}.desktop`, so docks match them through StartupWMClass{}. To match by name, call g_set_prgname(APPLICATION_ID) in linux/runner/my_application.cc (as current Flutter templates do) and keep APPLICATION_ID equal to `{}`.",
+            raw.app_id(),
+            if generated {
+                ""
+            } else {
+                ", which your desktop template must set"
+            },
+            raw.app_id(),
+        );
+    }
 
     raw.install_overlay(root, layout.shared_overlay)
+}
+
+/// The app ID GTK gives the window (the Wayland app ID and X11 WM_CLASS):
+/// the program name, which current Flutter runners set to `APPLICATION_ID`
+/// with `g_set_prgname`, and otherwise the binary name.
+pub(crate) fn window_app_id(linux_dir: &Path, binary_name: &str) -> String {
+    let sets_prgname = [
+        "runner/my_application.cc",
+        "my_application.cc",
+        "runner/main.cc",
+        "main.cc",
+    ]
+    .iter()
+    .filter_map(|file| std::fs::read_to_string(linux_dir.join(file)).ok())
+    .any(|source| {
+        source
+            .replace(char::is_whitespace, "")
+            .contains("g_set_prgname(APPLICATION_ID)")
+    });
+    let application_id = std::fs::read_to_string(linux_dir.join("CMakeLists.txt"))
+        .ok()
+        .and_then(|cmake| {
+            let start = cmake.find("set(APPLICATION_ID \"")? + "set(APPLICATION_ID \"".len();
+            let rest = &cmake[start..];
+            Some(rest[..rest.find('"')?].to_string())
+        })
+        .filter(|id| !id.is_empty());
+    match application_id {
+        Some(id) if sets_prgname => id,
+        _ => binary_name.to_string(),
+    }
+}
+
+/// Adds `StartupWMClass=` to the `[Desktop Entry]` group, unless it has one.
+pub(crate) fn with_startup_wm_class(desktop: &str, wm_class: &str) -> String {
+    if desktop
+        .lines()
+        .any(|line| line.trim_start().starts_with("StartupWMClass="))
+    {
+        return desktop.to_string();
+    }
+    let mut out = String::new();
+    let mut in_entry = false;
+    let mut added = false;
+    for line in desktop.lines() {
+        let header = line.trim_start().starts_with('[');
+        if header && in_entry && !added {
+            // Before the blank line(s) closing the group.
+            let trimmed = out.trim_end_matches('\n').len();
+            let tail = out.split_off(trimmed);
+            out.push_str(&format!("\nStartupWMClass={wm_class}"));
+            out.push_str(&tail);
+            added = true;
+        }
+        if header {
+            in_entry = line.trim() == "[Desktop Entry]";
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if !added {
+        let trimmed = out.trim_end_matches('\n').len();
+        out.truncate(trimmed);
+        out.push_str(&format!("\nStartupWMClass={wm_class}\n"));
+    }
+    out
 }
 
 /// `STRIP=false` (in `.fastforge/config.yaml` `env:` or the environment)
@@ -464,6 +552,51 @@ pub(crate) fn build_date() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_app_id_follows_the_runner() {
+        let tmp = tempfile::tempdir().unwrap();
+        let linux = tmp.path();
+        std::fs::create_dir_all(linux.join("runner")).unwrap();
+        std::fs::write(
+            linux.join("CMakeLists.txt"),
+            "set(BINARY_NAME \"hello\")\nset(APPLICATION_ID \"com.example.hello\")\n",
+        )
+        .unwrap();
+        std::fs::write(linux.join("runner/my_application.cc"), "// old template\n").unwrap();
+        assert_eq!(window_app_id(linux, "hello"), "hello");
+        std::fs::write(
+            linux.join("runner/my_application.cc"),
+            "g_set_prgname( APPLICATION_ID );\n",
+        )
+        .unwrap();
+        assert_eq!(window_app_id(linux, "hello"), "com.example.hello");
+    }
+
+    #[test]
+    fn startup_wm_class_joins_the_desktop_entry_group() {
+        let desktop = "[Desktop Entry]\nName=Hi\nExec=hi\n\n[Desktop Action a]\nName=A\n";
+        assert_eq!(
+            with_startup_wm_class(desktop, "hi"),
+            "[Desktop Entry]\nName=Hi\nExec=hi\nStartupWMClass=hi\n\n[Desktop Action a]\nName=A\n"
+        );
+        assert_eq!(
+            with_startup_wm_class("[Desktop Entry]\nName=Hi\n", "hi"),
+            "[Desktop Entry]\nName=Hi\nStartupWMClass=hi\n"
+        );
+        let has = "[Desktop Entry]\nStartupWMClass=x\n";
+        assert_eq!(with_startup_wm_class(has, "hi"), has);
+    }
+
+    #[test]
+    fn elf_detection_reads_the_magic() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a"), b"\x7fELF\x02\x01").unwrap();
+        std::fs::write(tmp.path().join("b"), b"#!/bin/sh").unwrap();
+        let mut found = Vec::new();
+        elf_files(tmp.path(), &mut found);
+        assert_eq!(found, vec![tmp.path().join("a")]);
+    }
 
     #[test]
     #[cfg(target_os = "linux")]
