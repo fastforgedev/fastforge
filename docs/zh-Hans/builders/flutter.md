@@ -70,6 +70,30 @@ Android APK：默认以通用 APK 作为构建结果；使用 `--flutter-build-a
 
 `--flutter-build-args` 中，无等号条目按布尔开关处理，`key=value` 按键值参数处理。值本身包含逗号时不应使用该入口；在 `build` 中，值也不能包含 `=`。在 `package` 中，没有专用参数的选项可以通过它传入，例如 `profile` 或 `obfuscate,split-debug-info=build/symbols`。
 
+### 构建时计算的值
+
+Fastforge 按原样传递参数值。构建时间等需要计算的值，请在运行 Fastforge 的 shell 中生成：
+
+```bash
+fastforge package --targets apk \
+  --build-dart-define "BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')"
+```
+
+在[本地工作流](../workflows.md)中，可将其写入步骤输出，再在 `build-args` 中引用：
+
+```yaml
+steps:
+  - id: time
+    run: echo "now=$(date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_OUTPUT"
+  - uses: fastforge/package
+    with:
+      platform: android
+      target: apk
+      build-args: '{"dart-define":{"BUILD_TIME":"${{ steps.time.outputs.now }}"}}'
+```
+
+在 Dart 中通过 `const String.fromEnvironment('BUILD_TIME')` 读取。
+
 ## 产物定位
 
 | 平台            | 默认查找位置                                                         |

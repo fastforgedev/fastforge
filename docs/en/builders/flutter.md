@@ -70,6 +70,30 @@ Android APKs: the universal APK is the build result by default. With `--flutter-
 
 Within `--flutter-build-args`, entries without an equals sign are treated as boolean switches, while `key=value` entries become key-value arguments. Do not use this option when a value itself contains a comma; on `build`, a value also cannot contain `=`. On `package`, use it for options that have no dedicated flag, such as `profile` or `obfuscate,split-debug-info=build/symbols`.
 
+### Values Computed at Build Time
+
+Fastforge passes argument values as written. Compute a value such as the build time in the shell that runs Fastforge:
+
+```bash
+fastforge package --targets apk \
+  --build-dart-define "BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')"
+```
+
+In a [local workflow](../workflows.md), write it to a step output and use it in `build-args`:
+
+```yaml
+steps:
+  - id: time
+    run: echo "now=$(date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_OUTPUT"
+  - uses: fastforge/package
+    with:
+      platform: android
+      target: apk
+      build-args: '{"dart-define":{"BUILD_TIME":"${{ steps.time.outputs.now }}"}}'
+```
+
+Read it in Dart with `const String.fromEnvironment('BUILD_TIME')`.
+
 ## Artifact Locations
 
 | Platform        | Default search location                                          |
