@@ -32,7 +32,19 @@ Windows 与 Linux 采用相同的两步模型：先准备应用安装目录，�
     └── files/Assets/             # MSIX 图标或其他应用文件
 ```
 
-依次复制构建输出、`shared/files/` 和格式自身的 `files/`，后者覆盖前者。文件名、目录名和文本内容会渲染变量，二进制文件保持原样。原生元数据替换默认生成的脚本或清单。EXE 目录中存在多个 `*.iss` 会报错。ZIP 和 direct 继续直接处理构建输出。
+依次复制构建输出、`shared/files/` 和格式自身的 `files/`，后者覆盖前者。文件名、目录名和文本内容会渲染变量，二进制文件保持原样。原生元数据替换默认生成的脚本或清单。EXE 目录中存在多个 `*.iss` 会报错。ZIP 和 direct 继续直接处理构建输出，不应用覆盖层。所有格式都会排除构建输出中的调试符号（`*.pdb`）；如确需包含，可通过覆盖层添加。
+
+构建不会产出的文件放在覆盖层中，例如许可证声明，或部分插件在未安装运行库的机器上所需的 Microsoft Visual C++ 运行库 DLL。放在可执行文件旁的文件会随应用一起安装：
+
+```text
+.fastforge/packaging/windows/shared/files/
+├── LICENSE.txt
+├── msvcp140.dll
+├── vcruntime140.dll
+└── vcruntime140_1.dll
+```
+
+DLL 从 Visual Studio 可再发行组件中对应构建架构的 `Microsoft.VC*.CRT` 目录（`VC\Redist\MSVC\<version>\<arch>\`）复制，分发前请确认其许可条款。
 
 公共元数据来自 `.fastforge/config.yaml` 的 `project:`，包括 `display_name`、`description`、`homepage`、`app_id` 和 `icon`。Windows 图标支持 PNG 或 ICO：EXE 的默认脚本把项目 PNG 转为 ICO，MSIX 生成对应尺寸的 PNG。`files/Assets/` 中提供的 MSIX 图标保持原样。
 
@@ -92,6 +104,6 @@ env:
 
 ## ZIP 和 direct
 
-`zip` 把 runner 目录压缩为归档；`direct` 把它直接复制到 `dist/<version>/` 下以产物名（不含扩展名）命名的目录。两者都不需要额外工具。
+`zip` 把 runner 目录（不含调试符号 `*.pdb`）压缩为归档；`direct` 以同样方式把它复制到 `dist/<version>/` 下以产物名（不含扩展名）命名的目录。两者都不需要额外工具。
 
 返回[打包器总览](README.md)。

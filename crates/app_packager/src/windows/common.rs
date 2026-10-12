@@ -8,7 +8,7 @@ use fastforge_core::{
     render_variables,
 };
 
-use crate::fs_util::copy_dir_contents;
+use crate::fs_util::copy_dir_contents_excluding;
 use crate::raw::{copy_rendered_tree, single_file_with_suffix};
 
 pub(crate) struct RawPackaging {
@@ -86,7 +86,7 @@ impl RawPackaging {
 
     /// Bundle first, then the shared overlay, then the format's own files.
     pub fn stage(&self, config: &PackageConfig, root: &Path) -> Result<(), PackageError> {
-        copy_dir_contents(&config.build_output_dir, root)?;
+        copy_dir_contents_excluding(&config.build_output_dir, root, &is_debug_symbols)?;
         self.install_overlay(root)
     }
 
@@ -109,6 +109,14 @@ impl RawPackaging {
     pub fn value(&self, key: &str) -> Option<String> {
         self.variables.get(key).filter(|s| !s.is_empty()).cloned()
     }
+}
+
+/// Program databases (`*.pdb`) in the build output are debug symbols, not
+/// part of the application, so no Windows format ships them. An overlay can
+/// still add one deliberately.
+pub(crate) fn is_debug_symbols(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdb"))
 }
 
 pub(crate) fn absolute(path: &Path) -> String {

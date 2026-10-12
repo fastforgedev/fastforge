@@ -1,6 +1,8 @@
 use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
 
-use crate::fs_util::copy_dir_contents;
+use crate::fs_util::copy_dir_contents_excluding;
+
+use super::common::is_debug_symbols;
 
 /// Copies the flutter Windows build output directory to the output path
 /// without any additional packaging, mirroring Dart's
@@ -26,7 +28,7 @@ impl AppPackager for WindowsDirectPackager {
         // The destination directory uses the rendered artifact name (no
         // extension for direct output).
         let dst = config.output_file()?;
-        copy_dir_contents(&config.build_output_dir, &dst)?;
+        copy_dir_contents_excluding(&config.build_output_dir, &dst, &is_debug_symbols)?;
         config.resolve_result(dst)
     }
 }

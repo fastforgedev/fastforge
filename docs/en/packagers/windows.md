@@ -32,7 +32,19 @@ Windows follows the same two-step model as Linux: stage the application director
     └── files/Assets/             # MSIX assets or other application files
 ```
 
-The bundle is copied first, then `shared/files/`, then the format's `files/`; later files win. File and directory names and text contents are rendered, while binary files are copied unchanged. Raw metadata replaces the generated script or manifest. Several `*.iss` scripts in the EXE directory fail packaging. ZIP and direct continue to package the build output as-is.
+The bundle is copied first, then `shared/files/`, then the format's `files/`; later files win. File and directory names and text contents are rendered, while binary files are copied unchanged. Raw metadata replaces the generated script or manifest. Several `*.iss` scripts in the EXE directory fail packaging. ZIP and direct continue to package the build output without overlays. Every format leaves out the build output's debug symbols (`*.pdb`); an overlay can still add one.
+
+Overlays are the place for files the build does not produce, such as license notices or the Microsoft Visual C++ runtime DLLs that some plugins need on machines without the redistributable. Files placed next to the executable are installed with it:
+
+```text
+.fastforge/packaging/windows/shared/files/
+├── LICENSE.txt
+├── msvcp140.dll
+├── vcruntime140.dll
+└── vcruntime140_1.dll
+```
+
+Copy the DLLs from the `Microsoft.VC*.CRT` directory of the Visual Studio redistributable (`VC\Redist\MSVC\<version>\<arch>\`) for the architecture you build, and check its license terms before distributing them.
 
 Common metadata comes from `project:` in `.fastforge/config.yaml`: `display_name`, `description`, `homepage`, `app_id`, and `icon`. Windows icons accept PNG or ICO. An EXE's generated script converts a project PNG to an ICO; MSIX generates appropriately sized PNG assets. Supplied MSIX assets in `files/Assets/` are kept.
 
@@ -92,6 +104,6 @@ Generated capabilities use the Windows schema namespaces and place device capabi
 
 ## ZIP and direct
 
-`zip` archives the runner directory; `direct` copies it to a directory named after the artifact (without an extension) in `dist/<version>/`. Both need no extra tools.
+`zip` archives the runner directory without debug symbols (`*.pdb`); `direct` copies it the same way to a directory named after the artifact (without an extension) in `dist/<version>/`. Both need no extra tools.
 
 Return to the [packager overview](README.md).

@@ -21,6 +21,15 @@ use zip::{CompressionMethod, ZipWriter};
 /// recreated as symlinks (like `cp -R`); on other platforms their targets
 /// are copied.
 pub(crate) fn copy_dir_contents(src: &Path, dst: &Path) -> Result<(), PackageError> {
+    copy_dir_contents_excluding(src, dst, &|_| false)
+}
+
+/// [`copy_dir_contents`] without the files `exclude` matches.
+pub(crate) fn copy_dir_contents_excluding(
+    src: &Path,
+    dst: &Path,
+    exclude: &dyn Fn(&Path) -> bool,
+) -> Result<(), PackageError> {
     if !src.is_dir() {
         return Err(PackageError::NotFound(format!(
             "Directory not found: {}",
@@ -35,10 +44,14 @@ pub(crate) fn copy_dir_contents(src: &Path, dst: &Path) -> Result<(), PackageErr
     {
         return Ok(());
     }
-    copy_dir_recursive(src, dst)
+    copy_dir_recursive(src, dst, exclude)
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), PackageError> {
+fn copy_dir_recursive(
+    src: &Path,
+    dst: &Path,
+    exclude: &dyn Fn(&Path) -> bool,
+) -> Result<(), PackageError> {
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let from = entry.path();
@@ -60,9 +73,12 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), PackageError> {
                 remove_existing(&to)?;
             }
             std::fs::create_dir_all(&to)?;
-            copy_dir_recursive(&from, &to)?;
+            copy_dir_recursive(&from, &to, exclude)?;
         } else {
             let _ = file_type;
+            if exclude(&from) {
+                continue;
+            }
             remove_existing(&to)?;
             std::fs::copy(&from, &to)?;
         }
@@ -89,6 +105,15 @@ fn remove_existing(path: &Path) -> Result<(), PackageError> {
 /// files are deflated and carry their Unix permissions and modification
 /// time, and an existing `output` is overwritten.
 pub(crate) fn zip_dir_contents(src: &Path, output: &Path) -> Result<(), PackageError> {
+    zip_dir_contents_excluding(src, output, &|_| false)
+}
+
+/// [`zip_dir_contents`] without the files `exclude` matches.
+pub(crate) fn zip_dir_contents_excluding(
+    src: &Path,
+    output: &Path,
+    exclude: &dyn Fn(&Path) -> bool,
+) -> Result<(), PackageError> {
     if !src.is_dir() {
         return Err(PackageError::NotFound(format!(
             "Directory not found: {}",
@@ -106,6 +131,7 @@ pub(crate) fn zip_dir_contents(src: &Path, output: &Path) -> Result<(), PackageE
     let mut entries = Vec::new();
     let mut visited = HashSet::new();
     collect_entries(src, Path::new(""), &mut entries, &mut visited)?;
+    entries.retain(|entry| entry.is_dir || !exclude(&entry.path));
 
     let file = File::create(output)?;
     let output_canonical = output.canonicalize().ok();
