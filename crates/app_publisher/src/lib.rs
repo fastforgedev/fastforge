@@ -8,6 +8,7 @@ mod firebase_hosting;
 mod github;
 mod pgyer;
 mod playstore;
+mod repository;
 mod s3;
 mod vercel;
 
@@ -24,5 +25,6 @@ pub use firebase_hosting::FirebaseHostingPublisher;
 pub use github::GitHubPublisher;
 pub use pgyer::PgyerPublisher;
 pub use playstore::PlayStorePublisher;
+pub use repository::{AptRepoPublisher, PacmanRepoPublisher};
 pub use s3::{CosPublisher, MinioPublisher, OssPublisher, QiniuPublisher, S3Publisher};
 pub use vercel::VercelPublisher;

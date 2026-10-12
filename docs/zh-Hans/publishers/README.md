@@ -21,6 +21,8 @@
 | `playstore`        | Google Play AAB 上传       | [Google Play](playstore.md)  |
 | `appgallery`       | Huawei AppGallery          | [AppGallery](appgallery.md)  |
 | `vercel`           | Vercel Production          | [Vercel](vercel.md)          |
+| `apt-repo`         | 目录中的 APT 软件源        | [软件源](repositories.md)    |
+| `pacman-repo`      | 目录中的 Pacman 软件源     | [软件源](repositories.md)    |
 | `custom`           | 自定义 shell 命令          | [Custom](custom.md)          |
 
 ## 通用用法
