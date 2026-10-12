@@ -477,6 +477,14 @@ fn prepare_script(
                 .unwrap_or_else(|_| icon.clone())
         })
         .unwrap_or_default();
+    // Inno Setup only reports "cannot find the path" for a missing icon.
+    if !setup_icon_file.is_empty() && !Path::new(&setup_icon_file).is_file() {
+        return Err(PackageError::NotFound(format!(
+            "setup_icon_file `{}` from windows/packaging/exe/make_config.yaml: no file at {} (paths are relative to the project root)",
+            make_config.setup_icon_file.as_deref().unwrap_or_default(),
+            setup_icon_file
+        )));
+    }
 
     let locales = available_locales(
         &make_config
@@ -670,6 +678,37 @@ mod tests {
             std::fs::read_to_string(root.join("dev.example.demo.txt")).unwrap(),
             "runner.exe"
         );
+    }
+
+    #[test]
+    fn missing_setup_icon_file_is_reported_before_inno_setup_runs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = config(tmp.path(), "exe");
+        write(&config.build_output_dir.join("runner.exe"), "runner");
+        let root = tmp.path().join("stage");
+        let mut raw = RawPackaging::new(
+            tmp.path().join("exe"),
+            ProjectSettings::default(),
+            &config,
+            &root,
+        )
+        .unwrap();
+        let missing = tmp.path().join("assets/logo.ico");
+        let mc = ExeMakeConfig {
+            setup_icon_file: Some(missing.display().to_string()),
+            ..Default::default()
+        };
+        let error = prepare_script(&config, &mc, &mut raw, &root, "iscc")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("setup_icon_file") && error.contains("logo.ico"),
+            "{error}"
+        );
+
+        write(&missing, "ico");
+        let script = prepare_script(&config, &mc, &mut raw, &root, "iscc").unwrap();
+        assert!(script.contains("logo.ico"));
     }
 
     #[test]
