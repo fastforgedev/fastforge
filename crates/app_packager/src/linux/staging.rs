@@ -102,6 +102,9 @@ pub(crate) fn stage(
 ) -> Result<(), PackageError> {
     let binary_name = &config.app_binary_name;
     copy_dir_contents(&config.build_output_dir, &root.join(&layout.bundle_dir))?;
+    if config.build_mode == "release" && !strip_disabled(raw, config) {
+        strip_binaries(&root.join(&layout.bundle_dir));
+    }
 
     if layout.bin_link {
         let bin_dir = root.join("usr/bin");
@@ -138,13 +141,211 @@ pub(crate) fn stage(
 
     let desktop_dir = root.join(&layout.desktop_dir);
     std::fs::create_dir_all(&desktop_dir)?;
+    let template = raw.template(DESKTOP_TEMPLATE)?;
+    let window_id = window_app_id(Path::new("linux"), binary_name);
+    let generated = template.is_none();
     raw.write_or_generate(
-        raw.template(DESKTOP_TEMPLATE)?,
+        template,
         &desktop_dir.join(format!("{}.desktop", raw.app_id())),
-        generated_desktop,
+        || {
+            let desktop = generated_desktop();
+            if window_id == raw.app_id() {
+                desktop
+            } else {
+                with_startup_wm_class(&desktop, &window_id)
+            }
+        },
     )?;
+    if window_id != raw.app_id() {
+        eprintln!(
+            "Note: the window reports the app ID `{window_id}`, but the desktop entry is `{}.desktop`, so docks match them through StartupWMClass{}. To match by name, call g_set_prgname(APPLICATION_ID) in linux/runner/my_application.cc (as current Flutter templates do) and keep APPLICATION_ID equal to `{}`.",
+            raw.app_id(),
+            if generated {
+                ""
+            } else {
+                ", which your desktop template must set"
+            },
+            raw.app_id(),
+        );
+    }
 
-    raw.install_overlay(root, layout.shared_overlay)
+    raw.install_overlay(root, layout.shared_overlay)?;
+    if layout.root_icon {
+        ensure_root_icon(root, raw.app_id())?;
+    }
+    Ok(())
+}
+
+/// An AppDir must have its icon at the root (appimagetool refuses to build
+/// otherwise). Without a configured icon, the largest hicolor PNG an
+/// overlay provides is used, else a placeholder.
+fn ensure_root_icon(root: &Path, name: &str) -> Result<(), PackageError> {
+    if ["png", "svg", "xpm"]
+        .iter()
+        .any(|ext| root.join(format!("{name}.{ext}")).is_file())
+    {
+        return Ok(());
+    }
+    let hicolor = root.join("usr/share/icons/hicolor");
+    let provided = ICON_SIZES
+        .iter()
+        .rev()
+        .map(|size| hicolor.join(format!("{size}x{size}/apps/{name}.png")))
+        .chain([hicolor.join(format!("scalable/apps/{name}.svg"))])
+        .find(|path| path.is_file());
+    if let Some(icon) = provided {
+        let ext = icon
+            .extension()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        std::fs::copy(&icon, root.join(format!("{name}.{ext}")))?;
+        return Ok(());
+    }
+    eprintln!(
+        "Warning: no icon is configured; the AppImage uses a placeholder. Set `project.icon` in .fastforge/config.yaml."
+    );
+    let side = 256;
+    let placeholder = RgbaImage::from_fn(side, side, |x, y| {
+        let inset = (side / 8)..(side - side / 8);
+        if inset.contains(&x) && inset.contains(&y) {
+            image::Rgba([0x42, 0x85, 0xf4, 0xff])
+        } else {
+            image::Rgba([0, 0, 0, 0])
+        }
+    });
+    placeholder
+        .save_with_format(root.join(format!("{name}.png")), ImageFormat::Png)
+        .map_err(|e| PackageError::General(format!("Failed to write the placeholder icon: {e}")))?;
+    let dir = hicolor.join(format!("{side}x{side}/apps"));
+    std::fs::create_dir_all(&dir)?;
+    std::fs::copy(
+        root.join(format!("{name}.png")),
+        dir.join(format!("{name}.png")),
+    )?;
+    Ok(())
+}
+
+/// The app ID GTK gives the window (the Wayland app ID and X11 WM_CLASS):
+/// the program name, which current Flutter runners set to `APPLICATION_ID`
+/// with `g_set_prgname`, and otherwise the binary name.
+pub(crate) fn window_app_id(linux_dir: &Path, binary_name: &str) -> String {
+    let sets_prgname = [
+        "runner/my_application.cc",
+        "my_application.cc",
+        "runner/main.cc",
+        "main.cc",
+    ]
+    .iter()
+    .filter_map(|file| std::fs::read_to_string(linux_dir.join(file)).ok())
+    .any(|source| {
+        source
+            .replace(char::is_whitespace, "")
+            .contains("g_set_prgname(APPLICATION_ID)")
+    });
+    let application_id = std::fs::read_to_string(linux_dir.join("CMakeLists.txt"))
+        .ok()
+        .and_then(|cmake| {
+            let start = cmake.find("set(APPLICATION_ID \"")? + "set(APPLICATION_ID \"".len();
+            let rest = &cmake[start..];
+            Some(rest[..rest.find('"')?].to_string())
+        })
+        .filter(|id| !id.is_empty());
+    match application_id {
+        Some(id) if sets_prgname => id,
+        _ => binary_name.to_string(),
+    }
+}
+
+/// Adds `StartupWMClass=` to the `[Desktop Entry]` group, unless it has one.
+pub(crate) fn with_startup_wm_class(desktop: &str, wm_class: &str) -> String {
+    if desktop
+        .lines()
+        .any(|line| line.trim_start().starts_with("StartupWMClass="))
+    {
+        return desktop.to_string();
+    }
+    let mut out = String::new();
+    let mut in_entry = false;
+    let mut added = false;
+    for line in desktop.lines() {
+        let header = line.trim_start().starts_with('[');
+        if header && in_entry && !added {
+            // Before the blank line(s) closing the group.
+            let trimmed = out.trim_end_matches('\n').len();
+            let tail = out.split_off(trimmed);
+            out.push_str(&format!("\nStartupWMClass={wm_class}"));
+            out.push_str(&tail);
+            added = true;
+        }
+        if header {
+            in_entry = line.trim() == "[Desktop Entry]";
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if !added {
+        let trimmed = out.trim_end_matches('\n').len();
+        out.truncate(trimmed);
+        out.push_str(&format!("\nStartupWMClass={wm_class}\n"));
+    }
+    out
+}
+
+/// `STRIP=false` (in `.fastforge/config.yaml` `env:` or the environment)
+/// keeps the bundle's symbols.
+fn strip_disabled(raw: &RawPackaging, config: &PackageConfig) -> bool {
+    super::common::var(raw.variables(), "STRIP")
+        .or_else(|| config.env_var("STRIP"))
+        .is_some_and(|v| matches!(v.trim(), "false" | "0" | "no"))
+}
+
+/// Whether `path` is an ELF object.
+fn is_elf(path: &Path) -> bool {
+    use std::io::Read;
+    let mut magic = [0u8; 4];
+    std::fs::File::open(path)
+        .and_then(|mut file| file.read_exact(&mut magic))
+        .is_ok()
+        && magic == *b"\x7fELF"
+}
+
+fn elf_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        match entry.file_type() {
+            Ok(t) if t.is_dir() => elf_files(&path, out),
+            Ok(t) if t.is_file() && is_elf(&path) => out.push(path),
+            _ => {}
+        }
+    }
+}
+
+/// Strips symbols the bundle does not need at run time, as distribution
+/// tooling (`dh_strip`, makepkg) does: Flutter strips the engine and the
+/// AOT library, but not the runner or plugin libraries built by CMake.
+/// Without `strip`, or when it fails, the files are kept as they are.
+fn strip_binaries(bundle: &Path) {
+    let mut files = Vec::new();
+    elf_files(bundle, &mut files);
+    if files.is_empty() {
+        return;
+    }
+    match std::process::Command::new("strip")
+        .arg("--strip-unneeded")
+        .args(&files)
+        .output()
+    {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => eprintln!(
+            "Warning: binaries were not stripped: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ),
+        Err(err) => eprintln!("Warning: binaries were not stripped (strip: {})", err),
+    }
 }
 
 #[cfg(unix)]
@@ -418,6 +619,103 @@ pub(crate) fn build_date() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn app_dir_gets_a_root_icon_from_the_overlay_or_a_placeholder() {
+        let tmp = tempfile::tempdir().unwrap();
+        ensure_root_icon(tmp.path(), "dev.example.app").unwrap();
+        let placeholder = image::open(tmp.path().join("dev.example.app.png")).unwrap();
+        assert_eq!(placeholder.width(), 256);
+        assert!(
+            tmp.path()
+                .join("usr/share/icons/hicolor/256x256/apps/dev.example.app.png")
+                .is_file()
+        );
+
+        let tmp = tempfile::tempdir().unwrap();
+        let svg = tmp
+            .path()
+            .join("usr/share/icons/hicolor/scalable/apps/dev.example.app.svg");
+        std::fs::create_dir_all(svg.parent().unwrap()).unwrap();
+        std::fs::write(&svg, "<svg/>").unwrap();
+        ensure_root_icon(tmp.path(), "dev.example.app").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("dev.example.app.svg")).unwrap(),
+            "<svg/>"
+        );
+        assert!(!tmp.path().join("dev.example.app.png").exists());
+    }
+
+    #[test]
+    fn window_app_id_follows_the_runner() {
+        let tmp = tempfile::tempdir().unwrap();
+        let linux = tmp.path();
+        std::fs::create_dir_all(linux.join("runner")).unwrap();
+        std::fs::write(
+            linux.join("CMakeLists.txt"),
+            "set(BINARY_NAME \"hello\")\nset(APPLICATION_ID \"com.example.hello\")\n",
+        )
+        .unwrap();
+        std::fs::write(linux.join("runner/my_application.cc"), "// old template\n").unwrap();
+        assert_eq!(window_app_id(linux, "hello"), "hello");
+        std::fs::write(
+            linux.join("runner/my_application.cc"),
+            "g_set_prgname( APPLICATION_ID );\n",
+        )
+        .unwrap();
+        assert_eq!(window_app_id(linux, "hello"), "com.example.hello");
+    }
+
+    #[test]
+    fn startup_wm_class_joins_the_desktop_entry_group() {
+        let desktop = "[Desktop Entry]\nName=Hi\nExec=hi\n\n[Desktop Action a]\nName=A\n";
+        assert_eq!(
+            with_startup_wm_class(desktop, "hi"),
+            "[Desktop Entry]\nName=Hi\nExec=hi\nStartupWMClass=hi\n\n[Desktop Action a]\nName=A\n"
+        );
+        assert_eq!(
+            with_startup_wm_class("[Desktop Entry]\nName=Hi\n", "hi"),
+            "[Desktop Entry]\nName=Hi\nStartupWMClass=hi\n"
+        );
+        let has = "[Desktop Entry]\nStartupWMClass=x\n";
+        assert_eq!(with_startup_wm_class(has, "hi"), has);
+    }
+
+    #[test]
+    fn elf_detection_reads_the_magic() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a"), b"\x7fELF\x02\x01").unwrap();
+        std::fs::write(tmp.path().join("b"), b"#!/bin/sh").unwrap();
+        let mut found = Vec::new();
+        elf_files(tmp.path(), &mut found);
+        assert_eq!(found, vec![tmp.path().join("a")]);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn strips_unstripped_elf_files_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("plugin.c");
+        std::fs::write(&src, "int plugin_value(void) { return 42; }\n").unwrap();
+        let lib = tmp.path().join("lib/libplugin.so");
+        std::fs::create_dir_all(lib.parent().unwrap()).unwrap();
+        let built = std::process::Command::new("cc")
+            .args(["-shared", "-fPIC", "-g", "-o"])
+            .arg(&lib)
+            .arg(&src)
+            .status();
+        if !built.is_ok_and(|s| s.success()) {
+            return; // no C compiler on this host
+        }
+        std::fs::write(tmp.path().join("data.txt"), "not an ELF").unwrap();
+        let before = std::fs::metadata(&lib).unwrap().len();
+        strip_binaries(tmp.path());
+        assert!(std::fs::metadata(&lib).unwrap().len() < before);
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("data.txt")).unwrap(),
+            "not an ELF"
+        );
+    }
 
     #[cfg(unix)]
     fn write(root: &Path, rel: &str, content: &[u8]) {
