@@ -374,6 +374,9 @@ impl AppPackager for LinuxDebPackager {
 
         let debian_dir = pkg_dir.join("DEBIAN");
         std::fs::create_dir_all(&debian_dir)?;
+        // dpkg-deb rejects a control directory outside 0755..=0775, which a
+        // permissive umask (such as 000 in some containers) would create.
+        make_executable(&debian_dir)?;
 
         // control, with the installed size filled in.
         let control = match raw.file(&["control"]) {
@@ -429,6 +432,9 @@ impl AppPackager for LinuxDebPackager {
         cmd.args([
             "--build",
             "--root-owner-group",
+            // xz instead of dpkg-deb's default zstd, which older dpkg
+            // releases (Debian before 12, deepin, UOS) cannot unpack.
+            "-Zxz",
             &pkg_dir.display().to_string(),
             &output_file.display().to_string(),
         ]);
