@@ -71,6 +71,7 @@ project:
 
 - **渲染规则。** 只有 `NAME` 是打包变量时，`${NAME}` 才会被替换，其余内容保持原样。因此 `$1`、`${HOME}` 等 shell 展开、`%{buildroot}` 等 RPM 宏以及 `%U` 等桌面文件字段代码都无需转义。需要字面量 `${` 时写 `$${`。覆盖树中的文件名和目录名同样会被渲染，例如 `files/usr/share/doc/${PACKAGE_NAME}/copyright`。
 - **覆盖树。** 先把共用的 `files/` 复制到包根目录，再复制格式目录中的，同名文件以后者为准。AppImage 不会安装 `/etc` 或 `/opt` 下的文件，因此只接收共用覆盖树中的 `usr/`。文本文件会被渲染，二进制文件原样复制，权限和符号链接保持不变。
+- **去除符号。** release 构建中，bundle 内的 ELF 文件会像 `dh_strip` 和 makepkg 一样去除运行时不需要的符号（`strip --strip-unneeded`）。Flutter 已对引擎和 `libapp.so` 去除符号，但 CMake 构建的 runner 和插件库没有，后者通常可缩小约五分之一。如需保留（例如用于符号化崩溃报告），在 `.fastforge/config.yaml` 的 `env:` 或环境变量中设置 `STRIP=false`。没有 `strip`（binutils）时会打印警告并保持原文件。
 - **自动补全。** DEB：control 中没有 `Installed-Size` 时自动补上，生成 `md5sums`，并把所有 `/etc` 文件登记到 `conffiles`。Pacman：补上 `size`、`builddate`，并为每个 `/etc` 文件添加 `backup` 条目。RPM：把 `/etc` 文件列为 `%config(noreplace)`。你自己写的值会保留。
 - **桌面文件和 metainfo。** 模板的文件名不限：一个 `*.desktop` 文件和一个 `*.metainfo.xml`（或 `*.appdata.xml`）文件。无论叫什么，都会安装为 `${APP_ID}.desktop` 和 `usr/share/metainfo/${APP_ID}.metainfo.xml`，这是桌面文件规范和 AppStream 的要求。桌面文件中启动命令写作 `${APP_BINARY_NAME}`，图标写作 `${APP_ID}`。在 Linux 上 `APP_ID` 总有值：优先取 `project.app_id`，其次取 `linux/CMakeLists.txt` 中的 `APPLICATION_ID`，最后为可执行文件名。
 - **Wayland。** 桌面文件按窗口的 app id 匹配，而 GTK 把程序名作为 app id 上报。请让 `linux/CMakeLists.txt` 中的 `APPLICATION_ID` 与 `project.app_id` 一致，或不设置 `project.app_id`。还要像新版 Flutter 模板那样在 `my_application_new()` 中调用 `g_set_prgname(APPLICATION_ID)`，否则窗口上报的是可执行文件名。

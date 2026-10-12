@@ -89,6 +89,9 @@ pub(crate) fn stage(
 ) -> Result<(), PackageError> {
     let binary_name = &config.app_binary_name;
     copy_dir_contents(&config.build_output_dir, &root.join(&layout.bundle_dir))?;
+    if config.build_mode == "release" && !strip_disabled(raw, config) {
+        strip_binaries(&root.join(&layout.bundle_dir));
+    }
 
     if layout.bin_link {
         let bin_dir = root.join("usr/bin");
@@ -132,6 +135,62 @@ pub(crate) fn stage(
     )?;
 
     raw.install_overlay(root, layout.shared_overlay)
+}
+
+/// `STRIP=false` (in `.fastforge/config.yaml` `env:` or the environment)
+/// keeps the bundle's symbols.
+fn strip_disabled(raw: &RawPackaging, config: &PackageConfig) -> bool {
+    super::common::var(raw.variables(), "STRIP")
+        .or_else(|| config.env_var("STRIP"))
+        .is_some_and(|v| matches!(v.trim(), "false" | "0" | "no"))
+}
+
+/// Whether `path` is an ELF object.
+fn is_elf(path: &Path) -> bool {
+    use std::io::Read;
+    let mut magic = [0u8; 4];
+    std::fs::File::open(path)
+        .and_then(|mut file| file.read_exact(&mut magic))
+        .is_ok()
+        && magic == *b"\x7fELF"
+}
+
+fn elf_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        match entry.file_type() {
+            Ok(t) if t.is_dir() => elf_files(&path, out),
+            Ok(t) if t.is_file() && is_elf(&path) => out.push(path),
+            _ => {}
+        }
+    }
+}
+
+/// Strips symbols the bundle does not need at run time, as distribution
+/// tooling (`dh_strip`, makepkg) does: Flutter strips the engine and the
+/// AOT library, but not the runner or plugin libraries built by CMake.
+/// Without `strip`, or when it fails, the files are kept as they are.
+fn strip_binaries(bundle: &Path) {
+    let mut files = Vec::new();
+    elf_files(bundle, &mut files);
+    if files.is_empty() {
+        return;
+    }
+    match std::process::Command::new("strip")
+        .arg("--strip-unneeded")
+        .args(&files)
+        .output()
+    {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => eprintln!(
+            "Warning: binaries were not stripped: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ),
+        Err(err) => eprintln!("Warning: binaries were not stripped (strip: {})", err),
+    }
 }
 
 #[cfg(unix)]
@@ -405,6 +464,32 @@ pub(crate) fn build_date() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn strips_unstripped_elf_files_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("plugin.c");
+        std::fs::write(&src, "int plugin_value(void) { return 42; }\n").unwrap();
+        let lib = tmp.path().join("lib/libplugin.so");
+        std::fs::create_dir_all(lib.parent().unwrap()).unwrap();
+        let built = std::process::Command::new("cc")
+            .args(["-shared", "-fPIC", "-g", "-o"])
+            .arg(&lib)
+            .arg(&src)
+            .status();
+        if !built.is_ok_and(|s| s.success()) {
+            return; // no C compiler on this host
+        }
+        std::fs::write(tmp.path().join("data.txt"), "not an ELF").unwrap();
+        let before = std::fs::metadata(&lib).unwrap().len();
+        strip_binaries(tmp.path());
+        assert!(std::fs::metadata(&lib).unwrap().len() < before);
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("data.txt")).unwrap(),
+            "not an ELF"
+        );
+    }
 
     #[cfg(unix)]
     fn write(root: &Path, rel: &str, content: &[u8]) {
