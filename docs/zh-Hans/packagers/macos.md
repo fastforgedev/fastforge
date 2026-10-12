@@ -36,6 +36,26 @@ fastforge package --targets dmg
 
 `macos/packaging/dmg/` 中的内容（背景图、图标等）会被复制到 `.app` 旁边。如果存在 `macos/packaging/dmg/make_config.yaml`，它会作为 appdmg 风格的规格使用，路径相对于该目录。可用的键为 `title` 和 `contents`（均为必填）、`icon`、`background`、`background-color`、`icon-size`、`window`（`position`、`size`）、`format`（默认 `UDZO`）、`filesystem`（`HFS+` 或 `APFS`），以及 `code-sign`（`signing-identity`，可选 `identifier`），后者会用 `codesign` 为 DMG 签名。未知的键会导致打包失败；也接受带 `app` 和 `icons` 的旧版 appdmg 格式。否则使用默认布局：应用和 `/Applications` 链接，存在 `background.png` 时一并使用。
 
+```yaml
+title: Hello World            # 挂载后显示的卷名
+icon: volume.icns             # 卷图标
+background: background.png    # 或 background-color: "#f5f5f7"
+icon-size: 96
+window:
+  position: { x: 200, y: 120 }
+  size: { width: 640, height: 480 }
+format: ULFO                  # UDZO（默认）、UDRO、UDCO、UDBZ、ULFO、ULMO、UDRW
+filesystem: APFS              # HFS+（默认）或 APFS
+contents:
+  - { x: 448, y: 344, type: link, path: /Applications }
+  - { x: 192, y: 344, type: file, path: Hello World.app }
+  - { x: 100, y: 100, type: file, path: README.txt, name: Read Me.txt }
+code-sign:
+  signing-identity: "Developer ID Application: Example (TEAMID)"
+```
+
+`contents` 中，`file` 把文件或 bundle 复制进镜像（可用 `name` 重命名），`link` 创建符号链接，`position` 只调整已有项目的位置。坐标是图标中心相对窗口左上角的点数。`.app` 条目必须使用 bundle 的实际名称，它由 Xcode 的 `PRODUCT_NAME` 决定，可能与 `pubspec.yaml` 的名称不同；名称不符时打包会失败，并给出实际构建出的 bundle 名。
+
 公证等额外流程可以通过 post-package 钩子执行（`--hook-post`，或 release job 中的 `package.hooks.post`）。
 
 ## PKG

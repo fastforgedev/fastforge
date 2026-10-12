@@ -36,6 +36,26 @@ fastforge package --targets dmg
 
 The contents of `macos/packaging/dmg/` (background, icons, and so on) are copied next to the `.app`. If `macos/packaging/dmg/make_config.yaml` exists, it is used as an appdmg-style specification, with paths relative to that directory. The keys are `title` and `contents` (both required), `icon`, `background`, `background-color`, `icon-size`, `window` (`position`, `size`), `format` (default `UDZO`), `filesystem` (`HFS+` or `APFS`), and `code-sign` (`signing-identity`, optional `identifier`), which signs the DMG with `codesign`. Unknown keys fail packaging; the older appdmg format with `app` and `icons` is also accepted. Otherwise Fastforge uses a default layout with the app and an `/Applications` link, plus `background.png` when present.
 
+```yaml
+title: Hello World            # volume name shown when mounted
+icon: volume.icns             # volume icon
+background: background.png    # or background-color: "#f5f5f7"
+icon-size: 96
+window:
+  position: { x: 200, y: 120 }
+  size: { width: 640, height: 480 }
+format: ULFO                  # UDZO (default), UDRO, UDCO, UDBZ, ULFO, ULMO, UDRW
+filesystem: APFS              # HFS+ (default) or APFS
+contents:
+  - { x: 448, y: 344, type: link, path: /Applications }
+  - { x: 192, y: 344, type: file, path: Hello World.app }
+  - { x: 100, y: 100, type: file, path: README.txt, name: Read Me.txt }
+code-sign:
+  signing-identity: "Developer ID Application: Example (TEAMID)"
+```
+
+In `contents`, `file` copies a file or bundle into the image (optionally renamed with `name`), `link` creates a symlink, and `position` only places an item that is already there. Coordinates are icon centers in points from the window's top-left corner. The `.app` entry must use the bundle's real name, which Xcode takes from `PRODUCT_NAME` and may differ from the `pubspec.yaml` name; packaging fails with the name of the built bundle otherwise.
+
 Additional steps such as notarization can be run through a post-package hook (`--hook-post`, or `package.hooks.post` in a release job).
 
 ## PKG

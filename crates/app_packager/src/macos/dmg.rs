@@ -85,6 +85,7 @@ fn make_dmg(config: &PackageConfig, pkg_dir: &Path) -> Result<std::path::PathBuf
         Some(spec) => spec,
         None => default_spec(&config.app_name, &bundle_file_name, pkg_dir),
     };
+    check_app_entries(&spec, pkg_dir, &bundle_file_name)?;
 
     // Delegate DMG creation to the native dmg_maker crate.
     create(CreateOptions {
@@ -96,6 +97,33 @@ fn make_dmg(config: &PackageConfig, pkg_dir: &Path) -> Result<std::path::PathBuf
     .map_err(map_dmg_error)?;
 
     Ok(output_file)
+}
+
+/// Fails early, naming the bundle the build produced, when the spec places a
+/// `.app` that is not in the packaging directory: Xcode names the bundle
+/// after `PRODUCT_NAME`, which often differs from the name a spec assumes.
+fn check_app_entries(
+    spec: &serde_json::Value,
+    pkg_dir: &Path,
+    bundle_file_name: &str,
+) -> Result<(), PackageError> {
+    let entries = spec["contents"].as_array().into_iter().flatten();
+    for entry in entries {
+        let Some(path) = entry["path"].as_str() else {
+            continue;
+        };
+        let is_app = Path::new(path)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("app"));
+        if entry["type"] == "file" && is_app && !pkg_dir.join(path).exists() {
+            return Err(PackageError::NotFound(format!(
+                "`{}` from macos/packaging/dmg/make_config.yaml is not in the build output; \
+                 the build produced `{}`. Set the entry's `path` to `{}`.",
+                path, bundle_file_name, bundle_file_name
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Loads `macos/packaging/dmg/make_config.yaml` as an appdmg-style JSON spec.
@@ -222,6 +250,23 @@ fn map_dmg_error(err: DmgMakerError) -> PackageError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn app_entries_must_name_the_built_bundle() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("My App.app")).unwrap();
+        let spec = |path: &str| {
+            json!({ "title": "t", "contents": [
+                { "x": 1, "y": 1, "type": "link", "path": "/Applications" },
+                { "x": 2, "y": 2, "type": "file", "path": path },
+            ]})
+        };
+        assert!(check_app_entries(&spec("My App.app"), dir.path(), "My App.app").is_ok());
+        let error = check_app_entries(&spec("my_app.app"), dir.path(), "My App.app")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("`my_app.app`") && error.contains("produced `My App.app`"));
+    }
 
     #[test]
     fn make_config_yaml_converts_to_appdmg_spec() {
