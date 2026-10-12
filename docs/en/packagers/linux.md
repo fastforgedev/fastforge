@@ -2,13 +2,13 @@
 
 English | [简体中文](../../zh-Hans/packagers/linux.md)
 
-Fastforge packages Flutter Linux applications as [AppImage](#appimage), [DEB](#deb), [RPM](#rpm), [Pacman](#pacman), [ZIP, or a direct copy](#zip-and-direct).
+Fastforge packages Flutter Linux applications as [AppImage](#appimage), [DEB](#deb), [RPM](#rpm), [Pacman](#pacman), [Nix](#nix), [ZIP, or a direct copy](#zip-and-direct).
 
 ## Current Status
 
 | Build system    | `package` status                                              |
 | --------------- | ------------------------------------------------------------- |
-| Flutter Builder | AppImage, DEB, RPM, Pacman, ZIP, and direct through CLI/action |
+| Flutter Builder | AppImage, DEB, RPM, Pacman, Nix, ZIP, and direct through CLI/action |
 
 Linux packaging requires a Flutter project (`pubspec.yaml`). The build runs only on a Linux host; on other hosts `fastforge package` skips the target with a warning. The packagers use the bundle directory `build/linux/<x64|arm64>/<mode>/bundle/`, and artifacts are written to `dist/<version>/`.
 
@@ -121,6 +121,18 @@ RPM keeps `/opt/<binary>` as the bundle directory. When the package name differs
 Requires `bsdtar` with zstd support (`libarchive-tools` on Debian/Ubuntu, `bsdtar` on Fedora, `libarchive` on Arch); `makepkg` is not used. The artifact is a `.pkg.tar.zst` archive owned by root, with `.MTREE`, `.PKGINFO`, `.INSTALL` when there is one, and the package root. The generated `.PKGINFO` uses makepkg's format, one `key = value` line per value. The default package name is the binary name. `pkgver` is `<build name>-<release>`, with `-` removed from the build name; the release is the first dot-separated part of the build number, `1` without one. `builddate` uses `SOURCE_DATE_EPOCH` when it is set. Without `dependencies` in `make_config.yaml`, the package depends on `gtk3`; an empty list opts out. Additional `make_config.yaml` keys include `maintainer`, `licenses`, `groups`, `dependencies`, `optional_dependencies`, `conflicts`, `provides`, `replaces`, `supported_mime_type`, `actions`, and `postinstall_scripts`, `postupgrade_scripts`, and `postuninstall_scripts`, which generate `.INSTALL`.
 
 The legacy Pacman `installed_size` and `options` settings now produce migration warnings. `size` is measured from the staged payload in bytes; `options` belongs to makepkg and cannot be represented in PKGINFO. Move required preprocessing to hooks or workflows.
+
+## Nix
+
+`nix` needs no tools at packaging time. The artifact is a directory, `<artifact name>.nix/`, with the staged application in `usr/` and a `default.nix`. The derivation installs the prebuilt bundle in `$out/lib/<binary>`, patches its ELF files against nixpkgs' GTK and the other libraries a Flutter app usually links against with `autoPatchelfHook`, and wraps the binary in `$out/bin` with the GTK environment. The desktop entry, icons, and metainfo are installed in `$out/share`.
+
+```bash
+fastforge package --targets nix
+nix-build dist/1.2.3+4/hello-1.2.3+4-linux.nix
+nix profile install --file dist/1.2.3+4/hello-1.2.3+4-linux.nix
+```
+
+Libraries the plugins need beyond the defaults go in `extraBuildInputs`, for example `nix-build <dir> --arg extraBuildInputs 'with import <nixpkgs> {}; [ mpv ]'`, or in a `default.nix` in `.fastforge/packaging/linux/nix/`, which replaces the generated one. The version is the app version with `+` replaced by `-`. The bundle is built on the packaging host, so build the package for the architecture of the systems that use it; packaging for nixpkgs itself requires building from source.
 
 ## Studio forms
 

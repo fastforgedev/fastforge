@@ -35,7 +35,7 @@ Routing depends on `pubspec.yaml` in the project root and the platform:
 | Flutter Builder | Contains `pubspec.yaml` | iOS         | `ipa`, `custom`                                         |
 | Flutter Builder | Contains `pubspec.yaml` | macOS       | `dmg`, `pkg`, `zip`, `custom`                           |
 | Flutter Builder | Contains `pubspec.yaml` | Windows     | `exe`, `msix`, `zip`, `direct`, `custom`                |
-| Flutter Builder | Contains `pubspec.yaml` | Linux       | `appimage`, `deb`, `rpm`, `pacman`, `zip`, `direct`, `custom` |
+| Flutter Builder | Contains `pubspec.yaml` | Linux       | `appimage`, `deb`, `rpm`, `pacman`, `nix`, `zip`, `direct`, `custom` |
 | Flutter Builder | Contains `pubspec.yaml` | Web         | `zip`, `direct`, `custom`                               |
 | Flutter Builder | Contains `pubspec.yaml` | OpenHarmony | `hap`, `app`, `custom`                                  |
 

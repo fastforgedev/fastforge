@@ -2,13 +2,13 @@
 
 [English](../../en/packagers/linux.md) | 简体中文
 
-Fastforge 支持把 Flutter Linux 应用打包为 [AppImage](#appimage)、[DEB](#deb)、[RPM](#rpm)、[Pacman](#pacman)、[ZIP 或直接复制](#zip-和-direct)。
+Fastforge 支持把 Flutter Linux 应用打包为 [AppImage](#appimage)、[DEB](#deb)、[RPM](#rpm)、[Pacman](#pacman)、[Nix](#nix)、[ZIP 或直接复制](#zip-和-direct)。
 
 ## 当前状态
 
 | 构建系统        | `package` 状态                                          |
 | --------------- | ------------------------------------------------------- |
-| Flutter Builder | AppImage、DEB、RPM、Pacman、ZIP、direct 已通过 CLI/action 接入 |
+| Flutter Builder | AppImage、DEB、RPM、Pacman、Nix、ZIP、direct 已通过 CLI/action 接入 |
 
 Linux 打包需要 Flutter 项目（含 `pubspec.yaml`）。构建只能在 Linux 宿主上执行；在其他宿主上，`fastforge package` 会输出警告并跳过该 target。打包器使用 bundle 目录 `build/linux/<x64|arm64>/<mode>/bundle/`，产物写入 `dist/<version>/`。
 
@@ -121,6 +121,18 @@ RPM 保留 `/opt/<binary>` 安装目录。包名与程序名不同的项目同�
 需要支持 zstd 的 `bsdtar`（Debian/Ubuntu 上为 `libarchive-tools`，Fedora 上为 `bsdtar`，Arch 上为 `libarchive`），不使用 `makepkg`。产物是属主为 root 的 `.pkg.tar.zst` 归档，包含 `.MTREE`、`.PKGINFO`、`.INSTALL`（如有）以及包根目录。生成的 `.PKGINFO` 使用 makepkg 的格式，每个值一行 `key = value`。默认包名为可执行文件名。`pkgver` 为 `<构建名>-<release>`，构建名中的 `-` 会被去掉；release 为构建号按 `.` 分隔的第一段，没有构建号时为 `1`。设置了 `SOURCE_DATE_EPOCH` 时，`builddate` 使用该值。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `gtk3`；设为空列表可以去掉。`make_config.yaml` 额外的键包括 `maintainer`、`licenses`、`groups`、`dependencies`、`optional_dependencies`、`conflicts`、`provides`、`replaces`、`supported_mime_type`、`actions`，以及用于生成 `.INSTALL` 的 `postinstall_scripts`、`postupgrade_scripts` 和 `postuninstall_scripts`。
 
 Pacman 旧字段 `installed_size` 和 `options` 现在会输出迁移提示。`size` 按实际暂存内容计算字节数；`options` 属于 makepkg，不能作为 PKGINFO 元数据。需要的预处理应移到钩子或工作流。
+
+## Nix
+
+`nix` 打包时不需要额外工具。产物是目录 `<产物名>.nix/`，其中 `usr/` 为暂存的应用，另有 `default.nix`。该 derivation 把预构建的 bundle 安装到 `$out/lib/<binary>`，用 `autoPatchelfHook` 将其 ELF 文件链接到 nixpkgs 中的 GTK 及 Flutter 应用常用的其他库，并在 `$out/bin` 中用 GTK 环境包装可执行文件。桌面入口、图标和 metainfo 安装到 `$out/share`。
+
+```bash
+fastforge package --targets nix
+nix-build dist/1.2.3+4/hello-1.2.3+4-linux.nix
+nix profile install --file dist/1.2.3+4/hello-1.2.3+4-linux.nix
+```
+
+插件需要默认之外的库时，通过 `extraBuildInputs` 传入，例如 `nix-build <dir> --arg extraBuildInputs 'with import <nixpkgs> {}; [ mpv ]'`，或在 `.fastforge/packaging/linux/nix/` 中放置 `default.nix` 替换生成的文件。版本为应用版本，其中 `+` 替换为 `-`。bundle 在打包主机上构建，因此请为使用它的系统的架构打包；提交到 nixpkgs 本身则要求从源码构建。
 
 ## Studio 表单
 

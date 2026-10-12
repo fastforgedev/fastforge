@@ -12,7 +12,7 @@ This section organizes Fastforge packaging capabilities by platform. Each platfo
 | [iOS](ios.md)                 | [IPA](ios.md#ipa)                                                                                              | Xcode (package action), Flutter Builder |
 | [macOS](macos.md)             | [DMG](macos.md#dmg), [PKG](macos.md#pkg), [ZIP](macos.md#zip)                                                  | Xcode (package action), Flutter Builder |
 | [Windows](windows.md)         | [EXE](windows.md#exe), [MSIX](windows.md#msix), [ZIP / direct](windows.md#zip-and-direct)                      | .NET, Flutter Builder                   |
-| [Linux](linux.md)             | [AppImage](linux.md#appimage), [DEB](linux.md#deb), [RPM](linux.md#rpm), [Pacman](linux.md#pacman), [ZIP / direct](linux.md#zip-and-direct) | Flutter Builder |
+| [Linux](linux.md)             | [AppImage](linux.md#appimage), [DEB](linux.md#deb), [RPM](linux.md#rpm), [Pacman](linux.md#pacman), [Nix](linux.md#nix), [ZIP / direct](linux.md#zip-and-direct) | Flutter Builder |
 | [Web](web.md)                 | [ZIP / direct](web.md)                                                                                         | Flutter Builder                         |
 | [OpenHarmony](ohos.md)        | [HAP / APP](ohos.md)                                                                                           | Flutter Builder                         |
 | Any                           | [custom](../packaging.md#custom-format)                                                                        | Flutter Builder, Xcode (macOS), .NET    |
