@@ -6,7 +6,7 @@ use fastforge_app_builder::{
 };
 use fastforge_app_packager::{
     AndroidAabPackager, AndroidApkPackager, AppPackager, AppxManifest, CustomPackager,
-    IOSIpaPackager, LinuxAppImagePackager, LinuxDebPackager, LinuxDirectPackager,
+    IOSIpaPackager, LinuxAppImagePackager, LinuxDebPackager, LinuxDirectPackager, LinuxNixPackager,
     LinuxPacmanPackager, LinuxRpmPackager, LinuxZipPackager, MacOSDmgPackager, MacOSPkgPackager,
     MacOSZipPackager, OHOSAppPackager, OHOSHapPackager, PackageConfig, WebDirectPackager,
     WebZipPackager, WindowsDirectPackager, WindowsExePackager, WindowsMsixPackager,
@@ -39,7 +39,7 @@ pub struct PackageArgs {
         short,
         long = "targets",
         alias = "target",
-        value_name = "apk,aab,app,appimage,custom,deb,direct,dmg,exe,hap,ipa,msix,pacman,pkg,rpm,zip"
+        value_name = "apk,aab,app,appimage,custom,deb,direct,dmg,exe,hap,ipa,msix,nix,pacman,pkg,rpm,zip"
     )]
     pub targets: Option<String>,
     #[arg(long = "channel")]
@@ -692,6 +692,7 @@ pub fn resolve_packager(
         (Platform::Linux, "appimage") => Ok(Box::new(LinuxAppImagePackager)),
         (Platform::Linux, "deb") => Ok(Box::new(LinuxDebPackager)),
         (Platform::Linux, "pacman") => Ok(Box::new(LinuxPacmanPackager)),
+        (Platform::Linux, "nix") => Ok(Box::new(LinuxNixPackager)),
         (Platform::Linux, "rpm") => Ok(Box::new(LinuxRpmPackager)),
         (Platform::Linux, "zip") => Ok(Box::new(LinuxZipPackager)),
         (Platform::Linux, "direct") => Ok(Box::new(LinuxDirectPackager)),
