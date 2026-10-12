@@ -109,6 +109,7 @@ fastforge package [OPTIONS]
 | `--artifact-name <TEMPLATE>`          | Mustache artifact-name template                                             |
 | `--output <DIR>`                      | Directory the artifacts are written to (default: `output` of `distribute_options.yaml`, else `dist/`) |
 | `--skip-clean`                        | Skip `flutter clean` before the build                                       |
+| `--skip-build`                        | Package an existing Flutter build output instead of building                |
 | `--flutter-build-args <ARG,...>`      | Arguments passed to `flutter build` (`verbose,obfuscate`, `key=value`)      |
 | `--build-target <PATH>`               | `--target` passed to `flutter build`                                        |
 | `--build-flavor <FLAVOR>`             | `--flavor` passed to `flutter build`                                        |

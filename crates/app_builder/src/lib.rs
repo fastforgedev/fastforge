@@ -123,31 +123,69 @@ impl FlutterAppBuilder {
             }));
         }
 
-        let (output_directory, output_files) =
-            builder.resolve_output_files(&config, environment.as_ref())?;
-
-        // Directory-style outputs (linux/windows/web) report no files, as in
-        // Dart; for those only the output directory has to exist.
-        if !builder.outputs_directory() && output_files.is_empty() {
-            return Err(BuildError::ArtifactNotFound(format!(
-                "No build artifacts found in {}",
-                output_directory.display()
-            )));
-        }
-        if builder.outputs_directory() && !output_directory.is_dir() {
-            return Err(BuildError::ArtifactNotFound(format!(
-                "Build output directory not found: {}",
-                output_directory.display()
-            )));
-        }
-
-        Ok(builder.build_result(
+        collect_output(
+            builder.as_ref(),
             config,
-            output_directory,
-            output_files,
+            environment.as_ref(),
             start.elapsed().as_millis(),
-        ))
+        )
     }
+
+    /// The output of an earlier build for `(platform, target)`, without
+    /// running `flutter build`: for packaging what another tool built into
+    /// Flutter's output directories (such as `shorebird release`), or one
+    /// build for several channels. `arguments` must name the same mode,
+    /// flavor and target platform as that build. Fails when the output is
+    /// missing.
+    pub fn existing_output(
+        &self,
+        platform: &Platform,
+        target: Option<&str>,
+        arguments: Map<String, Value>,
+        environment: Option<std::collections::HashMap<String, String>>,
+    ) -> Result<BuildResult, BuildError> {
+        let builder = self
+            .builders
+            .iter()
+            .find(|b| b.matches(platform, target))
+            .ok_or_else(|| {
+                BuildError::UnsupportedBuilder(format!(
+                    "No builder found for platform={} target={}",
+                    platform.as_str(),
+                    target.unwrap_or("")
+                ))
+            })?;
+        let config = BuildConfig::new(arguments);
+        builder.validate_arguments(&config)?;
+        collect_output(builder.as_ref(), config, environment.as_ref(), 0)
+    }
+}
+
+/// Resolves a finished build's output and checks that it exists.
+fn collect_output(
+    builder: &(dyn AppBuilder + Send + Sync),
+    config: BuildConfig,
+    environment: Option<&std::collections::HashMap<String, String>>,
+    duration_ms: u128,
+) -> Result<BuildResult, BuildError> {
+    let (output_directory, output_files) = builder.resolve_output_files(&config, environment)?;
+
+    // Directory-style outputs (linux/windows/web) report no files, as in
+    // Dart; for those only the output directory has to exist.
+    if !builder.outputs_directory() && output_files.is_empty() {
+        return Err(BuildError::ArtifactNotFound(format!(
+            "No build artifacts found in {}",
+            output_directory.display()
+        )));
+    }
+    if builder.outputs_directory() && !output_directory.is_dir() {
+        return Err(BuildError::ArtifactNotFound(format!(
+            "Build output directory not found: {}",
+            output_directory.display()
+        )));
+    }
+
+    Ok(builder.build_result(config, output_directory, output_files, duration_ms))
 }
 
 pub fn build(request: BuildRequest) -> Result<BuildResult, BuildError> {
