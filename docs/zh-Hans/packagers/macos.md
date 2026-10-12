@@ -60,7 +60,7 @@ code-sign:
 
 ## PKG
 
-PKG 是 macOS 安装器包格式。Fastforge 使用 `xcrun productbuild` 和 `pkgutil` 生成 PKG。PKG 打包器会读取以下可选配置文件：
+PKG 是 macOS 安装器包格式。安装包只能安装到启动磁盘（`enable_localSystem`）。Fastforge 使用 `xcrun productbuild` 和 `pkgutil` 生成 PKG。PKG 打包器会读取以下可选配置文件：
 
 ```text
 macos/packaging/pkg/make_config.yaml

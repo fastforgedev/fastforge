@@ -93,11 +93,14 @@ fn productbuild_args(
 }
 
 /// Injects `<domains>` before the first `<options ` element of the
-/// Distribution file (Dart's `replaceFirst`).
+/// Distribution file (Dart's `replaceFirst`), limiting the install to the
+/// startup disk. Dart writes `enable_local`, which Installer does not know:
+/// depending on the macOS version it then offers every volume or none but
+/// the startup disk.
 fn inject_domains(distribution: &str) -> String {
     distribution.replacen(
         "<options ",
-        "<domains enable_local=\"true\" enable_currentUserHome=\"false\" enable_anywhere=\"false\" />\n    <options ",
+        "<domains enable_localSystem=\"true\" enable_currentUserHome=\"false\" enable_anywhere=\"false\" />\n    <options ",
         1,
     )
 }
@@ -299,7 +302,7 @@ mod tests {
         let out = inject_domains(input);
         assert_eq!(
             out,
-            "<installer-gui-script>\n    <domains enable_local=\"true\" enable_currentUserHome=\"false\" enable_anywhere=\"false\" />\n    <options customize=\"never\"/>\n    <options x=\"y\"/>\n</installer-gui-script>"
+            "<installer-gui-script>\n    <domains enable_localSystem=\"true\" enable_currentUserHome=\"false\" enable_anywhere=\"false\" />\n    <options customize=\"never\"/>\n    <options x=\"y\"/>\n</installer-gui-script>"
         );
     }
 

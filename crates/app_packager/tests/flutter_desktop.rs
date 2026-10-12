@@ -217,17 +217,8 @@ struct MountedImage {
 impl MountedImage {
     fn attach(image: &Path, mount: PathBuf) -> Self {
         fs::create_dir_all(&mount).unwrap();
-        // `installer` refuses a target volume that ignores ownership, which
-        // disk images do unless attached with `-owners on`.
         run(Command::new("hdiutil")
-            .args([
-                "attach",
-                "-owners",
-                "on",
-                "-nobrowse",
-                "-noautoopen",
-                "-mountpoint",
-            ])
+            .args(["attach", "-nobrowse", "-noautoopen", "-mountpoint"])
             .arg(&mount)
             .arg(image));
         Self { mount }
@@ -317,7 +308,7 @@ fn macos_flutter_packages_launch_and_upgrade() {
             .arg(&pkg)
             .arg(&expanded));
         let distribution = fs::read_to_string(expanded.join("Distribution")).unwrap();
-        assert!(distribution.contains("enable_local=\"true\""));
+        assert!(distribution.contains("enable_localSystem=\"true\""));
         let component = fs::read_dir(&expanded)
             .unwrap()
             .map(|entry| entry.unwrap().path())
@@ -342,9 +333,29 @@ fn macos_flutter_packages_launch_and_upgrade() {
             version,
         );
         if let Some(volume) = &volume {
+            // The package installs on the startup disk only; a copy that
+            // also enables other volumes exercises the same payload,
+            // upgrade and receipt on the isolated one.
+            let editable = project.root.join(format!("anywhere-{version}"));
+            run(Command::new("pkgutil")
+                .arg("--expand")
+                .arg(&pkg)
+                .arg(&editable));
+            let distribution_path = editable.join("Distribution");
+            let distribution = fs::read_to_string(&distribution_path).unwrap();
+            fs::write(
+                &distribution_path,
+                distribution.replace("enable_anywhere=\"false\"", "enable_anywhere=\"true\""),
+            )
+            .unwrap();
+            let anywhere = project.root.join(format!("anywhere-{version}.pkg"));
+            run(Command::new("pkgutil")
+                .arg("--flatten")
+                .arg(&editable)
+                .arg(&anywhere));
             run(Command::new("sudo")
                 .args(["-n", "installer", "-pkg"])
-                .arg(&pkg)
+                .arg(&anywhere)
                 .arg("-target")
                 .arg(&volume.mount));
             let bundle = volume.mount.join("Applications/flutter_app.app");
