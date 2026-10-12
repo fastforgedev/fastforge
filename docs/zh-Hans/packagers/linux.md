@@ -74,6 +74,7 @@ project:
 - **自动补全。** DEB：control 中没有 `Installed-Size` 时自动补上，生成 `md5sums`，并把所有 `/etc` 文件登记到 `conffiles`。Pacman：补上 `size`、`builddate`，并为每个 `/etc` 文件添加 `backup` 条目。RPM：把 `/etc` 文件列为 `%config(noreplace)`。你自己写的值会保留。
 - **桌面文件和 metainfo。** 模板的文件名不限：一个 `*.desktop` 文件和一个 `*.metainfo.xml`（或 `*.appdata.xml`）文件。无论叫什么，都会安装为 `${APP_ID}.desktop` 和 `usr/share/metainfo/${APP_ID}.metainfo.xml`，这是桌面文件规范和 AppStream 的要求。桌面文件中启动命令写作 `${APP_BINARY_NAME}`，图标写作 `${APP_ID}`。在 Linux 上 `APP_ID` 总有值：优先取 `project.app_id`，其次取 `linux/CMakeLists.txt` 中的 `APPLICATION_ID`，最后为可执行文件名。
 - **Wayland。** 桌面文件按窗口的 app id 匹配，而 GTK 把程序名作为 app id 上报。请让 `linux/CMakeLists.txt` 中的 `APPLICATION_ID` 与 `project.app_id` 一致，或不设置 `project.app_id`。还要像新版 Flutter 模板那样在 `my_application_new()` 中调用 `g_set_prgname(APPLICATION_ID)`，否则窗口上报的是可执行文件名。
+- **窗口位置。** Wayland 下应用无法自行放置窗口，因此从桌面启动安装包时，`window_manager` 的 `setPosition` 等调用不会生效，而同一 bundle 在 X11 终端或 IDE 中启动时可以定位窗口。安装包内容就是 bundle 本身，区别只在会话类型。必须定位窗口的应用可以在桌面模板中写 `Exec=env GDK_BACKEND=x11 ${APP_BINARY_NAME} %U`，改为通过 XWayland 运行。
 - **图标。** 图标取自 `project.icon`；`make_config.yaml` 设置了 `icon` 时以它为准。SVG 安装为 scalable 图标。PNG 会先补成正方形，再缩放到不超过原图的各个标准尺寸（16 到 512 像素）。其他格式会导致打包失败。如果想提供手工绘制的各尺寸图标，请放进 `files/` 覆盖树。
 - **包名和版本号。** `PACKAGE_NAME` 优先取 `make_config.yaml` 的 `package_name`，其次取 `project.package_name`，最后为该格式的默认值。`PACKAGE_VERSION` 是按该格式语法书写的版本号，`1.2.3-beta.1` 这类预发布版本会排在正式版之前。
 - 同一目录中有**多个同类模板**（例如两个 `*.desktop` 文件或两个 `*.spec` 文件）时打包失败，因为 Fastforge 无法判断应使用哪一个。
