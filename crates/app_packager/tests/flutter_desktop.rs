@@ -333,21 +333,26 @@ fn macos_flutter_packages_launch_and_upgrade() {
             version,
         );
         if let Some(volume) = &volume {
-            // The package installs on the startup disk only; a copy that
-            // also enables other volumes exercises the same payload,
-            // upgrade and receipt on the isolated one.
+            // The package installs on the startup disk only, and its
+            // volume check requires macOS on the target; a copy without
+            // either exercises the same payload, upgrade and receipt on the
+            // isolated volume.
             let editable = project.root.join(format!("anywhere-{version}"));
             run(Command::new("pkgutil")
                 .arg("--expand")
                 .arg(&pkg)
                 .arg(&editable));
             let distribution_path = editable.join("Distribution");
-            let distribution = fs::read_to_string(&distribution_path).unwrap();
-            fs::write(
-                &distribution_path,
-                distribution.replace("enable_anywhere=\"false\"", "enable_anywhere=\"true\""),
-            )
-            .unwrap();
+            let mut distribution = fs::read_to_string(&distribution_path)
+                .unwrap()
+                .replace("enable_anywhere=\"false\"", "enable_anywhere=\"true\"");
+            if let (Some(start), Some(end)) = (
+                distribution.find("<volume-check>"),
+                distribution.find("</volume-check>"),
+            ) {
+                distribution.replace_range(start..end + "</volume-check>".len(), "");
+            }
+            fs::write(&distribution_path, distribution).unwrap();
             let anywhere = project.root.join(format!("anywhere-{version}.pkg"));
             run(Command::new("pkgutil")
                 .arg("--flatten")
