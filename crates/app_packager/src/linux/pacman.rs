@@ -240,13 +240,25 @@ fn fill_pkginfo(pkginfo: &str, size: u64, build_date: u64, config_files: &[Strin
 }
 
 fn run(cmd: &mut Command) -> Result<(), PackageError> {
+    let program = cmd.get_program().to_string_lossy().to_string();
     let out = cmd.output().map_err(|e| {
-        PackageError::MissingTool(format!("{}: {}", cmd.get_program().to_string_lossy(), e))
+        PackageError::MissingTool(format!(
+            "{}: {} (install libarchive: `libarchive-tools` on Debian/Ubuntu, `bsdtar` on Fedora, `libarchive` on Arch)",
+            program, e
+        ))
     })?;
     if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let message = match (stderr.trim(), stdout.trim()) {
+            ("", "") => format!("exited with {}", out.status),
+            (err, "") => err.to_string(),
+            ("", out) => out.to_string(),
+            (err, out) => format!("{}\n{}", err, out),
+        };
         return Err(PackageError::CommandFailed {
-            command: cmd.get_program().to_string_lossy().into(),
-            stderr: String::from_utf8_lossy(&out.stderr).into(),
+            command: program,
+            stderr: message,
         });
     }
     Ok(())

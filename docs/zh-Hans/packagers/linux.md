@@ -115,7 +115,7 @@ RPM 保留 `/opt/<binary>` 安装目录。包名与程序名不同的项目同�
 
 ## Pacman
 
-需要支持 zstd 的 `bsdtar`，不使用 `makepkg`。产物是属主为 root 的 `.pkg.tar.zst` 归档，包含 `.MTREE`、`.PKGINFO`、`.INSTALL`（如有）以及包根目录。生成的 `.PKGINFO` 使用 makepkg 的格式，每个值一行 `key = value`。默认包名为可执行文件名。`pkgver` 为 `<构建名>-<release>`，构建名中的 `-` 会被去掉；release 为构建号按 `.` 分隔的第一段，没有构建号时为 `1`。设置了 `SOURCE_DATE_EPOCH` 时，`builddate` 使用该值。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `gtk3`；设为空列表可以去掉。`make_config.yaml` 额外的键包括 `maintainer`、`licenses`、`groups`、`dependencies`、`optional_dependencies`、`conflicts`、`provides`、`replaces`、`supported_mime_type`、`actions`，以及用于生成 `.INSTALL` 的 `postinstall_scripts`、`postupgrade_scripts` 和 `postuninstall_scripts`。
+需要支持 zstd 的 `bsdtar`（Debian/Ubuntu 上为 `libarchive-tools`，Fedora 上为 `bsdtar`，Arch 上为 `libarchive`），不使用 `makepkg`。产物是属主为 root 的 `.pkg.tar.zst` 归档，包含 `.MTREE`、`.PKGINFO`、`.INSTALL`（如有）以及包根目录。生成的 `.PKGINFO` 使用 makepkg 的格式，每个值一行 `key = value`。默认包名为可执行文件名。`pkgver` 为 `<构建名>-<release>`，构建名中的 `-` 会被去掉；release 为构建号按 `.` 分隔的第一段，没有构建号时为 `1`。设置了 `SOURCE_DATE_EPOCH` 时，`builddate` 使用该值。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `gtk3`；设为空列表可以去掉。`make_config.yaml` 额外的键包括 `maintainer`、`licenses`、`groups`、`dependencies`、`optional_dependencies`、`conflicts`、`provides`、`replaces`、`supported_mime_type`、`actions`，以及用于生成 `.INSTALL` 的 `postinstall_scripts`、`postupgrade_scripts` 和 `postuninstall_scripts`。
 
 Pacman 旧字段 `installed_size` 和 `options` 现在会输出迁移提示。`size` 按实际暂存内容计算字节数；`options` 属于 makepkg，不能作为 PKGINFO 元数据。需要的预处理应移到钩子或工作流。
 
