@@ -217,8 +217,17 @@ struct MountedImage {
 impl MountedImage {
     fn attach(image: &Path, mount: PathBuf) -> Self {
         fs::create_dir_all(&mount).unwrap();
+        // `installer` refuses a target volume that ignores ownership, which
+        // disk images do unless attached with `-owners on`.
         run(Command::new("hdiutil")
-            .args(["attach", "-nobrowse", "-noautoopen", "-mountpoint"])
+            .args([
+                "attach",
+                "-owners",
+                "on",
+                "-nobrowse",
+                "-noautoopen",
+                "-mountpoint",
+            ])
             .arg(&mount)
             .arg(image));
         Self { mount }
