@@ -71,7 +71,7 @@ Arguments without a dedicated flag, such as `profile`, `obfuscate`, `split-debug
 
 ### Output Location and Artifact Names
 
-Artifacts are written to `<output>/<version>/<artifact name>`, for example `dist/1.2.3+4/my_app-1.2.3+4-macos.dmg`. `<output>` is the `--output` argument when given, the `output` key of `distribute_options.yaml` otherwise, and `dist/` when neither is set — so a workflow can drive it without a `distribute_options.yaml`.
+Artifacts are written to `<output>/<version>/<artifact name>`, for example `dist/1.2.3+4/my_app-1.2.3+4-macos.dmg`. In Flutter projects, `<version>` and the version in the artifact name and packaging variables come from `pubspec.yaml`, with `build-name` and `build-number` build arguments replacing their parts, so `--flutter-build-args build-name=2.0.0,build-number=42` packages `2.0.0+42` without editing `pubspec.yaml`. `<output>` is the `--output` argument when given, the `output` key of `distribute_options.yaml` otherwise, and `dist/` when neither is set — so a workflow can drive it without a `distribute_options.yaml`.
 
 The default artifact name template is:
 

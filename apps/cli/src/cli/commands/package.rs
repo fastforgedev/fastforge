@@ -317,7 +317,9 @@ pub fn package(request: PackageRequest) -> Result<Vec<PackagedTarget>> {
     for target in request.targets {
         println!(
             "Packaging {} {} as {}:",
-            pubspec.name, pubspec.version, target
+            pubspec.name,
+            pubspec.effective_version(&request.build_arguments)?,
+            target
         );
 
         // Reject unknown (platform, target) pairs before building. A builder
@@ -460,7 +462,7 @@ pub fn package_flutter_build(
     let package_config = PackageConfig {
         app_name: pubspec.name.clone(),
         app_binary_name,
-        app_version: pubspec.version,
+        app_version: pubspec.effective_version(&build.config.arguments)?,
         build_mode: build.config.mode().as_str().to_string(),
         platform,
         flavor: build.config.flavor().map(ToOwned::to_owned),
@@ -1248,6 +1250,35 @@ impl ProjectPubspec {
             .text;
         Ok(pubspec)
     }
+
+    /// The version the build produces: `build-name` and `build-number`
+    /// build arguments override the pubspec's, as they do for
+    /// `flutter build`, so artifacts are named and placed by it.
+    fn effective_version(&self, arguments: &Map<String, Value>) -> Result<String> {
+        effective_version(&self.version, arguments)
+    }
+}
+
+fn effective_version(pubspec_version: &str, arguments: &Map<String, Value>) -> Result<String> {
+    let argument = |key: &str| match arguments.get(key) {
+        Some(Value::String(value)) if !value.trim().is_empty() => Some(value.trim().to_string()),
+        Some(Value::Number(value)) => Some(value.to_string()),
+        _ => None,
+    };
+    let (build_name, build_number) = (argument("build-name"), argument("build-number"));
+    if build_name.is_none() && build_number.is_none() {
+        return Ok(pubspec_version.to_string());
+    }
+    let pubspec = fastforge_core::AppVersion::parse(pubspec_version)
+        .map_err(|e| anyhow!("pubspec.yaml: {e}"))?;
+    let build_name = build_name.unwrap_or(pubspec.build_name);
+    let version = match build_number.or(pubspec.build_number) {
+        Some(number) => format!("{}+{}", build_name, number),
+        None => build_name,
+    };
+    Ok(fastforge_core::AppVersion::parse(&version)
+        .map_err(|e| anyhow!("build-name/build-number: {e}"))?
+        .text)
 }
 
 fn default_version() -> String {
@@ -1257,6 +1288,51 @@ fn default_version() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_name_and_number_arguments_override_the_pubspec_version() {
+        let args = |pairs: &[(&str, Value)]| {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect::<Map<String, Value>>()
+        };
+        assert_eq!(effective_version("1.0.0+1", &args(&[])).unwrap(), "1.0.0+1");
+        assert_eq!(
+            effective_version(
+                "1.0.0+1",
+                &args(&[
+                    ("build-name", Value::String("2.3.4".into())),
+                    ("build-number", Value::Number(56.into())),
+                ])
+            )
+            .unwrap(),
+            "2.3.4+56"
+        );
+        assert_eq!(
+            effective_version(
+                "1.0.0+1",
+                &args(&[("build-number", Value::String("7".into()))])
+            )
+            .unwrap(),
+            "1.0.0+7"
+        );
+        assert_eq!(
+            effective_version(
+                "1.0.0",
+                &args(&[("build-name", Value::String("1.1.0".into()))])
+            )
+            .unwrap(),
+            "1.1.0"
+        );
+        assert!(
+            effective_version(
+                "1.0.0",
+                &args(&[("build-name", Value::String("v1".into()))])
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn result_json_keeps_build_numbers_optional_and_reports_effective_common_settings() {

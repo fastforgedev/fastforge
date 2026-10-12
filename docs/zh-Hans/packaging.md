@@ -71,7 +71,7 @@ fastforge package --platform macos --targets dmg,zip
 
 ### 输出位置与产物名
 
-产物写入 `<output>/<version>/<产物名>`，例如 `dist/1.2.3+4/my_app-1.2.3+4-macos.dmg`。`<output>` 优先取 `--output` 参数，其次取 `distribute_options.yaml` 的 `output`，两者都没有时为 `dist/` —— 因此工作流无需 `distribute_options.yaml` 也能指定输出目录。
+产物写入 `<output>/<version>/<产物名>`，例如 `dist/1.2.3+4/my_app-1.2.3+4-macos.dmg`。在 Flutter 项目中，`<version>` 以及产物名和打包变量中的版本取自 `pubspec.yaml`，构建参数 `build-name` 和 `build-number` 会替换对应部分，因此 `--flutter-build-args build-name=2.0.0,build-number=42` 无需修改 `pubspec.yaml` 即可打包 `2.0.0+42`。`<output>` 优先取 `--output` 参数，其次取 `distribute_options.yaml` 的 `output`，两者都没有时为 `dist/` —— 因此工作流无需 `distribute_options.yaml` 也能指定输出目录。
 
 默认产物名模板为：
 
