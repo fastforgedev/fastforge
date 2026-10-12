@@ -122,7 +122,7 @@ fastforge package [OPTIONS]
 > [!WARNING]
 > `distribute_options.yaml` 已废弃。为兼容 Dart 版仍会读取，但不再增加新功能。`package` 请改用 `--output` 和环境变量，`release` 请改用[本地工作流](workflows.md)。
 
-与 Dart 版一致，存在 `distribute_options.yaml` 时 `package` 会读取它：产物输出到其 `output` 目录（默认 `dist/`），其 `variables` 叠加在环境变量之上，传给构建、打包器（例如 `INNO_SETUP_PATH`）和 hook。`flutter clean` 最多执行一次；非 Android 平台只构建一次并复用给所有 target。构建器无法在当前系统运行的 target 会打印警告并跳过。
+与 Dart 版一致，存在 `distribute_options.yaml` 时 `package` 会读取它：产物输出到其 `output` 目录（默认 `dist/`），其 `variables` 叠加在环境变量之上，传给构建、打包器（例如 `INNO_SETUP_PATH`）和 hook。值恰好写成 `${NAME}` 或 `$NAME` 时从环境变量读取，未设置或为空时该键改由环境变量提供，因此 `PGYER_API_KEY: ${PGYER_API_KEY}` 可以正常工作；`release` 对 release 级和 job 级的 `variables` 也这样处理。`flutter clean` 最多执行一次；非 Android 平台只构建一次并复用给所有 target。构建器无法在当前系统运行的 target 会打印警告并跳过。
 
 使用 `--host` 时，项目会同步到远程主机，在那里执行同一条 `package` 命令，产物取回本地输出目录。详见[远程主机](remote-hosts.md)。
 

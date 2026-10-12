@@ -122,7 +122,7 @@ fastforge package [OPTIONS]
 > [!WARNING]
 > `distribute_options.yaml` is deprecated. It is still read for compatibility with the Dart CLI, but it gets no new features. Use `--output` and environment variables with `package`, and [local workflows](workflows.md) instead of `release`.
 
-Like the Dart CLI, `package` reads `distribute_options.yaml` when present: artifacts go to its `output` directory (default `dist/`), and its `variables` are layered over the environment for the build, the packagers (for example `INNO_SETUP_PATH`) and the hooks. `flutter clean` runs at most once; non-Android platforms build once and reuse the output for every target. A target whose builder cannot run on the current OS is skipped with a warning.
+Like the Dart CLI, `package` reads `distribute_options.yaml` when present: artifacts go to its `output` directory (default `dist/`), and its `variables` are layered over the environment for the build, the packagers (for example `INNO_SETUP_PATH`) and the hooks. A value written exactly as `${NAME}` or `$NAME` is read from the environment, and one that is unset or empty leaves the key to the environment, so `PGYER_API_KEY: ${PGYER_API_KEY}` works; `release` treats release- and job-level `variables` the same way. `flutter clean` runs at most once; non-Android platforms build once and reuse the output for every target. A target whose builder cannot run on the current OS is skipped with a warning.
 
 With `--host`, the project is synced to the host, the same `package` command runs there, and the artifacts are fetched into the local output directory. See [Remote Hosts](remote-hosts.md).
 

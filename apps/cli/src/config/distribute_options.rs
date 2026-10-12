@@ -55,11 +55,46 @@ impl DistributeOptions {
     /// Resolved variables: `variables`, or the legacy `env` key when
     /// `variables` is absent (Dart reads only one of them).
     pub fn resolved_variables(&self) -> HashMap<String, String> {
-        self.variables
-            .clone()
-            .or_else(|| self.env.clone())
-            .unwrap_or_default()
+        resolve_env_references(
+            self.variables
+                .as_ref()
+                .or(self.env.as_ref())
+                .cloned()
+                .unwrap_or_default(),
+        )
     }
+}
+
+/// Reads a value written exactly as `${NAME}` or `$NAME` from the process
+/// environment, as users expect from a YAML file that names a secret
+/// (`PGYER_API_KEY: ${PGYER_API_KEY}`). An unset variable resolves to an
+/// empty value, which callers treat as unset, so the key falls back to the
+/// environment instead of the literal reference.
+pub fn resolve_env_references(variables: HashMap<String, String>) -> HashMap<String, String> {
+    variables
+        .into_iter()
+        .map(|(key, value)| {
+            let value = match env_reference(&value) {
+                Some(name) => std::env::var(name).unwrap_or_default(),
+                None => value,
+            };
+            (key, value)
+        })
+        .collect()
+}
+
+fn env_reference(value: &str) -> Option<&str> {
+    let value = value.trim();
+    let name = match value.strip_prefix("${") {
+        Some(rest) => rest.strip_suffix('}')?,
+        None => value.strip_prefix('$')?,
+    };
+    let mut chars = name.chars();
+    let valid = chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
+    valid.then_some(name)
 }
 
 impl Default for DistributeOptions {
@@ -79,6 +114,27 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn variables_read_exact_environment_references() {
+        let path = std::env::var("PATH").unwrap();
+        let variables = HashMap::from([
+            ("A".to_string(), "${PATH}".to_string()),
+            ("B".to_string(), "$PATH".to_string()),
+            (
+                "C".to_string(),
+                "${FASTFORGE_TEST_UNSET_VARIABLE}".to_string(),
+            ),
+            ("D".to_string(), "prefix-${PATH}".to_string()),
+            ("E".to_string(), "$100".to_string()),
+        ]);
+        let resolved = resolve_env_references(variables);
+        assert_eq!(resolved["A"], path);
+        assert_eq!(resolved["B"], path);
+        assert_eq!(resolved["C"], "");
+        assert_eq!(resolved["D"], "prefix-${PATH}");
+        assert_eq!(resolved["E"], "$100");
+    }
 
     const HELLO_WORLD_YAML: &str = r#"
 output: dist/

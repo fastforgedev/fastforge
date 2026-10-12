@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::config::DistributeOptions;
+use crate::config::distribute_options::resolve_env_references;
 use crate::config::release::ReleaseJob;
 use crate::utils::global_variables;
 
@@ -112,11 +113,14 @@ fn run(args: &ReleaseArgs) -> Result<()> {
 
             // global < release-level < job-level
             let mut variables = global_vars.clone();
-            if let Some(rv) = &release.variables {
-                variables.extend(rv.clone());
-            }
-            if let Some(jv) = &job.variables {
-                variables.extend(jv.clone());
+            // An empty value (such as an unset `${NAME}`) leaves the key to
+            // the outer level, as for global variables.
+            for level in [&release.variables, &job.variables].into_iter().flatten() {
+                variables.extend(
+                    resolve_env_references(level.clone())
+                        .into_iter()
+                        .filter(|(_, value)| !value.is_empty()),
+                );
             }
 
             if args.dry_run {
