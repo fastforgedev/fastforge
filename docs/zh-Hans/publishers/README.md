@@ -21,6 +21,7 @@
 | `playstore`        | Google Play AAB 上传       | [Google Play](playstore.md)  |
 | `appgallery`       | Huawei AppGallery          | [AppGallery](appgallery.md)  |
 | `vercel`           | Vercel Production          | [Vercel](vercel.md)          |
+| `aur`              | Arch 用户软件仓库（AUR）   | [AUR](aur.md)                |
 | `custom`           | 自定义 shell 命令          | [Custom](custom.md)          |
 
 ## 通用用法

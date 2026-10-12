@@ -21,6 +21,7 @@ This section groups the currently connected targets by purpose. Object storage s
 | `playstore`        | Google Play AAB upload         | [Google Play](playstore.md)       |
 | `appgallery`       | Huawei AppGallery              | [AppGallery](appgallery.md)       |
 | `vercel`           | Vercel Production              | [Vercel](vercel.md)               |
+| `aur`              | Arch User Repository           | [AUR](aur.md)                     |
 | `custom`           | Custom shell command           | [Custom](custom.md)               |
 
 ## General Usage

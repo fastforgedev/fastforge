@@ -41,7 +41,7 @@ The legacy documentation remains in [`apps/docs`](../../apps/docs/). This direct
 - [Publisher overview](publishers/README.md)
 - [Object storage](publishers/s3.md) · [fir.im](publishers/fir.md) · [PGYER](publishers/pgyer.md) · [Firebase](publishers/firebase.md)
 - [GitHub](publishers/github.md) · [App Store](publishers/appstore.md) · [Google Play](publishers/playstore.md) · [AppGallery](publishers/appgallery.md)
-- [Vercel](publishers/vercel.md) · [Custom](publishers/custom.md)
+- [Vercel](publishers/vercel.md) · [AUR](publishers/aur.md) · [Custom](publishers/custom.md)
 
 ### Stores and Tools
 

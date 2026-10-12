@@ -41,7 +41,7 @@
 - [发布器总览](publishers/README.md)
 - [对象存储](publishers/s3.md) · [fir.im](publishers/fir.md) · [蒲公英](publishers/pgyer.md) · [Firebase](publishers/firebase.md)
 - [GitHub](publishers/github.md) · [App Store](publishers/appstore.md) · [Google Play](publishers/playstore.md) · [AppGallery](publishers/appgallery.md)
-- [Vercel](publishers/vercel.md) · [Custom](publishers/custom.md)
+- [Vercel](publishers/vercel.md) · [AUR](publishers/aur.md) · [Custom](publishers/custom.md)
 
 ### 商店与工具
 
