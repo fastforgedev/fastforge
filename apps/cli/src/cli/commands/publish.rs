@@ -2,9 +2,9 @@ use anyhow::{Result, anyhow};
 use clap::Args;
 use fastforge_app_publisher::{
     AppGalleryPublisher, AppPublisher, AppStorePublisher, CosPublisher, CustomPublisher,
-    FirPublisher, FirebaseHostingPublisher, FirebasePublisher, GitHubPublisher, MinioPublisher,
-    OssPublisher, PgyerPublisher, PlayStorePublisher, PublishConfig, PublishProgressCallback,
-    QiniuPublisher, S3Publisher, VercelPublisher,
+    FirPublisher, FirebaseHostingPublisher, FirebasePublisher, GitHubPublisher, GiteaPublisher,
+    MinioPublisher, OssPublisher, PgyerPublisher, PlayStorePublisher, PublishConfig,
+    PublishProgressCallback, QiniuPublisher, S3Publisher, VercelPublisher,
 };
 use std::collections::HashMap;
 use std::io::{IsTerminal, Write};
@@ -27,7 +27,7 @@ pub struct PublishArgs {
         short,
         long = "targets",
         alias = "target",
-        value_name = "appgallery,appstore,fir,firebase,github,playstore,pgyer,qiniu,vercel"
+        value_name = "appgallery,appstore,fir,firebase,gitea,github,playstore,pgyer,qiniu,vercel"
     )]
     pub targets: Option<String>,
     /// The version of the app
@@ -412,6 +412,7 @@ pub fn publish_artifact_with_env(
         "firebase" => FirebasePublisher::new().publish(publish_config, progress),
         "firebase-hosting" => FirebaseHostingPublisher::new().publish(publish_config, progress),
         "github" => GitHubPublisher::new().publish(publish_config, progress),
+        "gitea" => GiteaPublisher::new().publish(publish_config, progress),
         "appstore" => AppStorePublisher::new().publish(publish_config, progress),
         "appgallery" => AppGalleryPublisher::new().publish(publish_config, progress),
         "playstore" => PlayStorePublisher::new().publish(publish_config, progress),
@@ -419,7 +420,7 @@ pub fn publish_artifact_with_env(
         "vercel" => VercelPublisher::new().publish(publish_config, progress),
         "custom" => CustomPublisher::new().publish(publish_config, progress),
         _ => Err(fastforge_app_publisher::PublishError::General(format!(
-            "Unsupported publish target: `{}`. Currently supported: s3, minio, qiniu, oss, cos, fir, firebase, firebase-hosting, github, appstore, appgallery, playstore, pgyer, vercel, custom",
+            "Unsupported publish target: `{}`. Currently supported: s3, minio, qiniu, oss, cos, fir, firebase, firebase-hosting, github, gitea, appstore, appgallery, playstore, pgyer, vercel, custom",
             target
         ))),
     };

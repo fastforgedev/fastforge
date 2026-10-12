@@ -60,6 +60,7 @@
 - [Firebase Hosting](docs/zh-Hans/publishers/firebase.md#firebase-hosting)
 - [FIR](docs/zh-Hans/publishers/fir.md)
 - [GitHub Releases](docs/zh-Hans/publishers/github.md)
+- [Gitea / Forgejo Releases](docs/zh-Hans/publishers/gitea.md)
 - [蒲公英](docs/zh-Hans/publishers/pgyer.md)
 - [Play Store](docs/zh-Hans/publishers/playstore.md)
 - [Vercel](docs/zh-Hans/publishers/vercel.md)

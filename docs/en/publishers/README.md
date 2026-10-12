@@ -17,6 +17,7 @@ This section groups the currently connected targets by purpose. Object storage s
 | `firebase`         | Firebase App Distribution      | [Firebase](firebase.md)           |
 | `firebase-hosting` | Firebase Hosting               | [Firebase](firebase.md)           |
 | `github`           | GitHub Releases                | [GitHub](github.md)               |
+| `gitea`            | Gitea, Forgejo, and Codeberg Releases | [Gitea](gitea.md)          |
 | `appstore`         | App Store Connect build upload | [App Store](appstore.md)          |
 | `playstore`        | Google Play AAB upload         | [Google Play](playstore.md)       |
 | `appgallery`       | Huawei AppGallery              | [AppGallery](appgallery.md)       |
