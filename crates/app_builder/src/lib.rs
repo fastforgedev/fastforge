@@ -164,7 +164,12 @@ fn encode_build_arguments(arguments: &Map<String, Value>) -> Vec<String> {
 
     for (key, value) in arguments {
         match value {
+            // An empty value (`split-per-abi: ''` in YAML) is a switch too:
+            // `--split-per-abi ""` would pass an empty positional argument.
             Value::Null | Value::Bool(_) => {
+                output.push(format!("--{}", key));
+            }
+            Value::String(s) if s.trim().is_empty() => {
                 output.push(format!("--{}", key));
             }
             Value::Array(items) => {
@@ -200,6 +205,17 @@ fn value_to_cli_string(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_values_are_switches() {
+        let mut args = Map::new();
+        args.insert("split-per-abi".to_string(), Value::String(String::new()));
+        args.insert("flavor".to_string(), Value::String("prod".into()));
+        assert_eq!(
+            encode_build_arguments(&args),
+            ["--split-per-abi", "--flavor", "prod"]
+        );
+    }
     use serde_json::json;
 
     #[test]
