@@ -481,6 +481,12 @@ mod tests {
             ("extra-flags", json!(["--nologo", "-v:m"])),
         ]))
         .unwrap();
+        // The output directory is joined with the host's separator.
+        let output = ["bin", "fastforge", "Release", "x64", "publish"]
+            .iter()
+            .fold(Path::new("MyApp").to_path_buf(), |dir, part| dir.join(part))
+            .display()
+            .to_string();
         assert_eq!(
             args,
             [
@@ -495,7 +501,7 @@ mod tests {
                 "-p:RustConfiguration=release",
                 "-p:Number=1",
                 "-o",
-                "MyApp/bin/fastforge/Release/x64/publish",
+                &output,
                 "--nologo",
                 "-v:m",
             ]
