@@ -56,4 +56,4 @@ fastforge publish --path build/web --target firebase-hosting \
   --publish-arg project-id=my-project
 ```
 
-Fastforge 会在目标目录生成 `.firebaserc` 和 `firebase.json`，随后在该目录运行 `firebase deploy`。设置了 `FIREBASE_TOKEN` 时会传给 CLI；已登录 Firebase CLI 时可省略，CI 中建议设置。发布结果为 CLI 输出的 `Hosting URL`。
+Fastforge 会在目标目录生成 `.firebaserc` 和 `firebase.json`，随后在该目录运行 `firebase deploy`。项目自身存在 `firebase.json` 时，生成的 `firebase.json` 会沿用其 `hosting` 设置（多个站点时取第一个），例如 `headers`、`redirects`、`rewrites` 和 `cleanUrls`，并以目标目录作为站点内容：替换 `public`，在 `ignore` 中加入 `firebase.json` 和 `.firebaserc`，去掉 `target`、`predeploy` 和 `postdeploy`。设置了 `FIREBASE_TOKEN` 时会传给 CLI；已登录 Firebase CLI 时可省略，CI 中建议设置。发布结果为 CLI 输出的 `Hosting URL`。

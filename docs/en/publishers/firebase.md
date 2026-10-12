@@ -56,4 +56,4 @@ fastforge publish --path build/web --target firebase-hosting \
   --publish-arg project-id=my-project
 ```
 
-Fastforge generates `.firebaserc` and `firebase.json` in the target directory, then runs `firebase deploy` there. `FIREBASE_TOKEN` is passed to the CLI when set; it may be omitted when the Firebase CLI is already signed in, and is recommended in CI. The publishing result is the `Hosting URL` printed by the CLI.
+Fastforge generates `.firebaserc` and `firebase.json` in the target directory, then runs `firebase deploy` there. The generated `firebase.json` takes the `hosting` settings of the project's own `firebase.json` when there is one (the first site of several), such as `headers`, `redirects`, `rewrites`, and `cleanUrls`, and serves them from the target directory; `public` is replaced, `firebase.json` and `.firebaserc` are added to `ignore`, and `target`, `predeploy`, and `postdeploy` are dropped. `FIREBASE_TOKEN` is passed to the CLI when set; it may be omitted when the Firebase CLI is already signed in, and is recommended in CI. The publishing result is the `Hosting URL` printed by the CLI.

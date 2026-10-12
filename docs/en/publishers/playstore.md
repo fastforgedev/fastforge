@@ -26,7 +26,7 @@ fastforge publish --path dist/app-release.aab --target playstore \
 | ------------------ | :------: | --------------------------------------------------------------- |
 | `package-name`     |   Yes    | Application package name (`--playstore-package-name`)           |
 | `credentials-file` |    No    | Overrides `PLAYSTORE_CREDENTIALS`                               |
-| `track`            |    No    | Track to assign the uploaded version code to (`--playstore-track`) |
+| `track`            |    No    | Track to assign the uploaded version code to (`--playstore-track`): `production`, `beta` (open testing), `alpha` (closed testing), `internal`, or a custom track name |
 
 The publisher creates an edit, uploads the bundle, and commits the edit. When `track` is set, it first updates that track with a release containing the new version code and status `completed` (a full rollout). The release name is `<build> (<version>)` when the second `-`-separated segment of the file name is `<version>+<build>` (for example `my_app-1.0.0+5-android.aab`); otherwise it is the app version, or `release`. The publishing result is the Play Console URL for the app.
 

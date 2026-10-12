@@ -282,9 +282,11 @@ fn update_track(
         .send()
         .map_err(to_publish_error)?;
     if !response.status().is_success() {
+        let status = response.status();
         return Err(PublishError::HttpError(format!(
-            "Failed to update PlayStore track `{track}`: status={}",
-            response.status()
+            "Failed to update PlayStore track `{track}`: status={}{}",
+            status,
+            error_detail(response)
         )));
     }
     Ok(())
@@ -305,12 +307,29 @@ fn commit_edit(
         .send()
         .map_err(to_publish_error)?;
     if !response.status().is_success() {
+        let status = response.status();
         return Err(PublishError::HttpError(format!(
-            "Failed to commit PlayStore edit: status={}",
-            response.status()
+            "Failed to commit PlayStore edit: status={}{}",
+            status,
+            error_detail(response)
         )));
     }
     Ok(())
+}
+
+/// The API's error message, prefixed for appending to a status, such as the
+/// valid track names when a track does not exist (Internal testing is
+/// `internal`, Closed testing `alpha` or a custom track name).
+fn error_detail(response: reqwest::blocking::Response) -> String {
+    let body = response.text().unwrap_or_default();
+    let message = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| v["error"]["message"].as_str().map(String::from))
+        .unwrap_or(body);
+    match message.trim() {
+        "" => String::new(),
+        message => format!(": {message}"),
+    }
 }
 
 fn build_release_name(path: &str, app_version: Option<&str>) -> String {
