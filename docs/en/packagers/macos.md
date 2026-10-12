@@ -60,7 +60,7 @@ Additional steps such as notarization can be run through a post-package hook (`-
 
 ## PKG
 
-PKG is the macOS installer package format. Fastforge builds it with `xcrun productbuild` and `pkgutil`. The PKG packager reads this optional configuration file:
+PKG is the macOS installer package format. Fastforge builds it with `xcrun productbuild` and `pkgutil`. The package installs on the startup disk only (`enable_localSystem`). The PKG packager reads this optional configuration file:
 
 ```text
 macos/packaging/pkg/make_config.yaml
