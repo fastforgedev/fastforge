@@ -221,7 +221,7 @@ fn shared_dependencies(so_path: &Path) -> Result<BTreeSet<String>, PackageError>
     Ok(parse_ldd_output(&output))
 }
 
-/// Like [`shared_dependencies`], but a file `ldd` cannot inspect, such as a
+/// Like [`shared_dependencies`], but a library `ldd` cannot inspect, such as a
 /// static or foreign-architecture object (`not a dynamic executable`), has
 /// no dependencies to bundle instead of failing the package.
 fn plugin_dependencies(so_path: &Path) -> BTreeSet<String> {
@@ -374,7 +374,7 @@ impl AppPackager for LinuxAppImagePackager {
         let lib_dir = app_dir.join("lib");
         let gtk_so = lib_dir.join("libflutter_linux_gtk.so");
         if gtk_so.exists() {
-            let gtk_deps = shared_dependencies(&gtk_so)?;
+            let gtk_deps = plugin_dependencies(&gtk_so);
             if let Ok(entries) = std::fs::read_dir(&lib_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
