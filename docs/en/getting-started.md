@@ -33,7 +33,7 @@ fastforge package --platform macos --target dmg
 fastforge package --target apk   # --platform is inferred when the target is unambiguous
 ```
 
-Projects without `pubspec.yaml` can package only Android (Gradle Builder), iOS, and macOS (Xcode Builder). Xcode projects need `project` and `scheme`: pass them with `--flutter-build-args project=...,scheme=...` or a workflow's `build-args`; see [Xcode Builder](builders/xcode.md). Before running a command, review the [builder overview](builders/README.md) and [packager overview](packagers/README.md) to confirm current coverage.
+Projects without `pubspec.yaml` can package only Android (Gradle Builder), iOS and macOS (Xcode Builder), and Windows (.NET Builder). Xcode projects need `project` and `scheme`, and .NET projects need `project`: pass them with `--flutter-build-args project=...,scheme=...` or a workflow's `build-args`; see [Xcode Builder](builders/xcode.md) and [.NET Builder](builders/dotnet.md). Before running a command, review the [builder overview](builders/README.md) and [packager overview](packagers/README.md) to confirm current coverage.
 
 ## 3. Publish an Existing Artifact
 

@@ -33,7 +33,7 @@ fastforge package --platform macos --target dmg
 fastforge package --target apk   # target 无歧义时可省略 --platform
 ```
 
-没有 `pubspec.yaml` 的项目只能打包 Android（Gradle Builder）、iOS 和 macOS（Xcode Builder）。Xcode 项目需要 `project` 和 `scheme`，可通过 `--flutter-build-args project=...,scheme=...` 或工作流的 `build-args` 传入，详见 [Xcode Builder](builders/xcode.md)。执行前可先查看[构建器总览](builders/README.md)和[打包器总览](packagers/README.md)确认覆盖范围。
+没有 `pubspec.yaml` 的项目只能打包 Android（Gradle Builder）、iOS 和 macOS（Xcode Builder）以及 Windows（.NET Builder）。Xcode 项目需要 `project` 和 `scheme`，.NET 项目需要 `project`，可通过 `--flutter-build-args project=...,scheme=...` 或工作流的 `build-args` 传入，详见 [Xcode Builder](builders/xcode.md) 和 [.NET Builder](builders/dotnet.md)。执行前可先查看[构建器总览](builders/README.md)和[打包器总览](packagers/README.md)确认覆盖范围。
 
 ## 3. 发布已有产物
 

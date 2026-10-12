@@ -92,6 +92,7 @@ Install the dependencies required by the operations you use:
 | Android build or analysis | Android SDK; APK analysis requires `aapt2` under `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) |
 | AAB analysis              | Android SDK `aapt2`, or bundletool specified through `BUNDLETOOL`       |
 | iOS / macOS builds        | macOS, Xcode, and command-line tools                                    |
+| Native Windows builds     | Windows and the .NET SDK (`dotnet` in `PATH`); the Windows App SDK for WinUI 3 |
 | Flutter builds            | Flutter SDK and the target platform toolchain, with `flutter` in `PATH` |
 | App Store uploads         | macOS, `xcrun`, and valid App Store Connect credentials                 |
 | Firebase publishing       | Firebase CLI                                                            |

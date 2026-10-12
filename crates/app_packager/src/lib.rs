@@ -29,6 +29,7 @@ pub use ohos::app::OHOSAppPackager;
 pub use ohos::hap::OHOSHapPackager;
 pub use web::direct::WebDirectPackager;
 pub use web::zip::WebZipPackager;
+pub use windows::appxmanifest::{AppxManifest, ManifestIdentity};
 pub use windows::direct::WindowsDirectPackager;
 pub use windows::exe::WindowsExePackager;
 pub use windows::msix::WindowsMsixPackager;

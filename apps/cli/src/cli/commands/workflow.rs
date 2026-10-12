@@ -559,8 +559,8 @@ impl Action for FastforgePackageAction {
         environment.extend(std::env::vars());
 
         // Auto-detect project type: Flutter (has pubspec.yaml) or native
-        // Xcode/Gradle. When no pubspec.yaml is found, route to the appropriate
-        // native builder.
+        // Xcode/Gradle/.NET. When no pubspec.yaml is found, route to the
+        // appropriate native builder.
         let is_native = !super::package::is_flutter_project();
 
         let artifacts = if is_native && platform == "macos" {
@@ -592,6 +592,19 @@ impl Action for FastforgePackageAction {
         } else if is_native && platform == "android" {
             tracing::info!("[fastforge/package] Detected native Android project (no pubspec.yaml)");
             super::package::package_native_android_artifact(
+                target,
+                build_args,
+                environment,
+                &output,
+                artifact_name,
+                hooks.as_ref(),
+            )
+            .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
+        } else if is_native && platform == "windows" {
+            tracing::info!(
+                "[fastforge/package] Detected native Windows .NET project (no pubspec.yaml)"
+            );
+            super::package::package_native_windows_artifact(
                 target,
                 build_args,
                 environment,

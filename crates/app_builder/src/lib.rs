@@ -1,4 +1,5 @@
 mod custom;
+mod dotnet;
 mod flutter;
 mod gradle;
 mod xcode;
@@ -15,6 +16,7 @@ use serde_json::{Map, Value};
 use std::time::Instant;
 
 pub use crate::custom::{CustomAppBuilder, CustomBuilder};
+pub use crate::dotnet::{DotnetAppBuilder, DotnetProject, DotnetWindowsBuilder};
 pub use crate::gradle::{
     GradleAndroidAabBuilder, GradleAndroidApkBuilder, GradleAppBuilder, GradleKmpAndroidAabBuilder,
     GradleKmpAndroidApkBuilder, GradleKmpDesktopBuilder, GradleKmpIosFrameworkBuilder,

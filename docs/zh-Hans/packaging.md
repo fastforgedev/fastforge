@@ -30,6 +30,7 @@ fastforge package --platform macos --targets dmg,zip
 | Gradle          | 原生 Android      | Android     | `apk`、`aab`                                                  |
 | Xcode           | 原生 iOS          | iOS         | `ipa`                                                         |
 | Xcode           | 原生 macOS        | macOS       | `dmg`、`pkg`、`zip`、`custom`                                 |
+| .NET            | 原生 Windows      | Windows     | `exe`、`msix`、`zip`、`direct`、`custom`                      |
 | Flutter Builder | 含 `pubspec.yaml` | Android     | `apk`、`aab`、`custom`                                        |
 | Flutter Builder | 含 `pubspec.yaml` | iOS         | `ipa`、`custom`                                               |
 | Flutter Builder | 含 `pubspec.yaml` | macOS       | `dmg`、`pkg`、`zip`、`custom`                                 |
@@ -38,14 +39,14 @@ fastforge package --platform macos --targets dmg,zip
 | Flutter Builder | 含 `pubspec.yaml` | Web         | `zip`、`direct`、`custom`                                     |
 | Flutter Builder | 含 `pubspec.yaml` | OpenHarmony | `hap`、`app`、`custom`                                        |
 
-不含 `pubspec.yaml` 的项目只支持 `android`、`ios` 和 `macos`。以上组合都可以通过 CLI 和 `fastforge/package` action 使用。
+不含 `pubspec.yaml` 的项目只支持 `android`、`ios`、`macos` 和 `windows`。以上组合都可以通过 CLI 和 `fastforge/package` action 使用。
 
 在 Flutter 项目中，不支持的平台/格式组合会在构建前被拒绝；每次调用最多执行一次 `flutter clean`；除 Android 外，所有平台只构建一次并在多个 target 间复用构建结果。
 
 > [!IMPORTANT]
 > 宿主限制：iOS 和 macOS 只能在 macOS 上构建，Windows 只能在 Windows 上构建，Linux 只能在 Linux 上构建。在 Flutter 项目中，如果某个 target 的构建器无法在当前宿主运行，该 target 会**输出警告并被跳过，命令仍以状态码 0 退出**。请检查输出，不要只依赖退出码。
 
-原生项目的行为有所不同：每个 target 单独构建，不执行 `flutter clean`，产物名不使用 channel 和 flavor，原生 macOS 会在 Xcode 构建完成后才校验格式。相关限制见 [Gradle Builder](builders/gradle.md) 和 [Xcode Builder](builders/xcode.md)。
+原生项目的行为有所不同：每个 target 单独构建，不执行 `flutter clean`，产物名不使用 channel 和 flavor，原生 macOS 会在 Xcode 构建完成后才校验格式。相关限制见 [Gradle Builder](builders/gradle.md)、[Xcode Builder](builders/xcode.md) 和 [.NET Builder](builders/dotnet.md)。
 
 需要单独检查 Flutter Builder 的结果时，运行 `fastforge build`，详见[构建](building.md)。
 
@@ -92,7 +93,7 @@ Fastforge 在原始打包文件中以 `${NAME}` 的形式提供以下变量，�
 
 | 变量                                                      | 值                                                                                     |
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `APP_NAME`、`APP_BINARY_NAME`                             | `pubspec.yaml` 中的名称和可执行文件名                                                  |
+| `APP_NAME`、`APP_BINARY_NAME`                             | `pubspec.yaml` 中的名称和可执行文件名；原生 Windows 项目取项目文件名和 `<AssemblyName>` |
 | `APP_VERSION`、`BUILD_NAME`、`BUILD_NUMBER`               | `1.2.3+4`、`1.2.3`、`4`；没有构建号时 `BUILD_NUMBER` 为空                               |
 | `APP_DISPLAY_NAME`                                        | `project.display_name`，其次 Linux `make_config.yaml` 的 `display_name`，最后为 `APP_NAME` |
 | `APP_DESCRIPTION`、`APP_HOMEPAGE`                         | `project.description` / `project.homepage`，其次取自 `pubspec.yaml`                     |
@@ -101,7 +102,7 @@ Fastforge 在原始打包文件中以 `${NAME}` 的形式提供以下变量，�
 | `BUILD_MODE`、`FLAVOR`、`CHANNEL`、`PLATFORM`、`PACKAGE_FORMAT` | 构建与打包选项                                                                    |
 | `BUILD_OUTPUT_DIRECTORY`、`OUTPUT_DIRECTORY`              | 构建输出目录和产物输出目录的绝对路径                                                   |
 | `PACKAGE_NAME`、`PACKAGE_VERSION`                         | Linux 的 `make_config.yaml` 的 `package_name`，其次 `project.package_name`，最后为格式默认值；版本采用该格式语法，Windows EXE 使用构建名称，MSIX 使用四段版本号 |
-| `PACKAGE_ARCH`、`ARCH`                                    | 该格式的架构名（DEB 为 `amd64`，Windows 为 `x64`/`arm64`）以及 `x86_64` 或 `aarch64`                    |
+| `PACKAGE_ARCH`、`ARCH`                                    | 该格式的架构名（DEB 为 `amd64`，Windows 为 `x64`/`arm64`，取自可执行文件的机器类型）以及 `x86_64` 或 `aarch64`                    |
 | `INSTALL_DIR`                                             | DEB、RPM 和 Pacman 为 `/opt/<binary>`；Windows EXE 为 Inno 安装目录                                  |
 | `RPM_RELEASE`、`RPM_FILE_LIST`、`RPM_PRIVATE_LIBS`        | 仅 RPM。构建号的第一段（没有构建号时为 `1`）、`%files -f` 清单的路径，以及用于 `%__requires_exclude` 的 bundle 库清单 |
 | `PACKAGING_DIRECTORY`、`OUTPUT_ARTIFACT_PATH`             | Linux/Windows 原生包的暂存根目录（AppImage 为 AppDir）和产物路径           |

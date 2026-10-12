@@ -129,6 +129,22 @@ jobs:
             $env:FASTFORGE_TEST_MSIX_INSTALL = '1'
             cargo test -p fastforge_app_packager --test windows_native -- --ignored --nocapture --test-threads=1
             if ($LASTEXITCODE) { throw 'Windows native installer checks failed' }
+            cargo test -p fastforge_app_builder --test dotnet_builder -- --ignored --nocapture
+            if ($LASTEXITCODE) { throw '.NET Builder checks failed' }
+            # Native .NET project end to end: dotnet publish, then ZIP and a
+            # signed MSIX adapted from the fixture's Package.appxmanifest.
+            cargo build -p fastforge_cli --bin fastforge
+            if ($LASTEXITCODE) { throw 'CLI build failed' }
+            Push-Location fixtures/native_windows
+            try {
+              & "$env:GITHUB_WORKSPACE\target\debug\fastforge.exe" --no-version-check package --platform windows --targets zip,msix --flutter-build-args project=NativeWindowsFixture.csproj,runtime-identifier=win-x64
+              if ($LASTEXITCODE) { throw 'Native .NET packaging failed' }
+              foreach ($artifact in @('dist\1.2.3\NativeWindowsFixture-1.2.3-windows.zip', 'dist\1.2.3\NativeWindowsFixture-1.2.3-windows.msix')) {
+                if (!(Test-Path $artifact)) { throw "Missing artifact $artifact" }
+              }
+            } finally {
+              Pop-Location
+            }
           } finally {
             foreach ($store in @('CurrentUser\My', 'LocalMachine\Root', 'LocalMachine\TrustedPeople')) {
               Remove-Item "Cert:\$store\$($cert.Thumbprint)" -ErrorAction SilentlyContinue

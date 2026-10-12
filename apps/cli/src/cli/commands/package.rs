@@ -1,15 +1,16 @@
 use anyhow::{Context, Result, anyhow};
 use clap::Args;
 use fastforge_app_builder::{
-    BuildError, BuildResult, FlutterAppBuilder, GradleAppBuilder, IOSXcodeAppBuilder,
-    MacOSXcodeAppBuilder, Platform,
+    BuildConfig, BuildError, BuildResult, DotnetAppBuilder, DotnetProject, FlutterAppBuilder,
+    GradleAppBuilder, IOSXcodeAppBuilder, MacOSXcodeAppBuilder, Platform,
 };
 use fastforge_app_packager::{
-    AndroidAabPackager, AndroidApkPackager, AppPackager, CustomPackager, IOSIpaPackager,
-    LinuxAppImagePackager, LinuxDebPackager, LinuxDirectPackager, LinuxPacmanPackager,
-    LinuxRpmPackager, LinuxZipPackager, MacOSDmgPackager, MacOSPkgPackager, MacOSZipPackager,
-    OHOSAppPackager, OHOSHapPackager, PackageConfig, WebDirectPackager, WebZipPackager,
-    WindowsDirectPackager, WindowsExePackager, WindowsMsixPackager, WindowsZipPackager,
+    AndroidAabPackager, AndroidApkPackager, AppPackager, AppxManifest, CustomPackager,
+    IOSIpaPackager, LinuxAppImagePackager, LinuxDebPackager, LinuxDirectPackager,
+    LinuxPacmanPackager, LinuxRpmPackager, LinuxZipPackager, MacOSDmgPackager, MacOSPkgPackager,
+    MacOSZipPackager, OHOSAppPackager, OHOSHapPackager, PackageConfig, WebDirectPackager,
+    WebZipPackager, WindowsDirectPackager, WindowsExePackager, WindowsMsixPackager,
+    WindowsZipPackager,
 };
 use fastforge_core::{ProjectSettings, environment_variables};
 use serde::Deserialize;
@@ -269,6 +270,17 @@ pub fn package(request: PackageRequest) -> Result<Vec<PackagedTarget>> {
                 "android" => {
                     log::info!("Detected native Android project (no pubspec.yaml)");
                     package_native_android_artifact(
+                        target,
+                        request.build_arguments.clone(),
+                        environment.clone(),
+                        request.output,
+                        request.artifact_name.clone(),
+                        request.hooks,
+                    )?
+                }
+                "windows" => {
+                    log::info!("Detected native Windows .NET project (no pubspec.yaml)");
+                    package_native_windows_artifact(
                         target,
                         request.build_arguments.clone(),
                         environment.clone(),
@@ -1123,6 +1135,95 @@ fn read_android_metadata() -> Result<(String, String, String)> {
     Ok((application_id, version_name, version_code))
 }
 
+// ─── Native Windows (.NET) project support ────────────────────────────────
+
+/// Package a native Windows .NET project (WinUI 3, WPF, WinForms, console)
+/// into the specified format.
+///
+/// - Validates the format before building, then runs `dotnet publish` (via
+///   `DotnetAppBuilder`) and packages the publish directory.
+/// - Reads the app name from the project file and the version from the
+///   project's `Package.appxmanifest` (`Identity Version`), else `<Version>`.
+/// - `msix` adapts the project's `Package.appxmanifest` when there is no raw
+///   `.fastforge/packaging/windows/msix/AppxManifest.xml`.
+#[allow(clippy::too_many_arguments)]
+pub fn package_native_windows_artifact(
+    target: &str,
+    build_args: Map<String, Value>,
+    environment: HashMap<String, String>,
+    output: &str,
+    artifact_name: Option<String>,
+    hooks: Option<&HashMap<String, serde_yaml::Value>>,
+) -> Result<Vec<PathBuf>> {
+    let project = DotnetProject::from_config(&BuildConfig::new(build_args.clone()))
+        .map_err(|e| anyhow!("{}", e))?;
+    let manifest = project
+        .manifest_path
+        .as_deref()
+        .map(AppxManifest::load)
+        .transpose()
+        .map_err(|e| anyhow!("{}", e))?;
+
+    let packager: Box<dyn AppPackager + Send + Sync> = if target == "msix" {
+        Box::new(WindowsMsixPackager {
+            manifest_source: project.manifest_path.clone(),
+            ..Default::default()
+        })
+    } else {
+        resolve_packager(Platform::Windows, target)?
+    };
+    if !packager.is_supported_on_current_platform() {
+        return Err(anyhow!(
+            "Packager '{}' is not supported on the current platform",
+            target
+        ));
+    }
+
+    let build = DotnetAppBuilder::default()
+        .build(
+            "windows",
+            Some("windows-dotnet"),
+            build_args,
+            Some(environment.clone()),
+        )
+        .map_err(|e| anyhow!(".NET build failed: {}", e))?;
+    print_build_result(&build)?;
+
+    let app_version = native_windows_version(&project, manifest.as_ref());
+    let package_config = PackageConfig {
+        app_name: project.name.clone(),
+        app_binary_name: project.assembly_name.clone(),
+        app_version,
+        build_mode: "release".to_string(),
+        platform: Platform::Windows,
+        flavor: None,
+        channel: None,
+        artifact_name,
+        package_format: if target == "direct" {
+            String::new()
+        } else {
+            target.to_string()
+        },
+        is_installer: is_installer_target(target),
+        build_output_dir: build.output_directory,
+        build_output_files: build.output_files,
+        output_dir: PathBuf::from(output),
+        environment: environment.clone(),
+    };
+
+    package_with_hooks(packager.as_ref(), &package_config, hooks, environment)
+}
+
+/// The app version of a native Windows project: the manifest's
+/// `Identity Version` (`a.b.c.d` → `a.b.c+d`, `a.b.c` when `d` is 0), else
+/// the project's `<Version>`, else `1.0.0`.
+fn native_windows_version(project: &DotnetProject, manifest: Option<&AppxManifest>) -> String {
+    manifest
+        .and_then(AppxManifest::app_version)
+        .or_else(|| project.version.clone())
+        .unwrap_or_else(|| "1.0.0".to_string())
+}
+
 /// Check whether the current working directory contains a Flutter project
 /// (i.e., has a pubspec.yaml file).
 pub fn is_flutter_project() -> bool {
@@ -1262,6 +1363,28 @@ mod tests {
                 ),
             }
         }
+    }
+
+    #[test]
+    fn native_windows_version_prefers_the_manifest() {
+        let project = DotnetProject {
+            path: "MyApp.csproj".into(),
+            name: "MyApp".into(),
+            assembly_name: "MyApp".into(),
+            version: Some("2.0.0".into()),
+            manifest_path: None,
+        };
+        let manifest = AppxManifest::parse(
+            r#"<Package><Identity Name="a.b" Publisher="CN=X" Version="1.2.3.4"/></Package>"#,
+        )
+        .unwrap();
+        assert_eq!(native_windows_version(&project, Some(&manifest)), "1.2.3+4");
+        assert_eq!(native_windows_version(&project, None), "2.0.0");
+        let project = DotnetProject {
+            version: None,
+            ..project
+        };
+        assert_eq!(native_windows_version(&project, None), "1.0.0");
     }
 
     #[test]

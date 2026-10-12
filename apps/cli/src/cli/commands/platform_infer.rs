@@ -51,7 +51,8 @@ pub fn buildable_on_host(platform: Platform, host: Option<Platform>) -> bool {
 ///
 /// Flutter projects (with a `pubspec.yaml`) declare platforms via their
 /// platform directories. Native projects are recognized by their build-system
-/// markers: gradle files → android, an Xcode project → macos/ios.
+/// markers: gradle files → android, an Xcode project → macos/ios, a .NET
+/// project or solution → windows.
 fn project_candidates(root: &Path) -> Vec<Platform> {
     if root.join("pubspec.yaml").is_file() {
         return Platform::all()
@@ -68,14 +69,25 @@ fn project_candidates(root: &Path) -> Vec<Platform> {
     {
         candidates.push(Platform::Android);
     }
-    let has_xcodeproj = std::fs::read_dir(root).is_ok_and(|entries| {
-        entries
-            .flatten()
-            .any(|e| e.path().extension().is_some_and(|ext| ext == "xcodeproj"))
-    });
-    if has_xcodeproj {
+    let extensions: Vec<String> = std::fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext.to_string_lossy().to_ascii_lowercase())
+        })
+        .collect();
+    if extensions.iter().any(|ext| ext == "xcodeproj") {
         candidates.push(Platform::IOS);
         candidates.push(Platform::MacOS);
+    }
+    if extensions
+        .iter()
+        .any(|ext| matches!(ext.as_str(), "csproj" | "fsproj" | "vbproj" | "sln"))
+    {
+        candidates.push(Platform::Windows);
     }
     candidates
 }
@@ -285,6 +297,20 @@ mod tests {
         std::fs::create_dir(dir.path().join("MyApp.xcodeproj")).unwrap();
         let inferred = infer_platform_in(&["zip"], dir.path(), Some(Platform::MacOS)).unwrap();
         assert_eq!(inferred, Platform::MacOS);
+    }
+
+    #[test]
+    fn native_dotnet_project_zip_is_windows() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("MyApp.csproj"), "<Project/>").unwrap();
+        let inferred = infer_platform_in(&["zip"], dir.path(), Some(Platform::Windows)).unwrap();
+        assert_eq!(inferred, Platform::Windows);
+        assert_eq!(
+            infer_platform_anywhere_in(&["direct"], dir.path()).unwrap(),
+            Platform::Windows
+        );
+        // A Mac can't build it locally: the error asks for --platform (or a host).
+        assert!(infer_platform_in(&["zip"], dir.path(), Some(Platform::MacOS)).is_err());
     }
 
     #[test]

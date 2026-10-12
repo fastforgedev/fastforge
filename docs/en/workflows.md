@@ -118,9 +118,9 @@ Optional inputs:
 | `hook-pre`      | Shell command to run before packaging   |
 | `hook-post`     | Shell command to run after packaging    |
 
-`skip-clean` and `channel` only affect Flutter projects; native Gradle and Xcode projects ignore them. Unlike `fastforge package`, the action does not read `distribute_options.yaml`: the output directory comes from `output`, and variables come from the workflow, job and step `env` merged with the process environment (the process environment wins on conflicts).
+`skip-clean` and `channel` only affect Flutter projects; native Gradle, Xcode, and .NET projects ignore them. Unlike `fastforge package`, the action does not read `distribute_options.yaml`: the output directory comes from `output`, and variables come from the workflow, job and step `env` merged with the process environment (the process environment wins on conflicts).
 
-The active builder determines the fields accepted by `build-args`. See [Gradle Builder](builders/gradle.md), [Xcode Builder](builders/xcode.md), and [Flutter Builder](builders/flutter.md).
+The active builder determines the fields accepted by `build-args`. See [Gradle Builder](builders/gradle.md), [Xcode Builder](builders/xcode.md), [.NET Builder](builders/dotnet.md), and [Flutter Builder](builders/flutter.md).
 
 Example:
 

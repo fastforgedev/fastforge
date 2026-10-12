@@ -1,0 +1,21 @@
+# Test fixture: packages the native .NET project through the
+# `fastforge/package` action (`fastforge workflow run package`), passing the
+# .NET Builder's `project` argument through `build-args`.
+name: .NET Builder Windows smoke package
+
+on:
+  workflow_dispatch:
+
+jobs:
+  zip:
+    name: Windows ZIP
+    steps:
+      - name: Package ZIP
+        uses: fastforge/package@v1
+        with:
+          platform: windows
+          target: zip
+          output: dist/
+          build-args: >-
+            {"project":"NativeWindowsFixture.csproj","configuration":"Release",
+            "runtime-identifier":"win-x64"}

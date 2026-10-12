@@ -1,10 +1,11 @@
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
 use serde::{Deserialize, Deserializer};
 
+use super::appxmanifest::{AppxManifest, ManifestIdentity, xml_escape};
 use super::common::{RawPackaging, architecture, find_executable};
 
 /// Builds MSIX packages with the Windows SDK, from a staged application.
@@ -20,6 +21,11 @@ pub struct WindowsMsixPackager {
     /// Publisher distinguished name used in AppxManifest (overrides
     /// make_config), e.g. `"CN=My Company, O=My Company, C=US"`.
     pub publisher: Option<String>,
+    /// A project's `Package.appxmanifest` (native .NET projects). It supplies
+    /// the identity defaults and, without a raw
+    /// `.fastforge/packaging/windows/msix/AppxManifest.xml`, is adapted into
+    /// the packaged manifest.
+    pub manifest_source: Option<PathBuf>,
 }
 
 /// Accepts strings as well as natural YAML scalars (`true`, `1`) for the
@@ -211,14 +217,6 @@ fn detect_architecture(build_output_dir: &Path) -> &'static str {
     architecture(build_output_dir)
 }
 
-fn xml_escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
 /// Namespaces follow the Windows manifest schema. Device declarations must
 /// follow every Capability declaration, regardless of the input list order.
 fn render_capabilities(names: &[String]) -> Result<String, PackageError> {
@@ -326,13 +324,107 @@ struct MsixManifest {
     enable_at_startup: bool,
 }
 
-/// Assets written into the package and referenced by the manifest.
+/// Assets written into the package and referenced by the generated manifest.
 const LOGO_ASSETS: [&str; 4] = [
     "StoreLogo.png",
     "Square150x150Logo.png",
     "Square44x44Logo.png",
     "SplashScreen.png",
 ];
+
+/// The size of a generated asset: the Windows tile sizes by name, else
+/// `<width>x<height>` from the name, else the medium tile size.
+fn asset_size(file_name: &str) -> (u32, u32) {
+    let stem = file_name
+        .rsplit_once('.')
+        .map_or(file_name, |(stem, _)| stem);
+    match stem {
+        "StoreLogo" => (50, 50),
+        "Square150x150Logo" | "MedTile" => (150, 150),
+        "Square44x44Logo" => (44, 44),
+        "SplashScreen" => (620, 300),
+        "Wide310x150Logo" | "WideTile" => (310, 150),
+        "Square71x71Logo" | "SmallTile" => (71, 71),
+        "Square310x310Logo" | "LargeTile" => (310, 310),
+        "LockScreenLogo" | "BadgeLogo" => (24, 24),
+        _ => stem
+            .split(|c: char| !c.is_ascii_digit() && c != 'x')
+            .find_map(|part| {
+                let (w, h) = part.split_once('x')?;
+                Some((w.parse().ok()?, h.parse().ok()?))
+            })
+            .filter(|(w, h)| *w > 0 && *h > 0)
+            .unwrap_or((150, 150)),
+    }
+}
+
+/// PNG files under `Assets` referenced by a manifest (`Assets\Name.png` or
+/// `Assets/Name.png`), as `/`-separated paths relative to `Assets`.
+fn referenced_assets(xml: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for prefix in ["Assets\\", "Assets/"] {
+        let mut rest = xml;
+        while let Some(pos) = rest.find(prefix) {
+            let tail = &rest[pos + prefix.len()..];
+            let end = tail.find(['"', '\'', '<']).unwrap_or(tail.len());
+            let name = tail[..end].replace('\\', "/");
+            if name.to_ascii_lowercase().ends_with(".png") && !names.contains(&name) {
+                names.push(name);
+            }
+            rest = &tail[end..];
+        }
+    }
+    names
+}
+
+/// Copies the best scale-qualified variant of an asset shipped by the bundle
+/// (`Name.scale-200.png`) to the unqualified name the manifest references.
+fn copy_qualified_variant(assets: &Path, name: &str) -> Result<bool, PackageError> {
+    let target = assets.join(name);
+    let Some(parent) = target.parent() else {
+        return Ok(false);
+    };
+    let stem = target
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let prefix = format!("{stem}.");
+    let mut variants: Vec<(u32, PathBuf)> = std::fs::read_dir(parent)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path.file_name().is_some_and(|f| {
+                    let f = f.to_string_lossy();
+                    f.starts_with(&prefix) && f.to_ascii_lowercase().ends_with(".png")
+                })
+        })
+        .map(|path| {
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            let scale = name
+                .split('.')
+                .find_map(|q| q.strip_prefix("scale-"))
+                .and_then(|s| s.split('_').next())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            (scale, path)
+        })
+        .collect();
+    variants.sort();
+    match variants.pop() {
+        Some((_, variant)) => {
+            std::fs::copy(&variant, &target)?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
 
 impl MsixManifest {
     /// Applies the msix package's defaults (`validateConfigValues`):
@@ -671,13 +763,26 @@ fn run(cmd: &mut Command) -> Result<(), PackageError> {
 }
 
 /// Stage the bundle and resolve the native metadata before invoking SDK tools.
+/// `project` is a native project's `Package.appxmanifest`: it supplies the
+/// identity defaults below legacy settings and, without a raw manifest, the
+/// packaged manifest itself.
 fn prepare_package(
     mc: &MsixMakeConfig,
     config: &PackageConfig,
     raw: &mut RawPackaging,
     root: &Path,
+    project: Option<&AppxManifest>,
 ) -> Result<(), PackageError> {
     let mut mc = mc.clone();
+    if let Some(project) = project {
+        mc.identity_name = mc.identity_name.or_else(|| project.identity_name.clone());
+        mc.msix_version = mc.msix_version.or_else(|| project.version.clone());
+        mc.display_name = mc.display_name.or_else(|| project.display_name.clone());
+        mc.publisher_display_name = mc
+            .publisher_display_name
+            .or_else(|| project.publisher_display_name.clone());
+        mc.publisher = mc.publisher.or_else(|| project.publisher.clone());
+    }
     mc.display_name = mc
         .display_name
         .or_else(|| raw.settings.display_name.clone());
@@ -705,15 +810,6 @@ fn prepare_package(
         raw.variables.insert(key.into(), value.clone());
     }
     raw.stage(config, root)?;
-    let assets = root.join("Assets");
-    if LOGO_ASSETS.iter().any(|name| !assets.join(name).is_file()) {
-        let logo_path = mc.logo_path.as_deref().or(raw.settings.icon.as_deref());
-        let logo = resolve_logo(
-            logo_path,
-            Path::new("windows/runner/resources/app_icon.ico"),
-        )?;
-        install_logo_assets(&logo, &assets, !is_false(&mc.trim_logo))?;
-    }
     let manifest_path = root.join("AppxManifest.xml");
     if let Some(template) = raw.template(&["AppxManifest.xml"])? {
         // Escape substitutions, preserving XML markup and namespace syntax.
@@ -724,18 +820,75 @@ fn prepare_package(
             .collect();
         let text = std::fs::read_to_string(template)?;
         std::fs::write(
-            manifest_path,
+            &manifest_path,
             fastforge_core::render_variables(&text, &variables),
         )?;
-    } else if !manifest_path.is_file() {
-        std::fs::write(manifest_path, manifest.render()?)?;
+    } else if manifest_path.is_file() {
+        // The bundle or an overlay supplied the manifest.
+    } else if let Some(project) = project {
+        std::fs::write(
+            &manifest_path,
+            project.render(&ManifestIdentity {
+                name: &manifest.identity_name,
+                publisher: &manifest.publisher,
+                version: &manifest.version,
+                architecture: &manifest.architecture,
+                executable: &manifest.executable,
+            }),
+        )?;
+    } else {
+        std::fs::write(&manifest_path, manifest.render()?)?;
     }
-    Ok(())
+    let xml = std::fs::read_to_string(&manifest_path)?;
+    ensure_assets(
+        &xml,
+        &root.join("Assets"),
+        mc.logo_path.as_deref().or(raw.settings.icon.as_deref()),
+        !is_false(&mc.trim_logo),
+    )
 }
 
-/// Generate only assets not supplied by the bundle or an overlay. Resize
-/// without stretching and center the image on a transparent canvas.
-fn install_logo_assets(logo: &[u8], assets: &Path, trim: bool) -> Result<(), PackageError> {
+/// Every asset the manifest references (plus the generated manifest's
+/// standard set) exists after this: supplied files are kept, scale-qualified
+/// variants are copied to the unqualified name, and the rest is generated
+/// from the logo.
+fn ensure_assets(
+    xml: &str,
+    assets: &Path,
+    logo_path: Option<&str>,
+    trim: bool,
+) -> Result<(), PackageError> {
+    let mut names: Vec<String> = LOGO_ASSETS.iter().map(|s| s.to_string()).collect();
+    for name in referenced_assets(xml) {
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    let mut missing = Vec::new();
+    for name in names {
+        if assets.join(&name).is_file() || copy_qualified_variant(assets, &name)? {
+            continue;
+        }
+        missing.push(name);
+    }
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let logo = resolve_logo(
+        logo_path,
+        Path::new("windows/runner/resources/app_icon.ico"),
+    )?;
+    install_logo_assets(&logo, assets, trim, &missing)
+}
+
+/// Generate the named assets from the logo. Resize without stretching and
+/// center the image on a transparent canvas.
+fn install_logo_assets(
+    logo: &[u8],
+    assets: &Path,
+    trim: bool,
+    names: &[String],
+) -> Result<(), PackageError> {
     let image = image::load_from_memory(logo)
         .map_err(|e| PackageError::General(format!("MSIX logo must be a valid PNG or ICO: {e}")))?;
     let image = if trim {
@@ -743,17 +896,20 @@ fn install_logo_assets(logo: &[u8], assets: &Path, trim: bool) -> Result<(), Pac
     } else {
         image
     };
-    std::fs::create_dir_all(assets)?;
-    for (name, width, height) in [
-        (LOGO_ASSETS[0], 50, 50),
-        (LOGO_ASSETS[1], 150, 150),
-        (LOGO_ASSETS[2], 44, 44),
-        (LOGO_ASSETS[3], 620, 300),
-    ] {
+    for name in names {
         let path = assets.join(name);
         if path.is_file() {
             continue;
         }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let (width, height) = asset_size(
+            &path
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        );
         let resized = image.resize(width, height, image::imageops::FilterType::Lanczos3);
         let mut canvas = image::RgbaImage::new(width, height);
         image::imageops::overlay(
@@ -777,6 +933,7 @@ impl WindowsMsixPackager {
         mc: MsixMakeConfig,
         config: &PackageConfig,
         output_file: &Path,
+        project: Option<&AppxManifest>,
     ) -> Result<(), PackageError> {
         let pkg_dir = config.packaging_dir()?;
         let mut raw = RawPackaging::load(config, &pkg_dir)?;
@@ -785,7 +942,7 @@ impl WindowsMsixPackager {
                 .insert("MSIX_PUBLISHER".into(), publisher.clone());
         }
         let result = (|| {
-            prepare_package(&mc, config, &mut raw, &pkg_dir)?;
+            prepare_package(&mc, config, &mut raw, &pkg_dir, project)?;
             let mut command = Command::new("makeappx");
             command.args([
                 "pack".as_ref(),
@@ -922,7 +1079,12 @@ impl AppPackager for WindowsMsixPackager {
             );
         }
         let output_file = config.output_file()?;
-        self.create_natively(make_config, config, &output_file)?;
+        let project = self
+            .manifest_source
+            .as_deref()
+            .map(AppxManifest::load)
+            .transpose()?;
+        self.create_natively(make_config, config, &output_file, project.as_ref())?;
         config.resolve_result(output_file)
     }
 }
@@ -983,7 +1145,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         for trim in [true, false] {
             let dir = tmp.path().join(trim.to_string());
-            install_logo_assets(bytes.get_ref(), &dir, trim).unwrap();
+            install_logo_assets(bytes.get_ref(), &dir, trim, &LOGO_ASSETS.map(String::from))
+                .unwrap();
             let image = image::open(dir.join(LOGO_ASSETS[1])).unwrap().to_rgba8();
             assert_eq!(image.dimensions(), (150, 150));
             assert_eq!(image.get_pixel(0, 0)[3] != 0, trim);
@@ -1029,7 +1192,7 @@ mod tests {
         // Keep this rendering test independent of the caller's signing env.
         raw.variables
             .insert("MSIX_PUBLISHER".into(), "CN=Demo & Co".into());
-        prepare_package(&mc, &config, &mut raw, &root).unwrap();
+        prepare_package(&mc, &config, &mut raw, &root, None).unwrap();
         let xml = std::fs::read_to_string(root.join("AppxManifest.xml")).unwrap();
         assert!(xml.contains(
             "Name=\"dev.example.demo\" Version=\"1.2.3.0\" ProcessorArchitecture=\"arm64\""
@@ -1068,7 +1231,7 @@ mod tests {
             &root,
         )
         .unwrap();
-        prepare_package(&MsixMakeConfig::default(), &config, &mut raw, &root).unwrap();
+        prepare_package(&MsixMakeConfig::default(), &config, &mut raw, &root, None).unwrap();
         let xml = std::fs::read_to_string(root.join("AppxManifest.xml")).unwrap();
         assert!(xml.contains("<DisplayName>Project Name</DisplayName>"));
         assert!(xml.contains("<Description>Project description</Description>"));
@@ -1079,10 +1242,187 @@ mod tests {
             identity_name: Some("dev.legacy.demo".into()),
             ..Default::default()
         };
-        prepare_package(&mc, &config, &mut raw, &root).unwrap();
+        prepare_package(&mc, &config, &mut raw, &root, None).unwrap();
         let xml = std::fs::read_to_string(root.join("AppxManifest.xml")).unwrap();
         assert!(xml.contains("<DisplayName>Legacy Name</DisplayName>"));
         assert!(xml.contains("Name=\"dev.legacy.demo\""));
+    }
+
+    const PROJECT_MANIFEST: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+  <Identity Name="DazzLabs.DazzCal" Publisher="CN=Dazz Labs" Version="1.2.3.4" />
+  <Properties>
+    <DisplayName>DazzCal</DisplayName>
+    <PublisherDisplayName>Dazz Labs</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Resources>
+    <Resource Language="x-generate"/>
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
+      <uap:VisualElements DisplayName="DazzCal" Description="Calendar" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <DeviceCapability Name="microphone" />
+  </Capabilities>
+</Package>
+"#;
+
+    #[test]
+    fn project_manifest_supplies_identity_and_is_adapted_for_the_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = config(tmp.path(), "msix");
+        config.app_name = "DazzCal".into();
+        config.app_binary_name = "DazzCal".into();
+        config.app_version = "1.2.3+4".into();
+        config.build_output_dir = tmp.path().join("publish");
+        write(
+            &config.build_output_dir.join("DazzCal.exe"),
+            super::super::common::tests::pe_image(0xAA64),
+        );
+        write(&config.build_output_dir.join("DazzCal.dll"), "lib");
+        // The bundle ships only scale-qualified variants of two assets.
+        let scaled = |size: u32| {
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+                size,
+                size,
+                image::Rgba([0, 0, 255, 255]),
+            ))
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+            bytes.into_inner()
+        };
+        write(
+            &config
+                .build_output_dir
+                .join("Assets/StoreLogo.scale-100.png"),
+            scaled(50),
+        );
+        write(
+            &config
+                .build_output_dir
+                .join("Assets/StoreLogo.scale-200.png"),
+            scaled(100),
+        );
+        write(
+            &config
+                .build_output_dir
+                .join("Assets/Square44x44Logo.targetsize-24_altform-unplated.png"),
+            scaled(24),
+        );
+        let project = AppxManifest::parse(PROJECT_MANIFEST).unwrap();
+        let root = tmp.path().join("stage");
+        let mut raw = RawPackaging::new(
+            tmp.path().join("msix"),
+            ProjectSettings {
+                app_id: Some("dev.example.ignored".into()),
+                display_name: Some("Config Name".into()),
+                ..Default::default()
+            },
+            &config,
+            &root,
+        )
+        .unwrap();
+        raw.variables
+            .insert("MSIX_PUBLISHER".into(), "CN=Fastforge CI".into());
+        prepare_package(
+            &MsixMakeConfig::default(),
+            &config,
+            &mut raw,
+            &root,
+            Some(&project),
+        )
+        .unwrap();
+
+        // Identity, version and display name come from the project manifest;
+        // the publisher follows MSIX_PUBLISHER and the architecture the
+        // executable.
+        assert_eq!(raw.value("APP_ID").as_deref(), Some("DazzLabs.DazzCal"));
+        assert_eq!(raw.value("PACKAGE_VERSION").as_deref(), Some("1.2.3.4"));
+        assert_eq!(raw.value("APP_DISPLAY_NAME").as_deref(), Some("DazzCal"));
+        assert_eq!(raw.value("PACKAGE_ARCH").as_deref(), Some("arm64"));
+        assert_eq!(raw.value("EXECUTABLE_NAME").as_deref(), Some("DazzCal.exe"));
+        let xml = std::fs::read_to_string(root.join("AppxManifest.xml")).unwrap();
+        assert!(xml.contains(
+            r#"<Identity Name="DazzLabs.DazzCal" Publisher="CN=Fastforge CI" Version="1.2.3.4" ProcessorArchitecture="arm64"/>"#
+        ), "{xml}");
+        assert!(xml.contains(
+            r#"<Application Id="App" Executable="DazzCal.exe" EntryPoint="Windows.FullTrustApplication">"#
+        ));
+        assert!(xml.contains(r#"<Resource Language="en-us"/>"#));
+        assert!(xml.contains(r#"<DeviceCapability Name="microphone" />"#));
+        assert!(root.join("DazzCal.dll").is_file());
+
+        // Assets: the highest scale variant is copied, other referenced
+        // assets are generated at their tile size, variants are kept.
+        let assets = root.join("Assets");
+        let size = |name: &str| {
+            let image = image::open(assets.join(name)).unwrap();
+            (image.width(), image.height())
+        };
+        assert_eq!(size("StoreLogo.png"), (100, 100));
+        assert_eq!(size("Square44x44Logo.png"), (24, 24));
+        assert_eq!(size("Wide310x150Logo.png"), (310, 150));
+        assert_eq!(size("Square150x150Logo.png"), (150, 150));
+        assert_eq!(size("SplashScreen.png"), (620, 300));
+        assert!(assets.join("StoreLogo.scale-200.png").is_file());
+
+        // Legacy settings still override the project manifest; a raw
+        // manifest replaces it entirely.
+        std::fs::remove_dir_all(&root).unwrap();
+        let mc = MsixMakeConfig {
+            msix_version: Some("9.0.0.0".into()),
+            identity_name: Some("dev.legacy.demo".into()),
+            ..Default::default()
+        };
+        prepare_package(&mc, &config, &mut raw, &root, Some(&project)).unwrap();
+        let xml = std::fs::read_to_string(root.join("AppxManifest.xml")).unwrap();
+        assert!(
+            xml.contains(r#"Name="dev.legacy.demo" Publisher="CN=Fastforge CI" Version="9.0.0.0""#),
+            "{xml}"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        write(
+            &tmp.path().join("msix/AppxManifest.xml"),
+            "<Package><Identity Name=\"${APP_ID}\" Version=\"${PACKAGE_VERSION}\"/><Logo>Assets/Custom24x24.png</Logo></Package>",
+        );
+        prepare_package(
+            &MsixMakeConfig::default(),
+            &config,
+            &mut raw,
+            &root,
+            Some(&project),
+        )
+        .unwrap();
+        let xml = std::fs::read_to_string(root.join("AppxManifest.xml")).unwrap();
+        assert_eq!(
+            xml,
+            "<Package><Identity Name=\"DazzLabs.DazzCal\" Version=\"1.2.3.4\"/><Logo>Assets/Custom24x24.png</Logo></Package>"
+        );
+        assert_eq!(size("Custom24x24.png"), (24, 24));
+    }
+
+    #[test]
+    fn referenced_assets_and_sizes() {
+        let xml = r#"<Logo>Assets\StoreLogo.png</Logo><a x="Assets\Sub\Wide310x150Logo.png" y='Assets/StoreLogo.png' z="Assets\readme.txt"/>"#;
+        assert_eq!(
+            referenced_assets(xml),
+            ["StoreLogo.png", "Sub/Wide310x150Logo.png"]
+        );
+        assert_eq!(asset_size("Wide310x150Logo.png"), (310, 150));
+        assert_eq!(asset_size("LargeTile.png"), (310, 310));
+        assert_eq!(asset_size("MyLogo-64x32.png"), (64, 32));
+        assert_eq!(asset_size("Unknown.png"), (150, 150));
     }
 
     #[test]

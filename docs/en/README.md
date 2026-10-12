@@ -25,7 +25,7 @@ The legacy documentation remains in [`apps/docs`](../../apps/docs/). This direct
 ### Builders
 
 - [Builder overview](builders/README.md)
-- [Gradle](builders/gradle.md) · [Xcode](builders/xcode.md)
+- [Gradle](builders/gradle.md) · [Xcode](builders/xcode.md) · [.NET](builders/dotnet.md)
 - [Flutter Builder](builders/flutter.md) · [Custom Builder](builders/custom.md)
 
 ### Packagers

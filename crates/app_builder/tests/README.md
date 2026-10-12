@@ -1,10 +1,11 @@
 # Build layer integration tests
 
-`flutter_builder.rs`, `gradle_builder.rs`, and `xcode_builder.rs` run the real
-`flutter`, `gradle`, and `xcodebuild` CLIs against fixture projects under
-[`fixtures/`](../../../fixtures) at the repo root, and assert on real build
-artifacts. They complement — not replace — the synthetic-`BuildConfig` unit
-tests already inline in `src/gradle/mod.rs` and `src/xcode/{ios,macos}.rs`,
+`flutter_builder.rs`, `gradle_builder.rs`, `xcode_builder.rs`, and
+`dotnet_builder.rs` run the real `flutter`, `gradle`, `xcodebuild`, and
+`dotnet` CLIs against fixture projects under [`fixtures/`](../../../fixtures)
+at the repo root, and assert on real build artifacts. They complement — not
+replace — the synthetic-`BuildConfig` unit tests already inline in
+`src/gradle/mod.rs`, `src/xcode/{ios,macos}.rs`, and `src/dotnet/mod.rs`,
 which cover argument encoding and output-path logic without touching a real
 toolchain.
 
@@ -15,6 +16,7 @@ toolchain.
 | `flutter_builder.rs`  | `fixtures/flutter_app`                                   |
 | `gradle_builder.rs`   | `fixtures/native_android`, `fixtures/native_android_flavors` |
 | `xcode_builder.rs`    | `fixtures/native_ios`, `fixtures/native_macos`            |
+| `dotnet_builder.rs`   | `fixtures/native_windows`                                 |
 
 ## Requirements to run
 
@@ -39,6 +41,12 @@ toolchain.
   `native_macos` builds unsigned (`CODE_SIGNING_ALLOWED=NO`) and needs no
   Apple account. `native_ios` needs a working development signing
   identity/provisioning profile — see the caveat below.
+- **dotnet_builder.rs** — Windows with the .NET SDK (`dotnet` on `PATH`).
+  The test is `#[ignore]`d and runs in the `windows` CI job, which also
+  packages the fixture as ZIP and MSIX through the CLI:
+  ```sh
+  cargo test -p fastforge_app_builder --test dotnet_builder -- --ignored --nocapture
+  ```
 
 ## Running
 

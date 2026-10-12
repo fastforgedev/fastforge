@@ -118,7 +118,13 @@ pub(crate) fn absolute(path: &Path) -> String {
         .to_string()
 }
 
+/// The target architecture of the staged application: the machine type of
+/// an executable in the build output, else `arm64` when the output path has
+/// an `arm64` component (Flutter's `build/windows/arm64/...`), else `x64`.
 pub(crate) fn architecture(build_output_dir: &Path) -> &'static str {
+    if let Some(arch) = executable_architecture(build_output_dir) {
+        return arch;
+    }
     if build_output_dir
         .components()
         .any(|c| c.as_os_str().eq_ignore_ascii_case("arm64"))
@@ -126,6 +132,36 @@ pub(crate) fn architecture(build_output_dir: &Path) -> &'static str {
         "arm64"
     } else {
         "x64"
+    }
+}
+
+/// The machine type of the first PE executable in `dir`.
+fn executable_architecture(dir: &Path) -> Option<&'static str> {
+    let mut exes: Vec<_> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")))
+        .collect();
+    exes.sort();
+    exes.iter()
+        .find_map(|exe| std::fs::read(exe).ok().and_then(|bytes| pe_machine(&bytes)))
+}
+
+/// `x64` or `arm64` from a PE image's COFF machine type.
+pub(crate) fn pe_machine(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.get(0..2)? != b"MZ" {
+        return None;
+    }
+    let offset = u32::from_le_bytes(bytes.get(0x3C..0x40)?.try_into().ok()?) as usize;
+    if bytes.get(offset..offset + 4)? != b"PE\0\0" {
+        return None;
+    }
+    match u16::from_le_bytes(bytes.get(offset + 4..offset + 6)?.try_into().ok()?) {
+        0x8664 => Some("x64"),
+        0xAA64 => Some("arm64"),
+        _ => None,
     }
 }
 
@@ -174,6 +210,31 @@ pub(super) mod tests {
     pub fn write(path: &Path, bytes: impl AsRef<[u8]>) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, bytes).unwrap();
+    }
+
+    /// A minimal PE image header with the given COFF machine type.
+    pub fn pe_image(machine: u16) -> Vec<u8> {
+        let mut bytes = vec![0u8; 0x80];
+        bytes[..2].copy_from_slice(b"MZ");
+        bytes[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes());
+        bytes[0x40..0x44].copy_from_slice(b"PE\0\0");
+        bytes[0x44..0x46].copy_from_slice(&machine.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn architecture_prefers_the_executable_machine_type_over_the_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("build/windows/arm64/runner/Release");
+        write(&dir.join("runner.exe"), "not a PE image");
+        assert_eq!(architecture(&dir), "arm64");
+        write(&dir.join("runner.exe"), pe_image(0x8664));
+        assert_eq!(architecture(&dir), "x64");
+        let dir = tmp.path().join("publish");
+        write(&dir.join("helper.exe"), pe_image(0x014C));
+        write(&dir.join("app.exe"), pe_image(0xAA64));
+        assert_eq!(architecture(&dir), "arm64");
+        assert_eq!(pe_machine(b"MZ"), None);
     }
 
     #[test]

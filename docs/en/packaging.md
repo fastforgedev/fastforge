@@ -30,6 +30,7 @@ Routing depends on `pubspec.yaml` in the project root and the platform:
 | Gradle          | Native Android          | Android     | `apk`, `aab`                                            |
 | Xcode           | Native iOS              | iOS         | `ipa`                                                   |
 | Xcode           | Native macOS            | macOS       | `dmg`, `pkg`, `zip`, `custom`                           |
+| .NET            | Native Windows          | Windows     | `exe`, `msix`, `zip`, `direct`, `custom`                |
 | Flutter Builder | Contains `pubspec.yaml` | Android     | `apk`, `aab`, `custom`                                  |
 | Flutter Builder | Contains `pubspec.yaml` | iOS         | `ipa`, `custom`                                         |
 | Flutter Builder | Contains `pubspec.yaml` | macOS       | `dmg`, `pkg`, `zip`, `custom`                           |
@@ -38,14 +39,14 @@ Routing depends on `pubspec.yaml` in the project root and the platform:
 | Flutter Builder | Contains `pubspec.yaml` | Web         | `zip`, `direct`, `custom`                               |
 | Flutter Builder | Contains `pubspec.yaml` | OpenHarmony | `hap`, `app`, `custom`                                  |
 
-Projects without `pubspec.yaml` are supported only for `android`, `ios`, and `macos`. All combinations are available from both the CLI and the `fastforge/package` action.
+Projects without `pubspec.yaml` are supported only for `android`, `ios`, `macos`, and `windows`. All combinations are available from both the CLI and the `fastforge/package` action.
 
 In Flutter projects, an unsupported platform/format pair is rejected before building, `flutter clean` runs at most once per invocation, and every platform except Android builds once and reuses the output for all targets.
 
 > [!IMPORTANT]
 > Host restrictions: iOS and macOS build only on macOS, Windows only on Windows, and Linux only on Linux. In a Flutter project, a target whose builder cannot run on the current host is **skipped with a warning and the command still exits with status 0**, so check the output rather than relying on the exit code alone.
 
-Native projects differ: each target triggers its own build, `flutter clean` is not run, channel and flavor are not used in artifact names, and native macOS validates the format only after the Xcode build. See [Gradle Builder](builders/gradle.md) and [Xcode Builder](builders/xcode.md) for their limitations.
+Native projects differ: each target triggers its own build, `flutter clean` is not run, channel and flavor are not used in artifact names, and native macOS validates the format only after the Xcode build. See [Gradle Builder](builders/gradle.md), [Xcode Builder](builders/xcode.md), and [.NET Builder](builders/dotnet.md) for their limitations.
 
 To inspect a Flutter Builder result separately, run `fastforge build`; see [Building](building.md).
 
@@ -92,7 +93,7 @@ Fastforge provides these variables to raw packaging files as `${NAME}`. It also 
 
 | Variable                                                  | Value                                                                                               |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `APP_NAME`, `APP_BINARY_NAME`                             | The `pubspec.yaml` name and the executable name                                                     |
+| `APP_NAME`, `APP_BINARY_NAME`                             | The `pubspec.yaml` name and the executable name; native Windows projects use the project file name and `<AssemblyName>` |
 | `APP_VERSION`, `BUILD_NAME`, `BUILD_NUMBER`               | `1.2.3+4`, `1.2.3`, `4`; `BUILD_NUMBER` is empty without a build number                             |
 | `APP_DISPLAY_NAME`                                        | `project.display_name`, else `display_name` from a Linux `make_config.yaml`, else `APP_NAME`        |
 | `APP_DESCRIPTION`, `APP_HOMEPAGE`                         | `project.description` / `project.homepage`, else `pubspec.yaml`                                    |
@@ -101,7 +102,7 @@ Fastforge provides these variables to raw packaging files as `${NAME}`. It also 
 | `BUILD_MODE`, `FLAVOR`, `CHANNEL`, `PLATFORM`, `PACKAGE_FORMAT` | The build and packaging options                                                               |
 | `BUILD_OUTPUT_DIRECTORY`, `OUTPUT_DIRECTORY`              | Absolute paths of the build output and of the output directory                                     |
 | `PACKAGE_NAME`, `PACKAGE_VERSION`                         | `package_name` from `make_config.yaml` (Linux), else `project.package_name`, else the format default; the format's version. Windows uses the build name for EXE and `a.b.c.d` for MSIX |
-| `PACKAGE_ARCH`, `ARCH`                                    | The format's architecture (`amd64` for DEB, `x64`/`arm64` for Windows) and `x86_64` or `aarch64`              |
+| `PACKAGE_ARCH`, `ARCH`                                    | The format's architecture (`amd64` for DEB; `x64`/`arm64` for Windows, from the executable's machine type) and `x86_64` or `aarch64` |
 | `INSTALL_DIR`                                             | DEB, RPM and Pacman: `/opt/<binary>`. Windows EXE: the Inno installation directory                                 |
 | `RPM_RELEASE`, `RPM_FILE_LIST`, `RPM_PRIVATE_LIBS`        | RPM only. The first part of the build number (`1` without one), the path of the `%files -f` list, and the bundle's libraries for `%__requires_exclude` |
 | `PACKAGING_DIRECTORY`, `OUTPUT_ARTIFACT_PATH`             | Linux/Windows native packages: the staged package root (the AppDir for AppImage) and the artifact path |

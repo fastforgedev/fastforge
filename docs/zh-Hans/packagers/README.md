@@ -11,16 +11,16 @@
 | [Android](android.md)  | [APK](android.md#apk)、[AAB](android.md#aab)                                                                                             | Gradle、Flutter Builder                  |
 | [iOS](ios.md)          | [IPA](ios.md#ipa)                                                                                                                        | Xcode（package action）、Flutter Builder |
 | [macOS](macos.md)      | [DMG](macos.md#dmg)、[PKG](macos.md#pkg)、[ZIP](macos.md#zip)                                                                            | Xcode（package action）、Flutter Builder |
-| [Windows](windows.md)  | [EXE](windows.md#exe)、[MSIX](windows.md#msix)、[ZIP / direct](windows.md#zip-和-direct)                                                 | Flutter Builder                          |
+| [Windows](windows.md)  | [EXE](windows.md#exe)、[MSIX](windows.md#msix)、[ZIP / direct](windows.md#zip-和-direct)                                                 | .NET、Flutter Builder                    |
 | [Linux](linux.md)      | [AppImage](linux.md#appimage)、[DEB](linux.md#deb)、[RPM](linux.md#rpm)、[Pacman](linux.md#pacman)、[ZIP / direct](linux.md#zip-和-direct) | Flutter Builder                        |
 | [Web](web.md)          | [ZIP / direct](web.md)                                                                                                                   | Flutter Builder                          |
 | [OpenHarmony](ohos.md) | [HAP / APP](ohos.md)                                                                                                                     | Flutter Builder                          |
-| 任意平台               | [custom](../packaging.md#自定义格式)                                                                                                     | Flutter Builder、Xcode（macOS）          |
+| 任意平台               | [custom](../packaging.md#自定义格式)                                                                                                     | Flutter Builder、Xcode（macOS）、.NET    |
 
 `direct` 直接复制构建输出目录，不打成归档或安装包。
 
 > [!IMPORTANT]
-> 不含 `pubspec.yaml` 的项目只能打包 Android（Gradle）、iOS 和 macOS（Xcode）。构建器的选择规则见[构建器总览](../builders/README.md)。
+> 不含 `pubspec.yaml` 的项目只能打包 Android（Gradle）、iOS 和 macOS（Xcode）以及 Windows（.NET）。构建器的选择规则见[构建器总览](../builders/README.md)。
 
 ## 命令选择
 

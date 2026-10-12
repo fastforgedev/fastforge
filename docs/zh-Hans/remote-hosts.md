@@ -39,7 +39,7 @@ hosts:
       PATH: ~/fvm/default/bin:$PATH
 ```
 
-远程命令在用户的登录 shell（`$SHELL -l`）中执行，因此 `.zprofile`、`.profile` 里的 `PATH` 设置会生效（用引号写成 `~/...` 的条目也会被展开）。只在 `.zshrc` 中配置的工具找不到，请用 `env` 补充。`host doctor` 会列出主机能找到的工具（`flutter`、`dart`、`xcodebuild`、`java`、`hvigorw`），并识别主机支持的平台：始终包括 `android` 和 `web`，另加主机系统对应的平台（`macos`、`linux` 或 `windows`）；Mac 上有 `xcodebuild` 时加上 `ios`，找到 `hvigorw` 时加上 `ohos`。
+远程命令在用户的登录 shell（`$SHELL -l`）中执行，因此 `.zprofile`、`.profile` 里的 `PATH` 设置会生效（用引号写成 `~/...` 的条目也会被展开）。只在 `.zshrc` 中配置的工具找不到，请用 `env` 补充。`host doctor` 会列出主机能找到的工具（`flutter`、`dart`、`xcodebuild`、`java`、`hvigorw`、`dotnet`），并识别主机支持的平台：始终包括 `android` 和 `web`，另加主机系统对应的平台（`macos`、`linux` 或 `windows`）；Mac 上有 `xcodebuild` 时加上 `ios`，找到 `hvigorw` 时加上 `ohos`。
 
 其他主机命令：
 

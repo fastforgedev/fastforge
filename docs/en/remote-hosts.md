@@ -39,7 +39,7 @@ hosts:
       PATH: ~/fvm/default/bin:$PATH
 ```
 
-Remote commands run in the user's login shell (`$SHELL -l`), so `PATH` entries from `.zprofile`/`.profile` apply (entries written as a quoted `~/...` are expanded too). Tools set up only in `.zshrc` are not found; add them with `env`. `host doctor` lists which tools the host can see (`flutter`, `dart`, `xcodebuild`, `java`, `hvigorw`) and detects its platforms: always `android` and `web`, plus the host OS (`macos`, `linux` or `windows`), `ios` on a Mac with `xcodebuild`, and `ohos` when `hvigorw` is found.
+Remote commands run in the user's login shell (`$SHELL -l`), so `PATH` entries from `.zprofile`/`.profile` apply (entries written as a quoted `~/...` are expanded too). Tools set up only in `.zshrc` are not found; add them with `env`. `host doctor` lists which tools the host can see (`flutter`, `dart`, `xcodebuild`, `java`, `hvigorw`, `dotnet`) and detects its platforms: always `android` and `web`, plus the host OS (`macos`, `linux` or `windows`), `ios` on a Mac with `xcodebuild`, and `ohos` when `hvigorw` is found.
 
 Other host commands:
 

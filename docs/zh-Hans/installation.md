@@ -92,6 +92,7 @@ fastforge upgrade --force   # 即使已是最新版本也重新安装
 | Android 构建或分析 | Android SDK；APK 分析需要 `ANDROID_HOME`（或 `ANDROID_SDK_ROOT`）下可用的 `aapt2` |
 | AAB 分析           | Android SDK 的 `aapt2`，或通过 `BUNDLETOOL` 指定 bundletool |
 | iOS / macOS 构建   | macOS、Xcode 和命令行工具                                   |
+| 原生 Windows 构建  | Windows 和 .NET SDK（`PATH` 中有 `dotnet`）；WinUI 3 还需要 Windows App SDK |
 | Flutter 构建       | Flutter SDK 和目标平台工具链，且 `flutter` 位于 `PATH`      |
 | App Store 上传     | macOS、`xcrun` 和有效的 App Store Connect 凭证              |
 | Firebase 发布      | Firebase CLI                                                |

@@ -11,16 +11,16 @@ This section organizes Fastforge packaging capabilities by platform. Each platfo
 | [Android](android.md)         | [APK](android.md#apk), [AAB](android.md#aab)                                                                   | Gradle, Flutter Builder                 |
 | [iOS](ios.md)                 | [IPA](ios.md#ipa)                                                                                              | Xcode (package action), Flutter Builder |
 | [macOS](macos.md)             | [DMG](macos.md#dmg), [PKG](macos.md#pkg), [ZIP](macos.md#zip)                                                  | Xcode (package action), Flutter Builder |
-| [Windows](windows.md)         | [EXE](windows.md#exe), [MSIX](windows.md#msix), [ZIP / direct](windows.md#zip-and-direct)                      | Flutter Builder                         |
+| [Windows](windows.md)         | [EXE](windows.md#exe), [MSIX](windows.md#msix), [ZIP / direct](windows.md#zip-and-direct)                      | .NET, Flutter Builder                   |
 | [Linux](linux.md)             | [AppImage](linux.md#appimage), [DEB](linux.md#deb), [RPM](linux.md#rpm), [Pacman](linux.md#pacman), [ZIP / direct](linux.md#zip-and-direct) | Flutter Builder |
 | [Web](web.md)                 | [ZIP / direct](web.md)                                                                                         | Flutter Builder                         |
 | [OpenHarmony](ohos.md)        | [HAP / APP](ohos.md)                                                                                           | Flutter Builder                         |
-| Any                           | [custom](../packaging.md#custom-format)                                                                        | Flutter Builder, Xcode (macOS)          |
+| Any                           | [custom](../packaging.md#custom-format)                                                                        | Flutter Builder, Xcode (macOS), .NET    |
 
 `direct` copies the build output directory as-is instead of wrapping it in an archive or installer.
 
 > [!IMPORTANT]
-> Projects without `pubspec.yaml` can package only Android (Gradle), iOS, and macOS (Xcode). See the [builder overview](../builders/README.md) for builder selection rules.
+> Projects without `pubspec.yaml` can package only Android (Gradle), iOS and macOS (Xcode), and Windows (.NET). See the [builder overview](../builders/README.md) for builder selection rules.
 
 ## Choosing a Command
 

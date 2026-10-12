@@ -2,15 +2,16 @@
 
 [English](../../en/packagers/windows.md) | 简体中文
 
-Fastforge 支持把 Flutter Windows 应用打包为 [EXE](#exe)、[MSIX](#msix)、[ZIP 或直接复制](#zip-和-direct)。
+Fastforge 支持把 Flutter 和原生 .NET Windows 应用打包为 [EXE](#exe)、[MSIX](#msix)、[ZIP 或直接复制](#zip-和-direct)。
 
 ## 当前状态
 
 | 构建系统        | `package` 状态                           |
 | --------------- | ---------------------------------------- |
 | Flutter Builder | EXE、MSIX、ZIP、direct 已通过 CLI/action 接入 |
+| .NET Builder    | EXE、MSIX、ZIP、direct 已通过 CLI/action 接入 |
 
-Windows 打包需要 Flutter 项目（含 `pubspec.yaml`）。构建只能在 Windows 宿主上执行；在其他宿主上，`fastforge package` 会输出警告并跳过该 target。打包器使用 runner 目录 `build/windows/<arch>/runner/<Mode>/`（Flutter 3.15 以前为 `build/windows/runner/<Mode>/`），产物写入 `dist/<version>/`。
+Windows 打包需要 Flutter 项目（含 `pubspec.yaml`）或原生 .NET 项目（通过 `project` 传入 `.csproj`，见 [.NET Builder](../builders/dotnet.md)）。构建只能在 Windows 宿主上执行；在其他宿主上，`fastforge package` 对 Flutter target 输出警告并跳过，对原生项目则直接报错。打包器使用 Flutter runner 目录 `build/windows/<arch>/runner/<Mode>/`（Flutter 3.15 以前为 `build/windows/runner/<Mode>/`）或 `dotnet publish` 目录，产物写入 `dist/<version>/`。
 
 ```bash
 fastforge package --targets exe,zip
@@ -60,7 +61,7 @@ Source: "${PACKAGING_DIRECTORY}\*"; DestDir: "{app}"; Flags: ignoreversion recur
 Name: "{autoprograms}\${APP_DISPLAY_NAME}"; Filename: "{app}\${EXECUTABLE_NAME}"
 ```
 
-`{app}` 等 Inno 常量和预处理语法保持原样。渲染后的脚本位于暂存目录旁，应用文件和编译资源请通过 `${PACKAGING_DIRECTORY}` 引用。`EXECUTABLE_NAME` 优先使用 `<APP_BINARY_NAME>.exe`，避免选到随包附带的辅助程序。没有原生脚本时，默认脚本使用项目元数据，并从构建路径判断 ARM64 或 x64。未设置 `setup_icon_file` 和 `project.icon` 时，若存在 `windows/runner/resources/app_icon.ico`，则用作安装程序图标。
+`{app}` 等 Inno 常量和预处理语法保持原样。渲染后的脚本位于暂存目录旁，应用文件和编译资源请通过 `${PACKAGING_DIRECTORY}` 引用。`EXECUTABLE_NAME` 优先使用 `<APP_BINARY_NAME>.exe`，避免选到随包附带的辅助程序。没有原生脚本时，默认脚本使用项目元数据，并根据可执行文件的机器类型（找不到时回退到构建路径中的 `arm64` 段）判断 ARM64 或 x64。未设置 `setup_icon_file` 和 `project.icon` 时，若存在 `windows/runner/resources/app_icon.ico`，则用作安装程序图标；原生 .NET 项目应设置 `project.icon`。
 
 旧 `make_config.yaml` 支持 `app_id`、`publisher_name`、`publisher_url`、`display_name`、`executable_name`、`install_dir_name`、`setup_icon_file`、`locales`、`create_desktop_icon`、`launch_at_startup`、`privileges_required`、`architectures_allowed`、`architectures_install_in_64bit_mode` 和 `script_template`（`windows/packaging/exe/` 中的文件名）等字段；旧自定义脚本继续使用 Liquid 语法。
 
@@ -70,7 +71,11 @@ Name: "{autoprograms}\${APP_DISPLAY_NAME}"; Filename: "{app}\${EXECUTABLE_NAME}"
 
 将原生清单放在 `msix/AppxManifest.xml`；没有该文件时，构建输出或 `files/` 覆盖层中已有的 `AppxManifest.xml` 会被保留，不再生成清单。这个文件中的变量值会自动进行 XML 转义，XML 标记保持原样。使用 `${APP_ID}` 作为应用标识、`${PACKAGE_VERSION}` 作为四段版本、`${PACKAGE_ARCH}` 作为架构、`${EXECUTABLE_NAME}` 作为可执行文件名、`${MSIX_PUBLISHER}` 作为发布者。标识需符合 MSIX 命名规则，例如不含下划线的 `dev.example.demo`。
 
-未提供的元数据依次从旧配置、`project:` 和默认值生成。默认标识为 `com.flutter.<去掉下划线的应用名>`，版本为 `a.b.c.0`，不使用构建号。发布者默认为 `CN=Publisher`，应通过 `MSIX_PUBLISHER` 设置为与签名证书或商店身份一致的值。图标依次取 `logo_path`、`project.icon`、Flutter runner 图标或占位图；已提供的图标优先于自动生成。
+未提供的元数据依次从旧配置、`project:` 和默认值生成。默认标识为 `com.flutter.<去掉下划线的应用名>`，版本为 `a.b.c.0`，不使用构建号。发布者默认为 `CN=Publisher`，应通过 `MSIX_PUBLISHER` 设置为与签名证书或商店身份一致的值。图标依次取 `logo_path`、`project.icon`、Flutter runner 图标或占位图；已提供的图标优先于自动生成：清单引用的每个 `Assets\*.png`，若构建输出或覆盖层已提供则保留，若构建输出只带 `scale-` 限定的变体（如 `StoreLogo.scale-200.png`）则复制最高缩放的变体，否则按磁贴尺寸生成（`Wide310x150Logo`、`Square71x71Logo`、`Square310x310Logo`、`LockScreenLogo`，或文件名中的 `<宽>x<高>`）。
+
+### 原生 .NET 项目
+
+原生 .NET 项目使用项目文件旁的 `Package.appxmanifest` 提供标识：`Identity Name`、`Version`、`Publisher`、`DisplayName` 和 `PublisherDisplayName` 分别作为 `APP_ID`、`PACKAGE_VERSION`、`MSIX_PUBLISHER` 和 `APP_DISPLAY_NAME` 的默认值（旧 `make_config.yaml` 字段仍可覆盖；环境变量或 `env:` 中的 `MSIX_PUBLISHER` 优先于清单中的发布者）。没有原生 `msix/AppxManifest.xml` 时，直接打包项目清单：功能、扩展和依赖原样保留，`$targetnametoken$` 和 `$targetentrypoint$` 替换为可执行文件和 `Windows.FullTrustApplication`，`Identity` 元素写入解析后的名称、发布者、版本和 `ProcessorArchitecture`，只有 MSBuild 才会展开的 `x-generate` 资源语言替换为 `en-us`。原生清单会整体替换项目清单，并可以使用上述变量。依赖框架的 Windows App SDK 应用必须在清单中声明 `Microsoft.WindowsAppRuntime` 的 `<PackageDependency>`，或以 `WindowsAppSDKSelfContained=true` 发布。
 
 ```yaml
 env:
