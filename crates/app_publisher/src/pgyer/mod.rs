@@ -20,7 +20,14 @@ const GET_COS_TOKEN_URL: &str = "https://www.pgyer.com/apiv2/app/getCOSToken";
 const BUILD_INFO_URL: &str = "https://www.pgyer.com/apiv2/app/buildInfo";
 const PGYER_APP_URL_PREFIX: &str = "http://www.pgyer.com";
 const BUILD_INFO_PROCESSING_CODE: i64 = 1247;
-const MAX_BUILD_INFO_RETRIES: usize = 10;
+/// "应用发布失败": pgyer rejected the uploaded build.
+const BUILD_INFO_FAILED_CODE: i64 = 1216;
+/// "非法请求": also returned for a build key pgyer has not registered yet,
+/// right after the upload.
+const BUILD_INFO_INVALID_REQUEST_CODE: i64 = 1081;
+const MAX_INVALID_REQUEST_RETRIES: usize = 5;
+/// pgyer usually finishes processing within a minute; wait up to two.
+const MAX_BUILD_INFO_RETRIES: usize = 40;
 const BUILD_INFO_RETRY_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Deserialize)]
@@ -156,7 +163,13 @@ impl AppPublisher for PgyerPublisher {
         let client = http_client()?;
         let token_data = get_cos_token(&client, &pgyer_config, build_type)?;
         let upload_key = upload_app(&client, artifact_path, &token_data, on_progress)?;
-        let build_info = get_build_info_with_retry(&client, &pgyer_config.api_key, &upload_key)?;
+        let build_info = get_build_info_with_retry(
+            &client,
+            BUILD_INFO_URL,
+            BUILD_INFO_RETRY_INTERVAL,
+            &pgyer_config.api_key,
+            &upload_key,
+        )?;
         let build_key = build_info.build_key;
 
         Ok(PublishResult {
@@ -232,6 +245,8 @@ fn upload_app(
 
 fn get_build_info_with_retry(
     client: &Client,
+    url: &str,
+    interval: Duration,
     api_key: &str,
     upload_key: &str,
 ) -> Result<BuildInfoData, PublishError> {
@@ -242,9 +257,9 @@ fn get_build_info_with_retry(
                 "getBuildInfo error :Too many retries".to_string(),
             ));
         }
-        thread::sleep(BUILD_INFO_RETRY_INTERVAL);
+        thread::sleep(interval);
         let response = client
-            .get(BUILD_INFO_URL)
+            .get(url)
             .query(&[("_api_key", api_key), ("buildKey", upload_key)])
             .send()
             .map_err(to_publish_error)?;
@@ -263,6 +278,15 @@ fn get_build_info_with_retry(
                 try_count += 1;
                 println!("应用发布信息获取中，请稍等 {try_count}");
             }
+            BUILD_INFO_INVALID_REQUEST_CODE if try_count < MAX_INVALID_REQUEST_RETRIES => {
+                try_count += 1;
+                println!("应用发布信息获取中，请稍等 {try_count}");
+            }
+            BUILD_INFO_FAILED_CODE => {
+                return Err(PublishError::General(format!(
+                    "getBuildInfo error: pgyer failed to publish the uploaded build; check that the file is a valid, signed package: {text}"
+                )));
+            }
             _ => return Err(PublishError::General(format!("getBuildInfo error: {text}"))),
         }
     }
@@ -271,6 +295,49 @@ fn get_build_info_with_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Serves one canned JSON body per request on a local port.
+    fn serve(bodies: Vec<&'static str>) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/buildInfo", listener.local_addr().unwrap());
+        thread::spawn(move || {
+            for body in bodies {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf);
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+            }
+        });
+        url
+    }
+
+    #[test]
+    fn build_info_waits_through_unregistered_and_processing_builds() {
+        let url = serve(vec![
+            r#"{"code":1081,"message":"error request"}"#,
+            r#"{"code":1247,"message":"processing"}"#,
+            r#"{"code":0,"data":{"buildKey":"abc123"}}"#,
+        ]);
+        let client = Client::new();
+        let info =
+            get_build_info_with_retry(&client, &url, Duration::ZERO, "key", "upload").unwrap();
+        assert_eq!(info.build_key, "abc123");
+    }
+
+    #[test]
+    fn build_info_reports_a_rejected_build() {
+        let url = serve(vec![r#"{"code":1216,"message":"failed"}"#]);
+        let error = get_build_info_with_retry(&Client::new(), &url, Duration::ZERO, "k", "u")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("failed to publish"), "{error}");
+    }
 
     fn config_with(arguments: &[(&str, &str)]) -> PublishConfig {
         PublishConfig {
