@@ -71,9 +71,11 @@ project:
 
 - **渲染规则。** 只有 `NAME` 是打包变量时，`${NAME}` 才会被替换，其余内容保持原样。因此 `$1`、`${HOME}` 等 shell 展开、`%{buildroot}` 等 RPM 宏以及 `%U` 等桌面文件字段代码都无需转义。需要字面量 `${` 时写 `$${`。覆盖树中的文件名和目录名同样会被渲染，例如 `files/usr/share/doc/${PACKAGE_NAME}/copyright`。
 - **覆盖树。** 先把共用的 `files/` 复制到包根目录，再复制格式目录中的，同名文件以后者为准。AppImage 不会安装 `/etc` 或 `/opt` 下的文件，因此只接收共用覆盖树中的 `usr/`。文本文件会被渲染，二进制文件原样复制，权限和符号链接保持不变。
+- **去除符号。** release 构建中，bundle 内的 ELF 文件会像 `dh_strip` 和 makepkg 一样去除运行时不需要的符号（`strip --strip-unneeded`）。Flutter 已对引擎和 `libapp.so` 去除符号，但 CMake 构建的 runner 和插件库没有，后者通常可缩小约五分之一。如需保留（例如用于符号化崩溃报告），在 `.fastforge/config.yaml` 的 `env:` 或环境变量中设置 `STRIP=false`。没有 `strip`（binutils）时会打印警告并保持原文件。
 - **自动补全。** DEB：control 中没有 `Installed-Size` 时自动补上，生成 `md5sums`，并把所有 `/etc` 文件登记到 `conffiles`。Pacman：补上 `size`、`builddate`，并为每个 `/etc` 文件添加 `backup` 条目。RPM：把 `/etc` 文件列为 `%config(noreplace)`。你自己写的值会保留。
 - **桌面文件和 metainfo。** 模板的文件名不限：一个 `*.desktop` 文件和一个 `*.metainfo.xml`（或 `*.appdata.xml`）文件。无论叫什么，都会安装为 `${APP_ID}.desktop` 和 `usr/share/metainfo/${APP_ID}.metainfo.xml`，这是桌面文件规范和 AppStream 的要求。桌面文件中启动命令写作 `${APP_BINARY_NAME}`，图标写作 `${APP_ID}`。在 Linux 上 `APP_ID` 总有值：优先取 `project.app_id`，其次取 `linux/CMakeLists.txt` 中的 `APPLICATION_ID`，最后为可执行文件名。
-- **Wayland。** 桌面文件按窗口的 app id 匹配，而 GTK 把程序名作为 app id 上报。请让 `linux/CMakeLists.txt` 中的 `APPLICATION_ID` 与 `project.app_id` 一致，或不设置 `project.app_id`。还要像新版 Flutter 模板那样在 `my_application_new()` 中调用 `g_set_prgname(APPLICATION_ID)`，否则窗口上报的是可执行文件名。
+- **Wayland。** 桌面文件按窗口的 app id 匹配，而 GTK 把程序名作为 app id 上报。请让 `linux/CMakeLists.txt` 中的 `APPLICATION_ID` 与 `project.app_id` 一致，或不设置 `project.app_id`。还要像新版 Flutter 模板那样在 `my_application_new()` 中调用 `g_set_prgname(APPLICATION_ID)`，否则窗口上报的是可执行文件名。两者不一致时，Fastforge 会打印提示，并在生成的桌面入口中加入窗口实际报告的 `StartupWMClass=`，GNOME、KDE 等 Dock 也会据此匹配；使用桌面模板时需自行设置。
+- **窗口位置。** Wayland 下应用无法自行放置窗口，因此从桌面启动安装包时，`window_manager` 的 `setPosition` 等调用不会生效，而同一 bundle 在 X11 终端或 IDE 中启动时可以定位窗口。安装包内容就是 bundle 本身，区别只在会话类型。必须定位窗口的应用可以在桌面模板中写 `Exec=env GDK_BACKEND=x11 ${APP_BINARY_NAME} %U`，改为通过 XWayland 运行。
 - **图标。** 图标取自 `project.icon`；`make_config.yaml` 设置了 `icon` 时以它为准。SVG 安装为 scalable 图标。PNG 会先补成正方形，再缩放到不超过原图的各个标准尺寸（16 到 512 像素）。其他格式会导致打包失败。如果想提供手工绘制的各尺寸图标，请放进 `files/` 覆盖树。
 - **包名和版本号。** `PACKAGE_NAME` 优先取 `make_config.yaml` 的 `package_name`，其次取 `project.package_name`，最后为该格式的默认值。`PACKAGE_VERSION` 是按该格式语法书写的版本号，`1.2.3-beta.1` 这类预发布版本会排在正式版之前。
 - 同一目录中有**多个同类模板**（例如两个 `*.desktop` 文件或两个 `*.spec` 文件）时打包失败，因为 Fastforge 无法判断应使用哪一个。
@@ -85,6 +87,8 @@ project:
 需要 `appimagetool` 和 `ldd`。AppImage 只能在 glibc 不旧于构建主机的系统上运行，请在所支持的最老发行版上构建。默认 `AppRun` 会优先使用随包的库，并在当前目录下带着传入的参数启动程序。插件依赖的共享库会复制到 `usr/lib`，同名文件只复制一份，`files/` 覆盖树已经提供的除外；`ldd` 无法分析的库会给出警告并跳过。`make_config.yaml` 额外的键包括 `include`（额外的共享库：绝对路径按通配符展开并打包全部匹配项，如 `/usr/lib/x86_64-linux-gnu/libgphoto2/*/*.so`；其他条目通过 `locate` 查找，此时需要安装 `locate`，普通名称取第一个结果，通配符模式取全部结果）、`actions`（由 `label`、`name` 和 `arguments` 组成的条目，写成 `[Desktop Action]` 段）以及 `supported_mime_type`。AppImage 的 `make_config.yaml` 没有 `package_name`。
 
 如需嵌入[更新信息](https://github.com/AppImage/AppImageSpec/blob/master/draft.md#update-information)，在 `.fastforge/config.yaml` 的 `env:` 或环境变量中设置 `UPDATE_INFORMATION`。安装了 `zsyncmake` 时，`appimagetool` 还会在 AppImage 旁生成 `.zsync` 文件。如需使用其他 AppImage runtime，用同样的方式设置 `APPIMAGETOOL_RUNTIME_FILE`。
+
+GTK、X11 和 Wayland 库（包括光标相关库）不会打包进来，默认 `AppRun` 也只修改 `LD_LIBRARY_PATH`，因此应用使用主机的 GTK 和光标主题。`Unable to load ... from the cursor theme` 之类的警告来自主机主题，其他 GTK 应用也会出现：请确认主题已安装（例如 `/usr/share/icons/Adwaita/cursors`），或设置 `XCURSOR_THEME`。
 
 ```yaml
 env:
