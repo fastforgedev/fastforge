@@ -87,6 +87,8 @@ project:
 
 如需嵌入[更新信息](https://github.com/AppImage/AppImageSpec/blob/master/draft.md#update-information)，在 `.fastforge/config.yaml` 的 `env:` 或环境变量中设置 `UPDATE_INFORMATION`。安装了 `zsyncmake` 时，`appimagetool` 还会在 AppImage 旁生成 `.zsync` 文件。如需使用其他 AppImage runtime，用同样的方式设置 `APPIMAGETOOL_RUNTIME_FILE`。
 
+GTK、X11 和 Wayland 库（包括光标相关库）不会打包进来，默认 `AppRun` 也只修改 `LD_LIBRARY_PATH`，因此应用使用主机的 GTK 和光标主题。`Unable to load ... from the cursor theme` 之类的警告来自主机主题，其他 GTK 应用也会出现：请确认主题已安装（例如 `/usr/share/icons/Adwaita/cursors`），或设置 `XCURSOR_THEME`。
+
 ```yaml
 env:
   UPDATE_INFORMATION: gh-releases-zsync|owner|repo|latest|*x86_64.AppImage.zsync

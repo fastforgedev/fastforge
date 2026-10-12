@@ -87,6 +87,8 @@ Requires `appimagetool` and `ldd`. An AppImage runs on systems whose glibc is at
 
 To embed [update information](https://github.com/AppImage/AppImageSpec/blob/master/draft.md#update-information), set `UPDATE_INFORMATION` in `.fastforge/config.yaml` `env:` or in the environment. `appimagetool` also writes a `.zsync` file next to the AppImage when `zsyncmake` is installed. To use another AppImage runtime, set `APPIMAGETOOL_RUNTIME_FILE` the same way.
 
+GTK, X11 and Wayland libraries, including the cursor libraries, are not bundled, and the default `AppRun` only changes `LD_LIBRARY_PATH`, so the app uses the host's GTK and cursor theme. A warning such as `Unable to load ... from the cursor theme` therefore comes from the host's theme, as it does for other GTK apps: check that the theme (for example `/usr/share/icons/Adwaita/cursors`) is installed, or set `XCURSOR_THEME`.
+
 ```yaml
 env:
   UPDATE_INFORMATION: gh-releases-zsync|owner|repo|latest|*x86_64.AppImage.zsync
