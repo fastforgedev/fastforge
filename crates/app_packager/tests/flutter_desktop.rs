@@ -134,11 +134,24 @@ fn launch(command: &mut Command, version: &str) {
     let log = tempfile::NamedTempFile::new().unwrap();
     let stdout = log.reopen().unwrap();
     let stderr = stdout.try_clone().unwrap();
-    let mut child = command
+    let mut child = match command
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
         .spawn()
-        .unwrap();
+    {
+        Ok(child) => child,
+        Err(error) => {
+            let program = Path::new(command.get_program());
+            let listing = Command::new("ls")
+                .arg("-le")
+                .arg(program)
+                .arg(program.parent().unwrap_or(program))
+                .output()
+                .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+                .unwrap_or_default();
+            panic!("cannot launch {}: {error}\n{listing}", program.display());
+        }
+    };
     let deadline = Instant::now() + Duration::from_secs(60);
     let status = loop {
         if let Some(status) = child.try_wait().unwrap() {
@@ -217,8 +230,17 @@ struct MountedImage {
 impl MountedImage {
     fn attach(image: &Path, mount: PathBuf) -> Self {
         fs::create_dir_all(&mount).unwrap();
+        // With ownership ignored (the default for disk images), files that
+        // root installs are not usable as their recorded owners.
         run(Command::new("hdiutil")
-            .args(["attach", "-nobrowse", "-noautoopen", "-mountpoint"])
+            .args([
+                "attach",
+                "-owners",
+                "on",
+                "-nobrowse",
+                "-noautoopen",
+                "-mountpoint",
+            ])
             .arg(&mount)
             .arg(image));
         Self { mount }
