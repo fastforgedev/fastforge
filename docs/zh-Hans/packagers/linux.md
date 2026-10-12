@@ -84,7 +84,7 @@ project:
 
 ## AppImage
 
-需要 `appimagetool` 和 `ldd`。AppImage 只能在 glibc 不旧于构建主机的系统上运行，请在所支持的最老发行版上构建。默认 `AppRun` 会优先使用随包的库，并在当前目录下带着传入的参数启动程序。插件依赖的共享库会复制到 `usr/lib`，同名文件只复制一份，`files/` 覆盖树已经提供的除外；`ldd` 无法分析的库会给出警告并跳过。`make_config.yaml` 额外的键包括 `include`（额外的共享库：绝对路径按通配符展开并打包全部匹配项，如 `/usr/lib/x86_64-linux-gnu/libgphoto2/*/*.so`；其他条目通过 `locate` 查找，此时需要安装 `locate`，普通名称取第一个结果，通配符模式取全部结果）、`actions`（由 `label`、`name` 和 `arguments` 组成的条目，写成 `[Desktop Action]` 段）以及 `supported_mime_type`。AppImage 的 `make_config.yaml` 没有 `package_name`。
+需要 `appimagetool` 和 `ldd`。`appimagetool` 要求 AppDir 根目录有图标：未设置 `project.icon` 时，Fastforge 使用 `files/` 覆盖树中的 hicolor 图标，否则使用占位图标并给出警告。AppImage 只能在 glibc 不旧于构建主机的系统上运行，请在所支持的最老发行版上构建。默认 `AppRun` 会优先使用随包的库，并在当前目录下带着传入的参数启动程序。插件依赖的共享库会复制到 `usr/lib`，同名文件只复制一份，`files/` 覆盖树已经提供的除外；`ldd` 无法分析的库会给出警告并跳过。`make_config.yaml` 额外的键包括 `include`（额外的共享库：绝对路径按通配符展开并打包全部匹配项，如 `/usr/lib/x86_64-linux-gnu/libgphoto2/*/*.so`；其他条目通过 `locate` 查找，此时需要安装 `locate`，普通名称取第一个结果，通配符模式取全部结果）、`actions`（由 `label`、`name` 和 `arguments` 组成的条目，写成 `[Desktop Action]` 段）以及 `supported_mime_type`。AppImage 的 `make_config.yaml` 没有 `package_name`。
 
 如需嵌入[更新信息](https://github.com/AppImage/AppImageSpec/blob/master/draft.md#update-information)，在 `.fastforge/config.yaml` 的 `env:` 或环境变量中设置 `UPDATE_INFORMATION`。安装了 `zsyncmake` 时，`appimagetool` 还会在 AppImage 旁生成 `.zsync` 文件。如需使用其他 AppImage runtime，用同样的方式设置 `APPIMAGETOOL_RUNTIME_FILE`。
 
