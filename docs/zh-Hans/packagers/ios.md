@@ -28,6 +28,32 @@ fastforge package --targets ipa \
 
 如需不签名打包（例如稍后再签名，或用于 CI 检查），使用 `--flutter-build-args no-codesign`。此时无需导出配置：Flutter 在生成 Xcode archive 后停止，Fastforge 把其中的 `.app` 以 `Payload/<name>.app` 的形式打包为 IPA。
 
+### 签名
+
+签名由 Xcode 在导出 archive 时完成，因此在 export options plist 和 Xcode 项目中配置，而不是在 Fastforge 中。自动签名只需 `method` 和 `teamID`；手动签名还需为每个 Bundle ID 指定描述文件：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>app-store-connect</string>
+  <key>teamID</key>
+  <string>ABCDE12345</string>
+  <key>signingStyle</key>
+  <string>manual</string>
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>com.example.app</key>
+    <string>Example App Store Profile</string>
+  </dict>
+</dict>
+</plist>
+```
+
+`method` 可为 `app-store-connect`、`release-testing`（ad hoc）、`enterprise` 或 `debugging`（Xcode 15.3 之前为 `app-store`、`ad-hoc`、`development`）。签名证书和描述文件需安装在构建机上；在 CI 中，请在运行 Fastforge 前把证书导入临时钥匙串，并把描述文件复制到 `~/Library/MobileDevice/Provisioning Profiles/`。
+
 Xcode 项目通过工作流打包：
 
 ```yaml
