@@ -2,13 +2,13 @@
 
 English | [简体中文](../../zh-Hans/packagers/linux.md)
 
-Fastforge packages Flutter Linux applications as [AppImage](#appimage), [DEB](#deb), [RPM](#rpm), [Pacman](#pacman), [ZIP, or a direct copy](#zip-and-direct).
+Fastforge packages Flutter Linux applications as [AppImage](#appimage), [DEB](#deb), [RPM](#rpm), [Pacman](#pacman), [Flatpak](#flatpak), [ZIP, or a direct copy](#zip-and-direct).
 
 ## Current Status
 
 | Build system    | `package` status                                              |
 | --------------- | ------------------------------------------------------------- |
-| Flutter Builder | AppImage, DEB, RPM, Pacman, ZIP, and direct through CLI/action |
+| Flutter Builder | AppImage, DEB, RPM, Pacman, Flatpak, ZIP, and direct through CLI/action |
 
 Linux packaging requires a Flutter project (`pubspec.yaml`). The build runs only on a Linux host; on other hosts `fastforge package` skips the target with a warning. The packagers use the bundle directory `build/linux/<x64|arm64>/<mode>/bundle/`, and artifacts are written to `dist/<version>/`.
 
@@ -122,6 +122,32 @@ RPM keeps `/opt/<binary>` as the bundle directory. When the package name differs
 Requires `bsdtar` with zstd support (`libarchive-tools` on Debian/Ubuntu, `bsdtar` on Fedora, `libarchive` on Arch); `makepkg` is not used. The artifact is a `.pkg.tar.zst` archive owned by root, with `.MTREE`, `.PKGINFO`, `.INSTALL` when there is one, and the package root. The generated `.PKGINFO` uses makepkg's format, one `key = value` line per value. The default package name is the binary name. `pkgver` is `<build name>-<release>`, with `-` removed from the build name; the release is the first dot-separated part of the build number, `1` without one. `builddate` uses `SOURCE_DATE_EPOCH` when it is set. Without `dependencies` in `make_config.yaml`, the package depends on `gtk3`; an empty list opts out. Additional `make_config.yaml` keys include `maintainer`, `licenses`, `groups`, `dependencies`, `optional_dependencies`, `conflicts`, `provides`, `replaces`, `supported_mime_type`, `actions`, and `postinstall_scripts`, `postupgrade_scripts`, and `postuninstall_scripts`, which generate `.INSTALL`.
 
 The legacy Pacman `installed_size` and `options` settings now produce migration warnings. `size` is measured from the staged payload in bytes; `options` belongs to makepkg and cannot be represented in PKGINFO. Move required preprocessing to hooks or workflows.
+
+## Flatpak
+
+Requires `flatpak` and `flatpak-builder`. The artifact is a single-file bundle (`.flatpak`) that users install with `flatpak install --user <file>.flatpak`; it names Flathub as the runtime's repository, so the runtime is installed with it.
+
+The app is staged as the contents of `/app`: the bundle in `/app/lib/<binary>`, `/app/bin/<binary>`, and the desktop entry, icons, and metainfo named after the app ID, which Flatpak exports to the host. Only `usr/` of the shared `files/` overlay applies, as `/app`. `APP_ID` must be a valid Flatpak ID with at least three segments, such as `com.example.App`; set `project.app_id` and keep `APPLICATION_ID` in `linux/CMakeLists.txt` equal to it.
+
+The generated manifest runs the app on the GNOME runtime (`org.gnome.Platform` 48, which provides GTK 3) with access to Wayland, X11 as a fallback, the GPU, IPC, and the network. Fastforge adds Flathub as a user remote when it is missing, and `flatpak-builder` installs the runtime and SDK for the user. Set `FLATPAK_RUNTIME`, `FLATPAK_RUNTIME_VERSION`, and `FLATPAK_SDK` in `.fastforge/config.yaml` `env:` or the environment to change them. For other permissions or modules, put a manifest (`*.yml`, `*.yaml`, or `*.json`) in `.fastforge/packaging/linux/flatpak/`; it replaces the generated one and can copy the staged tree from `${PACKAGING_DIRECTORY}`:
+
+```yaml
+id: ${APP_ID}
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: ${APP_BINARY_NAME}
+finish-args: [--share=ipc, --socket=fallback-x11, --socket=wayland, --device=dri, --filesystem=xdg-download]
+modules:
+  - name: ${APP_BINARY_NAME}
+    buildsystem: simple
+    build-commands: [cp -a . /app/]
+    sources:
+      - type: dir
+        path: ${PACKAGING_DIRECTORY}
+```
+
+The bundle is built from the prebuilt Flutter output, so it suits distributing the file directly; Flathub itself requires building from source.
 
 ## Studio forms
 

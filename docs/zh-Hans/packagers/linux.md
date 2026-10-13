@@ -2,13 +2,13 @@
 
 [English](../../en/packagers/linux.md) | 简体中文
 
-Fastforge 支持把 Flutter Linux 应用打包为 [AppImage](#appimage)、[DEB](#deb)、[RPM](#rpm)、[Pacman](#pacman)、[ZIP 或直接复制](#zip-和-direct)。
+Fastforge 支持把 Flutter Linux 应用打包为 [AppImage](#appimage)、[DEB](#deb)、[RPM](#rpm)、[Pacman](#pacman)、[Flatpak](#flatpak)、[ZIP 或直接复制](#zip-和-direct)。
 
 ## 当前状态
 
 | 构建系统        | `package` 状态                                          |
 | --------------- | ------------------------------------------------------- |
-| Flutter Builder | AppImage、DEB、RPM、Pacman、ZIP、direct 已通过 CLI/action 接入 |
+| Flutter Builder | AppImage、DEB、RPM、Pacman、Flatpak、ZIP、direct 已通过 CLI/action 接入 |
 
 Linux 打包需要 Flutter 项目（含 `pubspec.yaml`）。构建只能在 Linux 宿主上执行；在其他宿主上，`fastforge package` 会输出警告并跳过该 target。打包器使用 bundle 目录 `build/linux/<x64|arm64>/<mode>/bundle/`，产物写入 `dist/<version>/`。
 
@@ -122,6 +122,32 @@ RPM 保留 `/opt/<binary>` 安装目录。包名与程序名不同的项目同�
 需要支持 zstd 的 `bsdtar`（Debian/Ubuntu 上为 `libarchive-tools`，Fedora 上为 `bsdtar`，Arch 上为 `libarchive`），不使用 `makepkg`。产物是属主为 root 的 `.pkg.tar.zst` 归档，包含 `.MTREE`、`.PKGINFO`、`.INSTALL`（如有）以及包根目录。生成的 `.PKGINFO` 使用 makepkg 的格式，每个值一行 `key = value`。默认包名为可执行文件名。`pkgver` 为 `<构建名>-<release>`，构建名中的 `-` 会被去掉；release 为构建号按 `.` 分隔的第一段，没有构建号时为 `1`。设置了 `SOURCE_DATE_EPOCH` 时，`builddate` 使用该值。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `gtk3`；设为空列表可以去掉。`make_config.yaml` 额外的键包括 `maintainer`、`licenses`、`groups`、`dependencies`、`optional_dependencies`、`conflicts`、`provides`、`replaces`、`supported_mime_type`、`actions`，以及用于生成 `.INSTALL` 的 `postinstall_scripts`、`postupgrade_scripts` 和 `postuninstall_scripts`。
 
 Pacman 旧字段 `installed_size` 和 `options` 现在会输出迁移提示。`size` 按实际暂存内容计算字节数；`options` 属于 makepkg，不能作为 PKGINFO 元数据。需要的预处理应移到钩子或工作流。
+
+## Flatpak
+
+需要 `flatpak` 和 `flatpak-builder`。产物是单文件 bundle（`.flatpak`），用户通过 `flatpak install --user <file>.flatpak` 安装；其中注明 Flathub 为运行时所在仓库，安装时会一并安装运行时。
+
+应用暂存为 `/app` 的内容：bundle 位于 `/app/lib/<binary>`，另有 `/app/bin/<binary>`，以及以 app ID 命名、由 Flatpak 导出到主机的桌面入口、图标和 metainfo。共享 `files/` 覆盖树只有 `usr/` 部分生效，对应 `/app`。`APP_ID` 必须是至少三段的合法 Flatpak ID，例如 `com.example.App`；请设置 `project.app_id`，并让 `linux/CMakeLists.txt` 中的 `APPLICATION_ID` 与之一致。
+
+生成的清单使用 GNOME 运行时（`org.gnome.Platform` 48，提供 GTK 3），允许访问 Wayland、作为后备的 X11、GPU、IPC 和网络。缺少 Flathub 时 Fastforge 会将其添加为用户级远程仓库，由 `flatpak-builder` 为当前用户安装运行时和 SDK。可在 `.fastforge/config.yaml` 的 `env:` 或环境变量中设置 `FLATPAK_RUNTIME`、`FLATPAK_RUNTIME_VERSION`、`FLATPAK_SDK` 进行更改。需要其他权限或模块时，在 `.fastforge/packaging/linux/flatpak/` 中放置清单（`*.yml`、`*.yaml` 或 `*.json`），它会替换生成的清单，并可从 `${PACKAGING_DIRECTORY}` 复制暂存目录：
+
+```yaml
+id: ${APP_ID}
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: ${APP_BINARY_NAME}
+finish-args: [--share=ipc, --socket=fallback-x11, --socket=wayland, --device=dri, --filesystem=xdg-download]
+modules:
+  - name: ${APP_BINARY_NAME}
+    buildsystem: simple
+    build-commands: [cp -a . /app/]
+    sources:
+      - type: dir
+        path: ${PACKAGING_DIRECTORY}
+```
+
+bundle 由预先构建的 Flutter 输出生成，适合直接分发文件；上架 Flathub 本身要求从源码构建。
 
 ## Studio 表单
 

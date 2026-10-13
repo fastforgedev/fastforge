@@ -63,6 +63,19 @@ impl Layout {
         }
     }
 
+    /// A Flatpak's `/app`, staged as `usr/`: the bundle in `usr/lib/<binary>`
+    /// and the desktop entry, icons and metainfo in `usr/share`. Only `usr/`
+    /// of the shared overlay applies.
+    pub fn flatpak(binary_name: &str) -> Self {
+        Self {
+            bundle_dir: Path::new("usr/lib").join(binary_name),
+            bin_link: false,
+            desktop_dir: PathBuf::from("usr/share/applications"),
+            root_icon: false,
+            shared_overlay: Some(&["usr"]),
+        }
+    }
+
     /// The bundle's installed path (`/opt/<binary>`).
     pub fn install_dir(&self) -> String {
         format!("/{}", slash_path(&self.bundle_dir))
