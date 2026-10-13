@@ -111,7 +111,7 @@ impl GitHubConfig {
 
 /// Dart: `v${appVersion}` by default, otherwise `{appVersion}` /
 /// `{appBuildName}` / `{appBuildNumber}` placeholders are substituted.
-fn release_title_for(template: Option<&str>, version: &AppVersion) -> String {
+pub(crate) fn release_title_for(template: Option<&str>, version: &AppVersion) -> String {
     match template.filter(|title| !title.trim().is_empty()) {
         None => format!("v{}", version.text),
         Some(template) => template
@@ -122,14 +122,14 @@ fn release_title_for(template: Option<&str>, version: &AppVersion) -> String {
 }
 
 /// Dart's `^[^/]+/[^/]+$`.
-fn is_valid_repository(repository: &str) -> bool {
+pub(crate) fn is_valid_repository(repository: &str) -> bool {
     matches!(
         repository.split_once('/'),
         Some((owner, repo)) if !owner.is_empty() && !repo.is_empty() && !repo.contains('/')
     )
 }
 
-fn flag(config: &PublishConfig, keys: &[&str]) -> bool {
+pub(crate) fn flag(config: &PublishConfig, keys: &[&str]) -> bool {
     argument(config, keys).is_some_and(|value| value == "true" || value == "1")
 }
 
@@ -292,7 +292,7 @@ fn upload_asset(
         .ok_or_else(|| PublishError::General(format!("Release asset exist [{file_name}]")))
 }
 
-fn encode_uri_component(value: &str) -> String {
+pub(crate) fn encode_uri_component(value: &str) -> String {
     utf8_percent_encode(value, URI_COMPONENT_ENCODE_SET).to_string()
 }
 
