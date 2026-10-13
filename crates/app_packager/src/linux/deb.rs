@@ -74,7 +74,12 @@ impl DebMakeConfig {
     /// Renders the default `DEBIAN/control`. Project metadata
     /// (`APP_MAINTAINER`, `APP_DESCRIPTION`, `APP_HOMEPAGE`) fills what
     /// `make_config.yaml` leaves out; empty lists are omitted.
-    fn control_file(&self, config: &PackageConfig, variables: &Variables) -> String {
+    fn control_file(
+        &self,
+        config: &PackageConfig,
+        variables: &Variables,
+        shlib_depends: Option<&str>,
+    ) -> String {
         let join = |v: &Option<Vec<String>>| -> Option<String> {
             v.as_ref().filter(|v| !v.is_empty()).map(|v| v.join(", "))
         };
@@ -135,12 +140,14 @@ impl DebMakeConfig {
             ("Installed-Size", self.installed_size.map(|s| s.to_string())),
             ("Homepage", var(variables, "APP_HOMEPAGE")),
             ("Pre-Depends", join(&self.pre_dependencies)),
-            // A Flutter app needs GTK; an empty list opts out.
+            // A Flutter app needs GTK; an empty list opts out. The shared
+            // libraries the binaries link against are added after the
+            // configured dependencies.
             (
                 "Depends",
                 match &self.dependencies {
-                    None => Some("libgtk-3-0".to_string()),
-                    deps => join(deps),
+                    None => Some(merge_depends("libgtk-3-0", shlib_depends)),
+                    deps => join(deps).map(|deps| merge_depends(&deps, shlib_depends)),
                 },
             ),
             ("Recommends", join(&self.recommended_dependencies)),
@@ -162,6 +169,14 @@ impl DebMakeConfig {
             }
         }
         out
+    }
+
+    /// Whether the generated control file wants `dpkg-shlibdeps`: an empty
+    /// `dependencies` list opts out of every automatic dependency.
+    fn wants_shlib_depends(&self) -> bool {
+        self.dependencies
+            .as_ref()
+            .is_none_or(|deps| !deps.is_empty())
     }
 
     /// Renders the default desktop entry.
@@ -378,10 +393,35 @@ impl AppPackager for LinuxDebPackager {
         // permissive umask (such as 000 in some containers) would create.
         make_executable(&debian_dir)?;
 
-        // control, with the installed size filled in.
+        // control, with the installed size filled in. Shared-library
+        // dependencies come from dpkg-shlibdeps: added to a generated
+        // control file when it is available, and substituted for
+        // `${shlibs:Depends}` in a raw one, where it is required.
         let control = match raw.file(&["control"]) {
-            Some(src) => raw.render(&src)?,
-            None => make_config.control_file(config, raw.variables()),
+            Some(src) => {
+                let control = raw.render(&src)?;
+                if control.contains(SHLIBS_DEPENDS) {
+                    let depends = shlib_depends(&pkg_dir, &var_or(&raw, "PACKAGE_NAME"))?;
+                    substitute_shlibs_depends(&control, &depends)
+                } else {
+                    control
+                }
+            }
+            None => {
+                let depends = if make_config.wants_shlib_depends() {
+                    shlib_depends(&pkg_dir, &var_or(&raw, "PACKAGE_NAME"))
+                        .map_err(|err| {
+                            eprintln!(
+                                "Warning: shared-library dependencies were not added: {}",
+                                err
+                            )
+                        })
+                        .ok()
+                } else {
+                    None
+                };
+                make_config.control_file(config, raw.variables(), depends.as_deref())
+            }
         };
         let (_, kib) = staging::installed_size(&pkg_dir, &["DEBIAN"])?;
         std::fs::write(
@@ -444,6 +484,173 @@ impl AppPackager for LinuxDebPackager {
         std::fs::remove_dir_all(&pkg_dir).ok();
         config.resolve_result(output_file)
     }
+}
+
+const SHLIBS_DEPENDS: &str = "${shlibs:Depends}";
+
+fn var_or(raw: &RawPackaging, key: &str) -> String {
+    var(raw.variables(), key).unwrap_or_else(|| "package".to_string())
+}
+
+/// The package names of a `Depends` value, such as `libc6` in
+/// `libc6 (>= 2.34)`; an alternative (`a | b`) is named by its first.
+fn depends_names(depends: &str) -> Vec<String> {
+    depends
+        .split(',')
+        .filter_map(|entry| {
+            entry
+                .split(['|', '(', ' '])
+                .map(str::trim)
+                .find(|name| !name.is_empty())
+                .map(|name| name.split(':').next().unwrap_or(name).to_string())
+        })
+        .collect()
+}
+
+/// `configured`, followed by every `shlibs` entry for a package it does not
+/// already name, so a configured version constraint wins.
+fn merge_depends(configured: &str, shlibs: Option<&str>) -> String {
+    let named = depends_names(configured);
+    let mut entries: Vec<String> = configured
+        .split(',')
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .map(String::from)
+        .collect();
+    for entry in shlibs.unwrap_or_default().split(',').map(str::trim) {
+        if entry.is_empty() {
+            continue;
+        }
+        if depends_names(entry)
+            .first()
+            .is_some_and(|name| !named.contains(name))
+        {
+            entries.push(entry.to_string());
+        }
+    }
+    entries.join(", ")
+}
+
+/// Replaces `${shlibs:Depends}` in a raw control file, dropping the
+/// separator around it when there is nothing to add.
+fn substitute_shlibs_depends(control: &str, depends: &str) -> String {
+    if !depends.is_empty() {
+        return control.replace(SHLIBS_DEPENDS, depends);
+    }
+    control
+        .lines()
+        .filter_map(|line| {
+            if !line.contains(SHLIBS_DEPENDS) {
+                return Some(line.to_string());
+            }
+            let (key, value) = line.split_once(':')?;
+            let rest = value
+                .replace(SHLIBS_DEPENDS, "")
+                .split(',')
+                .map(str::trim)
+                .filter(|e| !e.is_empty())
+                .collect::<Vec<_>>()
+                .join(", ");
+            (!rest.is_empty()).then(|| format!("{}: {}", key, rest))
+        })
+        .map(|line| line + "\n")
+        .collect()
+}
+
+/// Whether `path` is an ELF object, which dpkg-shlibdeps can analyze.
+fn is_elf(path: &Path) -> bool {
+    use std::io::Read;
+    let mut magic = [0u8; 4];
+    std::fs::File::open(path)
+        .and_then(|mut file| file.read_exact(&mut magic))
+        .is_ok()
+        && magic == *b"\x7fELF"
+}
+
+fn elf_files(dir: &Path, root: &Path, out: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            if path != root.join("DEBIAN") {
+                elf_files(&path, root, out)?;
+            }
+        } else if file_type.is_file() && is_elf(&path) {
+            out.push(path.strip_prefix(root).unwrap_or(&path).to_path_buf());
+        }
+    }
+    Ok(())
+}
+
+/// The `Depends` value `dpkg-shlibdeps` derives from the shared libraries
+/// the package's binaries link against, as debhelper's `${shlibs:Depends}`
+/// would. Libraries the package ships itself, such as the Flutter engine,
+/// are recognized as its own. Requires `dpkg-shlibdeps` (`dpkg-dev`) and
+/// the host's libraries installed through dpkg, so it works on Debian and
+/// Ubuntu hosts; elsewhere it fails.
+fn shlib_depends(pkg_dir: &Path, package_name: &str) -> Result<String, PackageError> {
+    let mut files = Vec::new();
+    elf_files(pkg_dir, pkg_dir, &mut files)?;
+    if files.is_empty() {
+        return Ok(String::new());
+    }
+    files.sort();
+
+    // dpkg-shlibdeps expects a source tree: debian/control naming the
+    // package, and the package root at debian/<package>.
+    let work = tempfile_dir()?;
+    let debian = work.join("debian");
+    std::fs::create_dir_all(&debian)?;
+    std::fs::write(
+        debian.join("control"),
+        format!(
+            "Source: {0}\n\nPackage: {0}\nArchitecture: any\n",
+            package_name
+        ),
+    )?;
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(std::fs::canonicalize(pkg_dir)?, debian.join(package_name))?;
+
+    let mut cmd = Command::new("dpkg-shlibdeps");
+    cmd.current_dir(&work)
+        .args(["-O", "--ignore-missing-info"])
+        .args(
+            files
+                .iter()
+                .map(|file| Path::new("debian").join(package_name).join(file)),
+        );
+    let output = cmd.output();
+    std::fs::remove_dir_all(&work).ok();
+    let output = output.map_err(|e| {
+        PackageError::MissingTool(format!("dpkg-shlibdeps: {} (install dpkg-dev)", e))
+    })?;
+    if !output.status.success() {
+        return Err(PackageError::CommandFailed {
+            command: "dpkg-shlibdeps".into(),
+            stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("shlibs:Depends="))
+        .unwrap_or_default()
+        .trim()
+        .to_string())
+}
+
+/// A fresh scratch directory under the system temp directory.
+fn tempfile_dir() -> Result<std::path::PathBuf, PackageError> {
+    let dir = std::env::temp_dir().join(format!(
+        "fastforge-shlibdeps-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default()
+    ));
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
 }
 
 #[cfg(test)]
@@ -516,8 +723,57 @@ startup_notify: true
     }
 
     #[test]
+    fn shared_library_dependencies_follow_the_configured_ones() {
+        let shlibs = "libc6 (>= 2.34), libgtk-3-0 (>= 3.21.4), zlib1g (>= 1:1.1.4)";
+        assert_eq!(
+            merge_depends("libgtk-3-0", Some(shlibs)),
+            "libgtk-3-0, libc6 (>= 2.34), zlib1g (>= 1:1.1.4)"
+        );
+        assert_eq!(
+            merge_depends("libmpv2 | libmpv1, libc6 (>= 2.36)", Some(shlibs)),
+            "libmpv2 | libmpv1, libc6 (>= 2.36), libgtk-3-0 (>= 3.21.4), zlib1g (>= 1:1.1.4)"
+        );
+        assert_eq!(merge_depends("libgtk-3-0", None), "libgtk-3-0");
+
+        let mc = DebMakeConfig::default();
+        let control = mc.control_file(&test_config(), &Variables::new(), Some(shlibs));
+        assert!(control.contains("Depends: libgtk-3-0, libc6 (>= 2.34), zlib1g (>= 1:1.1.4)\n"));
+        let opted_out: DebMakeConfig = serde_yaml::from_str("dependencies: []").unwrap();
+        assert!(!opted_out.wants_shlib_depends());
+        assert!(mc.wants_shlib_depends());
+    }
+
+    /// Runs dpkg-shlibdeps on a staged package root named by
+    /// `FASTFORGE_SHLIBDEPS_ROOT`; needs a Debian or Ubuntu host.
+    #[test]
+    #[ignore]
+    fn shlib_depends_on_a_debian_host() {
+        let root = std::env::var("FASTFORGE_SHLIBDEPS_ROOT").unwrap();
+        let depends = shlib_depends(Path::new(&root), "hello-world").unwrap();
+        println!("{depends}");
+        assert!(depends.contains("libc6") && depends.contains("libgtk-3-0"));
+    }
+
+    #[test]
+    fn raw_control_substitutes_shlibs_depends() {
+        let control = "Package: demo\nDepends: ${shlibs:Depends}, libmpv2\nDescription: d\n";
+        assert_eq!(
+            substitute_shlibs_depends(control, "libc6 (>= 2.34)"),
+            "Package: demo\nDepends: libc6 (>= 2.34), libmpv2\nDescription: d\n"
+        );
+        assert_eq!(
+            substitute_shlibs_depends(control, ""),
+            "Package: demo\nDepends: libmpv2\nDescription: d\n"
+        );
+        assert_eq!(
+            substitute_shlibs_depends("Depends: ${shlibs:Depends}\nDescription: d\n", ""),
+            "Description: d\n"
+        );
+    }
+
+    #[test]
     fn control_file_contains_all_fields() {
-        let control = full_make_config().control_file(&test_config(), &Variables::new());
+        let control = full_make_config().control_file(&test_config(), &Variables::new(), None);
         assert!(control.contains("Maintainer: Gamer Boy 69 <rickastley@gmail.lol>"));
         assert!(control.contains("Package: hola-amigos"));
         assert!(control.contains("Version: 1.2.3+4"));
@@ -660,7 +916,7 @@ startup_notify: true
     #[test]
     fn defaults_without_make_config() {
         let mc = DebMakeConfig::default();
-        let control = mc.control_file(&test_config(), &Variables::new());
+        let control = mc.control_file(&test_config(), &Variables::new(), None);
         assert!(control.contains("Package: hola-amigos"));
         assert!(control.contains("Depends: libgtk-3-0\n"));
         assert!(control.contains("Section: x11"));
@@ -677,6 +933,7 @@ startup_notify: true
                 ("APP_DESCRIPTION", "A demo"),
                 ("APP_HOMEPAGE", "https://example.com"),
             ]),
+            None,
         );
         assert!(control.contains("Maintainer: Jane <jane@example.com>\n"));
         assert!(control.contains("Homepage: https://example.com\n"));
@@ -693,7 +950,7 @@ startup_notify: true
         let mc: DebMakeConfig =
             serde_yaml::from_str("dependencies: []\nco_authors: []\nstartup_notify: false\n")
                 .unwrap();
-        let control = mc.control_file(&test_config(), &Variables::new());
+        let control = mc.control_file(&test_config(), &Variables::new(), None);
         assert!(!control.contains("Depends"));
         assert!(!control.contains("Uploaders"));
         assert!(!control.contains("Recommends"));
