@@ -62,3 +62,5 @@ fastforge publish --path dist/1.2.0+3/hello-1.2.0+3-linux.pkg.tar.zst --target p
 [hello]
 Server = https://example.com/arch/$arch
 ```
+
+AUR 见 [AUR](aur.md)。

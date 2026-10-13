@@ -71,6 +71,7 @@ English | [简体中文](./README-ZH.md)
 - [Play Store](docs/en/publishers/playstore.md)
 - [Vercel](docs/en/publishers/vercel.md)
 - [APT and Pacman repositories](docs/en/publishers/repositories.md)
+- [AUR](docs/en/publishers/aur.md)
 - Object storage: [S3 / MinIO](docs/en/publishers/s3.md#s3--minio), [Qiniu](docs/en/publishers/s3.md#qiniu), [Alibaba Cloud OSS](docs/en/publishers/s3.md#alibaba-cloud-oss), [Tencent Cloud COS](docs/en/publishers/s3.md#tencent-cloud-cos)
 - [Custom](docs/en/publishers/custom.md) shell command
 - More platforms coming soon...

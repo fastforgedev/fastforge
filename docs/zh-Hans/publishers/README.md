@@ -24,6 +24,7 @@
 | `vercel`           | Vercel Production          | [Vercel](vercel.md)          |
 | `apt-repo`         | 目录中的 APT 软件源        | [软件源](repositories.md)    |
 | `pacman-repo`      | 目录中的 Pacman 软件源     | [软件源](repositories.md)    |
+| `aur`              | Arch 用户软件仓库（AUR）   | [AUR](aur.md)                |
 | `custom`           | 自定义 shell 命令          | [Custom](custom.md)          |
 
 ## 通用用法

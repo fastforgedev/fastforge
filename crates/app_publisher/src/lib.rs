@@ -1,5 +1,6 @@
 mod appgallery;
 mod appstore;
+mod aur;
 mod common;
 mod custom;
 mod fir;
@@ -19,6 +20,7 @@ pub use fastforge_core::{
 
 pub use appgallery::AppGalleryPublisher;
 pub use appstore::AppStorePublisher;
+pub use aur::AurPublisher;
 pub use custom::CustomPublisher;
 pub use fir::FirPublisher;
 pub use firebase::FirebasePublisher;

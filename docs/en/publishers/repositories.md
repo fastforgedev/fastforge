@@ -62,3 +62,5 @@ Users add it to `/etc/pacman.conf`:
 [hello]
 Server = https://example.com/arch/$arch
 ```
+
+For the AUR, see [AUR](aur.md).

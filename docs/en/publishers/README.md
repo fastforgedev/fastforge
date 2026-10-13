@@ -24,6 +24,7 @@ This section groups the currently connected targets by purpose. Object storage s
 | `vercel`           | Vercel Production              | [Vercel](vercel.md)               |
 | `apt-repo`         | APT repository in a directory  | [Repositories](repositories.md)   |
 | `pacman-repo`      | Pacman repository in a directory | [Repositories](repositories.md) |
+| `aur`              | Arch User Repository           | [AUR](aur.md)                     |
 | `custom`           | Custom shell command           | [Custom](custom.md)               |
 
 ## General Usage

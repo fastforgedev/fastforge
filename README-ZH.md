@@ -65,6 +65,7 @@
 - [Play Store](docs/zh-Hans/publishers/playstore.md)
 - [Vercel](docs/zh-Hans/publishers/vercel.md)
 - [APT 与 Pacman 软件源](docs/zh-Hans/publishers/repositories.md)
+- [AUR](docs/zh-Hans/publishers/aur.md)
 - 对象存储：[S3 / MinIO](docs/zh-Hans/publishers/s3.md#s3--minio)、[七牛云](docs/zh-Hans/publishers/s3.md#七牛云)、[阿里云 OSS](docs/zh-Hans/publishers/s3.md#阿里云-oss)、[腾讯云 COS](docs/zh-Hans/publishers/s3.md#腾讯云-cos)
 - [自定义](docs/zh-Hans/publishers/custom.md) shell 命令
 - 更多平台持续增加中...

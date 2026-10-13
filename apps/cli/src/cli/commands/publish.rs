@@ -1,11 +1,11 @@
 use anyhow::{Result, anyhow};
 use clap::Args;
 use fastforge_app_publisher::{
-    AppGalleryPublisher, AppPublisher, AppStorePublisher, AptRepoPublisher, CosPublisher,
-    CustomPublisher, FirPublisher, FirebaseHostingPublisher, FirebasePublisher, GitHubPublisher,
-    GiteaPublisher, MinioPublisher, OssPublisher, PacmanRepoPublisher, PgyerPublisher,
-    PlayStorePublisher, PublishConfig, PublishProgressCallback, QiniuPublisher, S3Publisher,
-    VercelPublisher,
+    AppGalleryPublisher, AppPublisher, AppStorePublisher, AptRepoPublisher, AurPublisher,
+    CosPublisher, CustomPublisher, FirPublisher, FirebaseHostingPublisher, FirebasePublisher,
+    GitHubPublisher, GiteaPublisher, MinioPublisher, OssPublisher, PacmanRepoPublisher,
+    PgyerPublisher, PlayStorePublisher, PublishConfig, PublishProgressCallback, QiniuPublisher,
+    S3Publisher, VercelPublisher,
 };
 use std::collections::HashMap;
 use std::io::{IsTerminal, Write};
@@ -421,9 +421,10 @@ pub fn publish_artifact_with_env(
         "vercel" => VercelPublisher::new().publish(publish_config, progress),
         "apt-repo" => AptRepoPublisher::new().publish(publish_config, progress),
         "pacman-repo" => PacmanRepoPublisher::new().publish(publish_config, progress),
+        "aur" => AurPublisher::new().publish(publish_config, progress),
         "custom" => CustomPublisher::new().publish(publish_config, progress),
         _ => Err(fastforge_app_publisher::PublishError::General(format!(
-            "Unsupported publish target: `{}`. Currently supported: s3, minio, qiniu, oss, cos, fir, firebase, firebase-hosting, github, gitea, appstore, appgallery, playstore, pgyer, vercel, apt-repo, pacman-repo, custom",
+            "Unsupported publish target: `{}`. Currently supported: s3, minio, qiniu, oss, cos, fir, firebase, firebase-hosting, github, gitea, appstore, appgallery, playstore, pgyer, vercel, apt-repo, pacman-repo, aur, custom",
             target
         ))),
     };
