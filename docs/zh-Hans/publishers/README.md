@@ -17,6 +17,7 @@
 | `firebase`         | Firebase App Distribution  | [Firebase](firebase.md)      |
 | `firebase-hosting` | Firebase Hosting           | [Firebase](firebase.md)      |
 | `github`           | GitHub Releases            | [GitHub](github.md)          |
+| `gitea`            | Gitea/Forgejo/Codeberg Releases | [Gitea](gitea.md)           |
 | `appstore`         | App Store Connect 构建上传 | [App Store](appstore.md)     |
 | `playstore`        | Google Play AAB 上传       | [Google Play](playstore.md)  |
 | `appgallery`       | Huawei AppGallery          | [AppGallery](appgallery.md)  |

@@ -56,6 +56,12 @@ pub struct PackageArgs {
     pub skip_clean: bool,
     #[arg(long = "no-skip-clean", overrides_with = "skip_clean", hide = true)]
     pub no_skip_clean: bool,
+    /// Package the output of an earlier build instead of running 'flutter
+    /// build' (and 'flutter clean'), for example one made by 'shorebird
+    /// release'. Flutter projects only; pass the same build options as that
+    /// build.
+    #[arg(long = "skip-build")]
+    pub skip_build: bool,
 
     /// Arguments to pass directly to flutter build
     #[arg(long = "flutter-build-args", value_name = "verbose,obfuscate")]
@@ -161,6 +167,9 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
     }
     let target_refs: Vec<&str> = targets.iter().map(String::as_str).collect();
     if let Some(host) = args.host.as_deref() {
+        if args.skip_build {
+            return Err(anyhow!("--skip-build cannot be combined with --host"));
+        }
         return super::remote::package(args, host, &target_refs);
     }
     let platform = match args.platform.as_deref() {
@@ -193,7 +202,8 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
         targets: &targets,
         channel: args.channel.clone(),
         artifact_name: args.artifact_name.clone(),
-        clean_before_build: !args.skip_clean,
+        clean_before_build: !args.skip_clean && !args.skip_build,
+        skip_build: args.skip_build,
         build_arguments: args.build_arguments(),
         variables: global_variables(&options),
         hooks: hooks.as_ref(),
@@ -219,6 +229,8 @@ pub struct PackageRequest<'a> {
     pub channel: Option<String>,
     pub artifact_name: Option<String>,
     pub clean_before_build: bool,
+    /// Package the existing build output instead of building (Flutter only).
+    pub skip_build: bool,
     pub build_arguments: Map<String, Value>,
     pub variables: HashMap<String, String>,
     pub hooks: Option<&'a HashMap<String, serde_yaml::Value>>,
@@ -242,6 +254,11 @@ pub fn package(request: PackageRequest) -> Result<Vec<PackagedTarget>> {
     let environment = request.variables;
 
     if !is_flutter_project() {
+        if request.skip_build {
+            return Err(anyhow!(
+                "--skip-build is only supported for Flutter projects (pubspec.yaml)"
+            ));
+        }
         for target in request.targets {
             println!("Packaging as {}:", target);
             let artifacts = match request.platform {
@@ -327,7 +344,9 @@ pub fn package(request: PackageRequest) -> Result<Vec<PackagedTarget>> {
         // catches the builder's `UnsupportedError`); a packager that can't
         // run here fails before the expensive build.
         let packager = resolve_packager(platform, target)?;
-        if builder.is_supported_on_current_platform(&platform, Some(target)) == Some(false) {
+        if !request.skip_build
+            && builder.is_supported_on_current_platform(&platform, Some(target)) == Some(false)
+        {
             eprintln!(
                 "{}",
                 yellow(&format!(
@@ -345,7 +364,26 @@ pub fn package(request: PackageRequest) -> Result<Vec<PackagedTarget>> {
         }
         drop(packager);
 
-        if !build_only_once || cached_build.is_none() {
+        if request.skip_build {
+            if !build_only_once || cached_build.is_none() {
+                let build = builder
+                    .existing_output(
+                        &platform,
+                        Some(target),
+                        request.build_arguments.clone(),
+                        Some(environment.clone()),
+                    )
+                    .map_err(|e| anyhow!("{} (--skip-build packages an earlier build)", e))?;
+                println!(
+                    "{}",
+                    bright_green(&format!(
+                        "Using existing build output {}",
+                        build.output_directory.display()
+                    ))
+                );
+                cached_build = Some(build);
+            }
+        } else if !build_only_once || cached_build.is_none() {
             match builder.build(
                 &platform,
                 Some(target),
@@ -421,6 +459,7 @@ pub fn package_flutter_artifact(
         channel,
         artifact_name,
         clean_before_build,
+        skip_build: false,
         build_arguments: build_args,
         variables: environment,
         hooks,

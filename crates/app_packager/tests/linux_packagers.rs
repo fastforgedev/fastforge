@@ -259,7 +259,16 @@ fn deb_follows_debian_conventions() {
     // A pre-release sorts before the release.
     assert!(fields.contains("Version: 1.2.3~beta.1+4\n"), "{}", fields);
     assert!(fields.contains("Maintainer: Test <test@example.com>\n"));
-    assert!(fields.contains("Depends: libgtk-3-0\n"));
+    // The configured GTK dependency first, then what dpkg-shlibdeps finds
+    // for the bundle's binaries (on a Debian-based host).
+    let depends = fields
+        .lines()
+        .find(|line| line.starts_with("Depends: "))
+        .unwrap_or_default();
+    assert!(depends.starts_with("Depends: libgtk-3-0"), "{}", fields);
+    if has("dpkg-shlibdeps") && std::path::Path::new("/var/lib/dpkg/status").exists() {
+        assert!(depends.contains(", libc6 (>= "), "{}", fields);
+    }
     assert!(fields.contains("Installed-Size: "));
     assert!(fields.contains("Description: A packaging test app\n"));
 
