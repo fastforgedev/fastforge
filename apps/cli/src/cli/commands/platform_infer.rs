@@ -19,7 +19,7 @@ fn target_candidates(target: &str) -> &'static [Platform] {
     match target {
         "aab" | "apk" => &[Platform::Android],
         "ipa" => &[Platform::IOS],
-        "appimage" | "deb" | "pacman" | "rpm" => &[Platform::Linux],
+        "appimage" | "deb" | "flatpak" | "nix" | "pacman" | "rpm" => &[Platform::Linux],
         "dmg" | "pkg" => &[Platform::MacOS],
         "app" | "hap" => &[Platform::Ohos],
         "exe" | "msix" => &[Platform::Windows],

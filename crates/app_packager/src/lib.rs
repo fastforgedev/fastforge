@@ -19,6 +19,8 @@ pub use ios::ipa::IOSIpaPackager;
 pub use linux::appimage::LinuxAppImagePackager;
 pub use linux::deb::LinuxDebPackager;
 pub use linux::direct::LinuxDirectPackager;
+pub use linux::flatpak::LinuxFlatpakPackager;
+pub use linux::nix::LinuxNixPackager;
 pub use linux::pacman::LinuxPacmanPackager;
 pub use linux::rpm::LinuxRpmPackager;
 pub use linux::zip::LinuxZipPackager;
