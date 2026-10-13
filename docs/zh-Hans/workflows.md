@@ -117,6 +117,7 @@ fastforge workflow run \
 | `build-args`    | JSON object 字符串             |
 | `hook-pre`      | 打包前 shell 命令              |
 | `hook-post`     | 打包后 shell 命令              |
+| `notarize`      | 字符串 `true` 时公证 macOS DMG、PKG 和 ZIP |
 
 `skip-clean` 和 `channel` 只对 Flutter 项目生效，原生 Gradle、Xcode 和 .NET 项目会忽略它们。与 `fastforge package` 不同，该 action 不读取 `distribute_options.yaml`：输出目录来自 `output`，变量来自工作流、job 和 step 的 `env` 与进程环境变量的合并结果（冲突时以进程环境变量为准）。
 

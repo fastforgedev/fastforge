@@ -1,6 +1,10 @@
+use std::path::Path;
 use std::process::Command;
 
 use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
+use serde::Deserialize;
+
+use super::notarize;
 
 /// Zips a macOS `.app` bundle using `7z`, mirroring the macOS branch of
 /// Dart's `AppPackageMakerZip`.
@@ -10,6 +14,31 @@ use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Pl
 /// Like Dart, the packager is not restricted to macOS hosts (it only needs
 /// `cp` and `7z`).
 pub struct MacOSZipPackager;
+
+/// `macos/packaging/zip/make_config.yaml`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ZipMakeConfig {
+    /// Notarize and staple the `.app` before zipping it.
+    #[serde(default)]
+    notarize: bool,
+}
+
+impl ZipMakeConfig {
+    fn load(path: &Path) -> Result<Self, PackageError> {
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            PackageError::General(format!("Failed to read {}: {}", path.display(), e))
+        })?;
+        serde_yaml::from_str::<Option<Self>>(&content)
+            .map(Option::unwrap_or_default)
+            .map_err(|e| {
+                PackageError::General(format!("Failed to parse {}: {}", path.display(), e))
+            })
+    }
+}
 
 fn run(cmd: &mut Command) -> Result<(), PackageError> {
     let out = cmd.output().map_err(|e| {
@@ -38,6 +67,10 @@ impl AppPackager for MacOSZipPackager {
     }
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
+        let make_config = ZipMakeConfig::load(Path::new("macos/packaging/zip/make_config.yaml"))?;
+        let credentials = notarize::enabled(make_config.notarize, config)
+            .then(|| notarize::Credentials::from_config(config))
+            .transpose()?;
         let pkg_dir = config.packaging_dir()?;
 
         // Find the .app bundle
@@ -45,6 +78,11 @@ impl AppPackager for MacOSZipPackager {
             .filter_map(|e| e.ok())
             .find(|e| e.path().extension().is_some_and(|x| x == "app"))
             .ok_or_else(|| PackageError::NotFound(".app bundle in build output".into()))?;
+
+        // A zip cannot be stapled, so the app is stapled before it is zipped.
+        if let Some(credentials) = &credentials {
+            notarize::notarize_app(&app_bundle.path(), credentials, &pkg_dir)?;
+        }
 
         // Copy .app into packaging directory
         run(Command::new("cp").args([
@@ -71,5 +109,23 @@ impl AppPackager for MacOSZipPackager {
 
         std::fs::remove_dir_all(&pkg_dir).ok();
         config.resolve_result(output_file)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn make_config_reads_notarize() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("make_config.yaml");
+        assert!(!ZipMakeConfig::load(&path).unwrap().notarize);
+        std::fs::write(&path, "notarize: true\n").unwrap();
+        assert!(ZipMakeConfig::load(&path).unwrap().notarize);
+        std::fs::write(&path, "").unwrap();
+        assert!(!ZipMakeConfig::load(&path).unwrap().notarize);
+        std::fs::write(&path, "notarise: true\n").unwrap();
+        assert!(ZipMakeConfig::load(&path).is_err());
     }
 }

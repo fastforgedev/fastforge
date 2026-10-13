@@ -74,8 +74,17 @@ channel/flavor are not used in the artifact name.
 
 ## Signing and notarization
 
-Run `codesign` / `notarytool` steps through the packaging hooks
-(`--hook-post` on the CLI, `hook-post` on the action) — fastforge does not
-sign the app for you (PKG `sign-identity` only signs the installer). Verify
+fastforge does not sign the app: the `.app` from the build must already be
+signed with a "Developer ID Application" identity, hardened runtime, and a
+secure timestamp (PKG `sign-identity` only signs the installer). Built-in
+notarization is opt-in: `--notarize` on the CLI (`notarize: "true"` on the
+action) or `notarize: true` in `macos/packaging/<dmg|pkg|zip>/make_config.yaml`.
+It notarizes and staples the `.app` before zipping or imaging it, signs the
+DMG with `--timestamp`, and notarizes and staples the DMG and PKG (PKG needs a
+"Developer ID Installer" `sign-identity`). Credentials come from the
+environment: `NOTARYTOOL_KEYCHAIN_PROFILE`, or `APP_STORE_CONNECT_KEY_ID` +
+`APP_STORE_CONNECT_KEY_PATH` (+ `APP_STORE_CONNECT_ISSUER_ID`), or `APPLE_ID`
++ `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID`. Other custom steps still go
+through the packaging hooks (`--hook-post` / `hook-post`). Verify
 the result afterwards with `fastforge analyze <path/to/app.dmg>`, which
 reports signing type, notarization stapling, and Gatekeeper state.

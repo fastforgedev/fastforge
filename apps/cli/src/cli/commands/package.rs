@@ -8,9 +8,9 @@ use fastforge_app_packager::{
     AndroidAabPackager, AndroidApkPackager, AppPackager, AppxManifest, CustomPackager,
     IOSIpaPackager, LinuxAppImagePackager, LinuxDebPackager, LinuxDirectPackager,
     LinuxPacmanPackager, LinuxRpmPackager, LinuxZipPackager, MacOSDmgPackager, MacOSPkgPackager,
-    MacOSZipPackager, OHOSAppPackager, OHOSHapPackager, PackageConfig, WebDirectPackager,
-    WebZipPackager, WindowsDirectPackager, WindowsExePackager, WindowsMsixPackager,
-    WindowsZipPackager,
+    MacOSZipPackager, NOTARIZE_ENV, OHOSAppPackager, OHOSHapPackager, PackageConfig,
+    WebDirectPackager, WebZipPackager, WindowsDirectPackager, WindowsExePackager,
+    WindowsMsixPackager, WindowsZipPackager,
 };
 use fastforge_core::{ProjectSettings, environment_variables};
 use serde::Deserialize;
@@ -90,6 +90,11 @@ pub struct PackageArgs {
     /// Shell command to run after packaging.
     #[arg(long = "hook-post")]
     pub hook_post: Option<String>,
+
+    /// Notarize and staple macOS DMG, PKG and ZIP artifacts with `xcrun
+    /// notarytool`. Credentials come from the environment.
+    #[arg(long = "notarize")]
+    pub notarize: bool,
 
     /// Package on a remote host from `~/.fastforge/hosts.yaml` and fetch the
     /// artifacts back. `auto` picks the first host whose `platforms` lists the
@@ -178,6 +183,11 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
             .as_str()
             .to_string(),
     };
+    if args.notarize && platform != "macos" {
+        return Err(anyhow!(
+            "--notarize only applies to macOS (dmg, pkg and zip targets)"
+        ));
+    }
 
     let hooks: Option<HashMap<String, serde_yaml::Value>> = {
         let mut map = HashMap::new();
@@ -197,6 +207,10 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
     let options = DistributeOptions::load()?;
     super::remote::hint_if_unsupported(&platform);
     let output = resolve_output(args.output.as_deref(), &options);
+    let mut variables = global_variables(&options);
+    if args.notarize {
+        variables.insert(NOTARIZE_ENV.to_string(), "true".to_string());
+    }
     package(PackageRequest {
         platform: &platform,
         targets: &targets,
@@ -205,7 +219,7 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
         clean_before_build: !args.skip_clean && !args.skip_build,
         skip_build: args.skip_build,
         build_arguments: args.build_arguments(),
-        variables: global_variables(&options),
+        variables,
         hooks: hooks.as_ref(),
         output: &output,
     })?;

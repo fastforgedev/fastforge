@@ -118,6 +118,7 @@ fastforge package [OPTIONS]
 | `--build-dart-define <KEY=VALUE>`     | `--dart-define` passed to `flutter build`; repeatable                       |
 | `--hook-pre <COMMAND>`                | Shell command to run before packaging                                       |
 | `--hook-post <COMMAND>`               | Shell command to run after packaging                                        |
+| `--notarize`                          | Notarize and staple macOS DMG, PKG, and ZIP artifacts                       |
 | `--host <NAME\|auto>`                 | Package on a remote host and fetch the artifacts into the output directory |
 
 > [!WARNING]

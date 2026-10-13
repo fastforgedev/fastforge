@@ -319,6 +319,9 @@ fn build_dmg(
             args.push("--identifier".to_string());
             args.push(identifier.clone());
         }
+        if code_sign.timestamp == Some(true) {
+            args.push("--timestamp".to_string());
+        }
         args.push(target.to_string_lossy().into_owned());
         run_cmd_owned("codesign", &args)?;
     }

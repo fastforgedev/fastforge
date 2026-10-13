@@ -66,6 +66,7 @@ fastforge package --platform macos --targets dmg,zip
 | `--build-dart-define <KEY=VALUE>`     | 编译变量；可重复                                       |
 | `--flutter-build-args <ARG,...>`      | 其他构建参数，`flag` 或 `key=value`，以逗号分隔        |
 | `--hook-pre` / `--hook-post`          | 打包器执行前 / 后运行的 shell 命令                     |
+| `--notarize`                          | 公证 macOS DMG、PKG 和 ZIP，见 [macOS](packagers/macos.md#公证) |
 | `--host <NAME\|auto>`                 | 在[远程主机](remote-hosts.md)上打包并取回产物          |
 
 没有专用参数的选项，例如 `profile`、`obfuscate`、`split-debug-info=<dir>` 或 `export-method=app-store`，可以通过 `--flutter-build-args` 传入。
@@ -175,6 +176,6 @@ fastforge package --targets zip \
 
 ## 自动化
 
-需要组合多个打包目标、发布或其他命令时，使用[本地工作流](workflows.md)。`fastforge/package` action 要求提供 `platform` 和单个 `target`，并接受 `output`（默认 `dist/`）、`artifact-name`、`channel`、`skip-clean`、`build-target`、`hook-pre`、`hook-post` 和 `build-args`（JSON object 字符串，承载其他所有构建参数，如 `{"flavor":"dev","dart-define":{"APP_ENV":"dev"}}`）。
+需要组合多个打包目标、发布或其他命令时，使用[本地工作流](workflows.md)。`fastforge/package` action 要求提供 `platform` 和单个 `target`，并接受 `output`（默认 `dist/`）、`artifact-name`、`channel`、`skip-clean`、`build-target`、`hook-pre`、`hook-post`、`notarize` 和 `build-args`（JSON object 字符串，承载其他所有构建参数，如 `{"flavor":"dev","dart-define":{"APP_ENV":"dev"}}`）。
 
 产物模板会拒绝未知变量、未闭合或不匹配的区块、partial 及分隔符修改；已知可选变量（`flavor`、`channel`、`build_number`、`ext`）允许缺失。仍支持注释、嵌套／反向区块和不转义变量。打包 JSON 使用统一的公共字段，反映最终公共配置。

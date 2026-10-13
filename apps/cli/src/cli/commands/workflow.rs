@@ -557,6 +557,16 @@ impl Action for FastforgePackageAction {
 
         let mut environment: HashMap<String, String> = ctx.env.clone();
         environment.extend(std::env::vars());
+        if ctx
+            .inputs
+            .get("notarize")
+            .is_some_and(|value| value == "true")
+        {
+            environment.insert(
+                fastforge_app_packager::NOTARIZE_ENV.to_string(),
+                "true".to_string(),
+            );
+        }
 
         // Auto-detect project type: Flutter (has pubspec.yaml) or native
         // Xcode/Gradle/.NET. When no pubspec.yaml is found, route to the

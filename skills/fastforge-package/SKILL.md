@@ -110,7 +110,7 @@ need it again. Generate `.fastforge/workflows/<name>.yml`, validate with
 first. The package action is narrower than the CLI: `platform` and `target`
 are required (one target per step, no inference); the other inputs are
 `output` (default `dist/`), `artifact-name`, `channel`, `skip-clean`,
-`build-target`, `hook-pre`, `hook-post`, and `build-args` — a JSON object
+`build-target`, `hook-pre`, `hook-post`, `notarize`, and `build-args` — a JSON object
 string that carries everything else (`flavor`, `dart-define` as an object,
 Xcode/Gradle arguments).
 

@@ -23,6 +23,7 @@ pub use linux::pacman::LinuxPacmanPackager;
 pub use linux::rpm::LinuxRpmPackager;
 pub use linux::zip::LinuxZipPackager;
 pub use macos::dmg::MacOSDmgPackager;
+pub use macos::notarize::NOTARIZE_ENV;
 pub use macos::pkg::MacOSPkgPackager;
 pub use macos::zip::MacOSZipPackager;
 pub use ohos::app::OHOSAppPackager;

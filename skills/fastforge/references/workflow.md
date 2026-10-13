@@ -78,6 +78,7 @@ Required: `platform`, `target`.
 | `build-args` | **JSON object string** — fields depend on the active builder |
 | `channel` | Channel name used in artifact naming (Flutter projects only; native Gradle/Xcode ignore it) |
 | `hook-pre` / `hook-post` | Shell command before/after packaging |
+| `notarize` | `"true"` notarizes and staples macOS DMG, PKG, and ZIP |
 
 Outputs: `artifact-count`, `artifact-paths` (comma-separated).
 

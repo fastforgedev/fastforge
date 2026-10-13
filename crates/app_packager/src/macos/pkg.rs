@@ -5,6 +5,8 @@ use std::process::Command;
 use fastforge_core::{AppPackager, PackageConfig, PackageError, PackageResult, Platform};
 use serde::Deserialize;
 
+use super::notarize;
+
 /// Builds a macOS `.pkg` installer using `xcrun productbuild` (and optionally
 /// `productsign`), mirroring Dart's `AppPackageMakerPkg`.
 ///
@@ -17,6 +19,8 @@ pub struct MacOSPkgPackager {
     pub install_path: Option<String>,
     /// Optional path to a directory containing pre/post-install scripts.
     pub scripts: Option<String>,
+    /// Notarize and staple the signed package.
+    pub notarize: bool,
 }
 
 impl MacOSPkgPackager {
@@ -35,6 +39,8 @@ impl MacOSPkgPackager {
             install_path: Option<String>,
             sign_identity: Option<String>,
             scripts: Option<String>,
+            #[serde(default)]
+            notarize: bool,
         }
         let cfg: Config = serde_yaml::from_str(&content).map_err(|e| {
             PackageError::General(format!("Failed to parse {}: {}", path.display(), e))
@@ -43,6 +49,7 @@ impl MacOSPkgPackager {
             sign_identity: cfg.sign_identity,
             install_path: cfg.install_path,
             scripts: cfg.scripts,
+            notarize: cfg.notarize,
         })
     }
 }
@@ -89,6 +96,23 @@ fn productbuild_args(
         args.push("--scripts".into());
         args.push(scripts.into());
     }
+    args
+}
+
+/// `xcrun productsign` arguments; a package that is notarized needs a secure
+/// timestamp.
+fn productsign_args(
+    identity: &str,
+    timestamp: bool,
+    unsigned_path: &Path,
+    output_file: &Path,
+) -> Vec<OsString> {
+    let mut args: Vec<OsString> = vec!["productsign".into(), "--sign".into(), identity.into()];
+    if timestamp {
+        args.push("--timestamp".into());
+    }
+    args.push(unsigned_path.into());
+    args.push(output_file.into());
     args
 }
 
@@ -183,6 +207,22 @@ impl AppPackager for MacOSPkgPackager {
             .first_build_output_file()
             .ok_or_else(|| PackageError::General("no build output files".into()))?;
 
+        // Fail before building anything the notary service would reject.
+        let credentials = if notarize::enabled(self.notarize, config) {
+            if self.sign_identity.is_none() {
+                return Err(PackageError::General(
+                    "Notarizing the PKG needs `sign-identity` (a \"Developer ID Installer\" \
+                     identity) in macos/packaging/pkg/make_config.yaml"
+                        .into(),
+                ));
+            }
+            let credentials = notarize::Credentials::from_config(config)?;
+            notarize::check_app_signature(app_path)?;
+            Some(credentials)
+        } else {
+            None
+        };
+
         let output_file = config.output_file()?;
         let unsigned_path = unsigned_pkg_path(&output_file);
 
@@ -242,16 +282,19 @@ impl AppPackager for MacOSPkgPackager {
         std::fs::remove_dir_all(&expand_dir)?;
 
         if let Some(identity) = &self.sign_identity {
-            run(Command::new("xcrun").args([
-                "productsign".as_ref(),
-                "--sign".as_ref(),
-                identity.as_ref(),
-                unsigned_path.as_os_str(),
-                output_file.as_os_str(),
-            ]))?;
+            run(Command::new("xcrun").args(productsign_args(
+                identity,
+                credentials.is_some(),
+                &unsigned_path,
+                &output_file,
+            )))?;
             std::fs::remove_file(&unsigned_path)?;
         } else {
             std::fs::rename(&unsigned_path, &output_file)?;
+        }
+
+        if let Some(credentials) = &credentials {
+            notarize::notarize_and_staple(&output_file, credentials)?;
         }
 
         config.resolve_result(output_file)
@@ -286,6 +329,48 @@ mod tests {
                 "macos/packaging/pkg/scripts",
             ]
         );
+    }
+
+    #[test]
+    fn notarized_package_is_signed_with_a_timestamp() {
+        let args = |timestamp| {
+            productsign_args(
+                "Developer ID Installer: Foo (TEAM)",
+                timestamp,
+                Path::new("demo-unsigned.pkg"),
+                Path::new("demo.pkg"),
+            )
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            args(true),
+            [
+                "productsign",
+                "--sign",
+                "Developer ID Installer: Foo (TEAM)",
+                "--timestamp",
+                "demo-unsigned.pkg",
+                "demo.pkg"
+            ]
+        );
+        assert!(!args(false).contains(&"--timestamp".to_string()));
+    }
+
+    #[test]
+    fn make_config_reads_notarize() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("make_config.yaml");
+        std::fs::write(
+            &path,
+            "sign-identity: \"Developer ID Installer: Foo (TEAM)\"\nnotarize: true\n",
+        )
+        .unwrap();
+        let packager = MacOSPkgPackager::from_yaml_file(&path).unwrap();
+        assert!(packager.notarize);
+        std::fs::write(&path, "install-path: /Applications/\n").unwrap();
+        assert!(!MacOSPkgPackager::from_yaml_file(&path).unwrap().notarize);
     }
 
     #[test]

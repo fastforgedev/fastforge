@@ -31,6 +31,7 @@ Supported fields:
 - `contents` (`type: link | file | position`)
 - `code-sign.signing-identity`
 - `code-sign.identifier`
+- `code-sign.timestamp` (`true` adds `codesign --timestamp`)
 
 Default values:
 - `format`: `UDZO`

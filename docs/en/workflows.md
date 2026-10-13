@@ -117,6 +117,7 @@ Optional inputs:
 | `build-args`    | JSON object string                      |
 | `hook-pre`      | Shell command to run before packaging   |
 | `hook-post`     | Shell command to run after packaging    |
+| `notarize`      | Notarize macOS DMG, PKG, and ZIP when the string is `true` |
 
 `skip-clean` and `channel` only affect Flutter projects; native Gradle, Xcode, and .NET projects ignore them. Unlike `fastforge package`, the action does not read `distribute_options.yaml`: the output directory comes from `output`, and variables come from the workflow, job and step `env` merged with the process environment (the process environment wins on conflicts).
 

@@ -31,6 +31,7 @@ Rust 实现的 DMG 打包器，兼容基础 `node-appdmg` 风格配置。
 - `contents`（`type: link | file | position`）
 - `code-sign.signing-identity`
 - `code-sign.identifier`
+- `code-sign.timestamp`（为 `true` 时追加 `codesign --timestamp`）
 
 默认值：
 - `format`: `UDZO`

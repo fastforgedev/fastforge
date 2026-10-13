@@ -80,6 +80,9 @@ pub struct CodeSign {
     #[serde(rename = "signing-identity")]
     pub signing_identity: String,
     pub identifier: Option<String>,
+    /// Adds a secure timestamp (`codesign --timestamp`), which notarization
+    /// requires.
+    pub timestamp: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -118,6 +118,7 @@ fastforge package [OPTIONS]
 | `--build-dart-define <KEY=VALUE>`     | 传给 `flutter build` 的 `--dart-define`；可重复                  |
 | `--hook-pre <COMMAND>`                | 打包前 shell 命令                                                |
 | `--hook-post <COMMAND>`               | 打包后 shell 命令                                                |
+| `--notarize`                          | 公证并装订 macOS DMG、PKG 和 ZIP 产物                            |
 | `--host <NAME\|auto>`                 | 在远程主机上打包，并把产物取回本地输出目录                       |
 
 > [!WARNING]
