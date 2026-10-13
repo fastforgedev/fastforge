@@ -2,13 +2,13 @@
 
 [English](../../en/packagers/linux.md) | 简体中文
 
-Fastforge 支持把 Flutter Linux 应用打包为 [AppImage](#appimage)、[DEB](#deb)、[RPM](#rpm)、[Pacman](#pacman)、[Nix](#nix)、[ZIP 或直接复制](#zip-和-direct)。
+Fastforge 支持把 Flutter Linux 应用打包为 [AppImage](#appimage)、[DEB](#deb)、[RPM](#rpm)、[Pacman](#pacman)、[Flatpak](#flatpak)、[Nix](#nix)、[ZIP 或直接复制](#zip-和-direct)。
 
 ## 当前状态
 
 | 构建系统        | `package` 状态                                          |
 | --------------- | ------------------------------------------------------- |
-| Flutter Builder | AppImage、DEB、RPM、Pacman、Nix、ZIP、direct 已通过 CLI/action 接入 |
+| Flutter Builder | AppImage、DEB、RPM、Pacman、Flatpak、Nix、ZIP、direct 已通过 CLI/action 接入 |
 
 Linux 打包需要 Flutter 项目（含 `pubspec.yaml`）。构建只能在 Linux 宿主上执行；在其他宿主上，`fastforge package` 会输出警告并跳过该 target。打包器使用 bundle 目录 `build/linux/<x64|arm64>/<mode>/bundle/`，产物写入 `dist/<version>/`。
 
@@ -97,7 +97,7 @@ env:
 
 ## DEB
 
-需要 `dpkg-deb`（Debian/Ubuntu 上由 `dpkg-dev` 提供）。文件属主为 root。包使用 xz 而非 zstd 压缩，因此 Debian 11、deepin、统信 UOS 等较旧的 dpkg 也能安装。默认包名为可执行文件名转为小写，并把 Debian 不允许的字符（如 `_`）替换为 `-`。`Version` 保留构建号（`1.2.3+4`），预发布版本中的 `-` 写成 `~`。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `libgtk-3-0`；设为空列表可以去掉。`/usr/bin` 链接由包管理器拥有并负责卸载清理。旧 Dart 包的 `postrm` 可能在升级时删除它，因此默认 `postinst` 会在配置阶段、执行 `postinstall_scripts` 之前，仅在入口缺失时补回链接。已有文件及符号链接（包括失效链接）均保留，覆盖树提供的链接目标也会保留。原生 `postinst` 会替换默认脚本，需要自行处理这项升级兼容；仅配置了 `postuninstall_scripts` 时才生成 `postrm`。维护脚本以 root 身份运行，包管理器的动作作为 `$1` 传入（`postrm` 中如 `remove`、`purge` 或 `upgrade`），因此 `~` 指向 root 的主目录而不是用户的：脚本无法清理 `~/.local/share/<app>` 等用户数据，Debian 规范也将其留给用户处理。只应删除系统级文件，并通过 `$1` 跳过升级，例如 `[ "$1" = purge ] && rm -rf /var/lib/<app>`。`make_config.yaml` 额外的键包括 `maintainer`、`co_authors`、`priority`、`section`、`essential`、`installed_size`、`postinstall_scripts`、`postuninstall_scripts`、`supported_mime_type`、`actions`、`startup_wm_class`，以及依赖关系列表 `dependencies`、`pre_dependencies`、`recommended_dependencies`、`suggested_dependencies`、`enhances`、`breaks`、`conflicts`、`provides`、`replaces`、`build_dependencies` 和 `build_dependencies_indep`。
+需要 `dpkg-deb`（Debian/Ubuntu 上由 `dpkg-dev` 提供）。文件属主为 root。包使用 xz 而非 zstd 压缩，因此 Debian 11、deepin、统信 UOS 等较旧的 dpkg 也能安装。默认包名为可执行文件名转为小写，并把 Debian 不允许的字符（如 `_`）替换为 `-`。`Version` 保留构建号（`1.2.3+4`），预发布版本中的 `-` 写成 `~`。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `libgtk-3-0`；设为空列表可以去掉。存在 `dpkg-shlibdeps`（由 `dpkg-dev` 提供）时，生成的 control 文件还会像 debhelper 的 `${shlibs:Depends}` 一样，带版本地依赖可执行文件链接的系统库；同一个包以配置的条目为准。在它无法运行的主机上（例如非 Debian 系发行版）会打印警告，只使用配置的依赖。原生 `control` 文件可以在字段中写 `${shlibs:Depends}`，例如 `Depends: ${shlibs:Depends}, libmpv2`，此时它必须执行成功。`/usr/bin` 链接由包管理器拥有并负责卸载清理。旧 Dart 包的 `postrm` 可能在升级时删除它，因此默认 `postinst` 会在配置阶段、执行 `postinstall_scripts` 之前，仅在入口缺失时补回链接。已有文件及符号链接（包括失效链接）均保留，覆盖树提供的链接目标也会保留。原生 `postinst` 会替换默认脚本，需要自行处理这项升级兼容；仅配置了 `postuninstall_scripts` 时才生成 `postrm`。维护脚本以 root 身份运行，包管理器的动作作为 `$1` 传入（`postrm` 中如 `remove`、`purge` 或 `upgrade`），因此 `~` 指向 root 的主目录而不是用户的：脚本无法清理 `~/.local/share/<app>` 等用户数据，Debian 规范也将其留给用户处理。只应删除系统级文件，并通过 `$1` 跳过升级，例如 `[ "$1" = purge ] && rm -rf /var/lib/<app>`。`make_config.yaml` 额外的键包括 `maintainer`、`co_authors`、`priority`、`section`、`essential`、`installed_size`、`postinstall_scripts`、`postuninstall_scripts`、`supported_mime_type`、`actions`、`startup_wm_class`，以及依赖关系列表 `dependencies`、`pre_dependencies`、`recommended_dependencies`、`suggested_dependencies`、`enhances`、`breaks`、`conflicts`、`provides`、`replaces`、`build_dependencies` 和 `build_dependencies_indep`。
 
 ## RPM
 
@@ -122,6 +122,32 @@ RPM 保留 `/opt/<binary>` 安装目录。包名与程序名不同的项目同�
 需要支持 zstd 的 `bsdtar`（Debian/Ubuntu 上为 `libarchive-tools`，Fedora 上为 `bsdtar`，Arch 上为 `libarchive`），不使用 `makepkg`。产物是属主为 root 的 `.pkg.tar.zst` 归档，包含 `.MTREE`、`.PKGINFO`、`.INSTALL`（如有）以及包根目录。生成的 `.PKGINFO` 使用 makepkg 的格式，每个值一行 `key = value`。默认包名为可执行文件名。`pkgver` 为 `<构建名>-<release>`，构建名中的 `-` 会被去掉；release 为构建号按 `.` 分隔的第一段，没有构建号时为 `1`。设置了 `SOURCE_DATE_EPOCH` 时，`builddate` 使用该值。`make_config.yaml` 未设置 `dependencies` 时，包依赖 `gtk3`；设为空列表可以去掉。`make_config.yaml` 额外的键包括 `maintainer`、`licenses`、`groups`、`dependencies`、`optional_dependencies`、`conflicts`、`provides`、`replaces`、`supported_mime_type`、`actions`，以及用于生成 `.INSTALL` 的 `postinstall_scripts`、`postupgrade_scripts` 和 `postuninstall_scripts`。
 
 Pacman 旧字段 `installed_size` 和 `options` 现在会输出迁移提示。`size` 按实际暂存内容计算字节数；`options` 属于 makepkg，不能作为 PKGINFO 元数据。需要的预处理应移到钩子或工作流。
+
+## Flatpak
+
+需要 `flatpak` 和 `flatpak-builder`。产物是单文件 bundle（`.flatpak`），用户通过 `flatpak install --user <file>.flatpak` 安装；其中注明 Flathub 为运行时所在仓库，安装时会一并安装运行时。
+
+应用暂存为 `/app` 的内容：bundle 位于 `/app/lib/<binary>`，另有 `/app/bin/<binary>`，以及以 app ID 命名、由 Flatpak 导出到主机的桌面入口、图标和 metainfo。共享 `files/` 覆盖树只有 `usr/` 部分生效，对应 `/app`。`APP_ID` 必须是至少三段的合法 Flatpak ID，例如 `com.example.App`；请设置 `project.app_id`，并让 `linux/CMakeLists.txt` 中的 `APPLICATION_ID` 与之一致。
+
+生成的清单使用 GNOME 运行时（`org.gnome.Platform` 48，提供 GTK 3），允许访问 Wayland、作为后备的 X11、GPU、IPC 和网络。缺少 Flathub 时 Fastforge 会将其添加为用户级远程仓库，由 `flatpak-builder` 为当前用户安装运行时和 SDK。可在 `.fastforge/config.yaml` 的 `env:` 或环境变量中设置 `FLATPAK_RUNTIME`、`FLATPAK_RUNTIME_VERSION`、`FLATPAK_SDK` 进行更改。需要其他权限或模块时，在 `.fastforge/packaging/linux/flatpak/` 中放置清单（`*.yml`、`*.yaml` 或 `*.json`），它会替换生成的清单，并可从 `${PACKAGING_DIRECTORY}` 复制暂存目录：
+
+```yaml
+id: ${APP_ID}
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: ${APP_BINARY_NAME}
+finish-args: [--share=ipc, --socket=fallback-x11, --socket=wayland, --device=dri, --filesystem=xdg-download]
+modules:
+  - name: ${APP_BINARY_NAME}
+    buildsystem: simple
+    build-commands: [cp -a . /app/]
+    sources:
+      - type: dir
+        path: ${PACKAGING_DIRECTORY}
+```
+
+bundle 由预先构建的 Flutter 输出生成，适合直接分发文件；上架 Flathub 本身要求从源码构建。
 
 ## Nix
 

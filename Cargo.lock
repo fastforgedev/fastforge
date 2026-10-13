@@ -866,6 +866,7 @@ dependencies = [
  "chrono",
  "fastforge_app_analyzer",
  "fastforge_core",
+ "flate2",
  "hex",
  "hmac",
  "jsonwebtoken 10.4.0",

@@ -35,7 +35,7 @@ Routing depends on `pubspec.yaml` in the project root and the platform:
 | Flutter Builder | Contains `pubspec.yaml` | iOS         | `ipa`, `custom`                                         |
 | Flutter Builder | Contains `pubspec.yaml` | macOS       | `dmg`, `pkg`, `zip`, `custom`                           |
 | Flutter Builder | Contains `pubspec.yaml` | Windows     | `exe`, `msix`, `zip`, `direct`, `custom`                |
-| Flutter Builder | Contains `pubspec.yaml` | Linux       | `appimage`, `deb`, `rpm`, `pacman`, `nix`, `zip`, `direct`, `custom` |
+| Flutter Builder | Contains `pubspec.yaml` | Linux       | `appimage`, `deb`, `rpm`, `pacman`, `flatpak`, `nix`, `zip`, `direct`, `custom` |
 | Flutter Builder | Contains `pubspec.yaml` | Web         | `zip`, `direct`, `custom`                               |
 | Flutter Builder | Contains `pubspec.yaml` | OpenHarmony | `hap`, `app`, `custom`                                  |
 
@@ -58,6 +58,7 @@ To inspect a Flutter Builder result separately, run `fastforge build`; see [Buil
 | `--artifact-name <TEMPLATE>`          | Mustache artifact-name template (see below)                                 |
 | `--output <DIR>`                      | Output directory (see below)                                                |
 | `--skip-clean`                        | Skip `flutter clean` before building                                        |
+| `--skip-build`                        | Package an existing build output (see [below](#packaging-an-existing-build)) |
 | `--build-target <PATH>`               | Custom Flutter entry point                                                  |
 | `--build-flavor <FLAVOR>`             | Flavor (also used by native Gradle projects)                                |
 | `--build-target-platform <PLATFORM>`  | Target architectures                                                        |
@@ -125,6 +126,17 @@ env:
   SUPPORT_EMAIL: team@example.com
   SIGNING_KEY_ID: ${SIGNING_KEY_ID}
 ```
+
+## Packaging an Existing Build
+
+`--skip-build` packages the output of an earlier build instead of running `flutter clean` and `flutter build`. Use it when another tool builds the app into Flutter's output directories, such as [Shorebird](https://shorebird.dev), or to package one build several times with different channels:
+
+```bash
+shorebird release windows
+fastforge package --platform windows --targets exe --skip-build
+```
+
+Pass the same options as the build, such as `--build-flavor`, `--build-target-platform`, `profile`, and `build-name`/`build-number`, so Fastforge finds the output and names the artifact the same way. Packaging fails when the output is missing. It is available for Flutter projects only and cannot be combined with `--host`.
 
 ## Custom Format
 

@@ -35,7 +35,7 @@ fastforge package --platform macos --targets dmg,zip
 | Flutter Builder | 含 `pubspec.yaml` | iOS         | `ipa`、`custom`                                               |
 | Flutter Builder | 含 `pubspec.yaml` | macOS       | `dmg`、`pkg`、`zip`、`custom`                                 |
 | Flutter Builder | 含 `pubspec.yaml` | Windows     | `exe`、`msix`、`zip`、`direct`、`custom`                      |
-| Flutter Builder | 含 `pubspec.yaml` | Linux       | `appimage`、`deb`、`rpm`、`pacman`、`nix`、`zip`、`direct`、`custom` |
+| Flutter Builder | 含 `pubspec.yaml` | Linux       | `appimage`、`deb`、`rpm`、`pacman`、`flatpak`、`nix`、`zip`、`direct`、`custom` |
 | Flutter Builder | 含 `pubspec.yaml` | Web         | `zip`、`direct`、`custom`                                     |
 | Flutter Builder | 含 `pubspec.yaml` | OpenHarmony | `hap`、`app`、`custom`                                        |
 
@@ -58,6 +58,7 @@ fastforge package --platform macos --targets dmg,zip
 | `--artifact-name <TEMPLATE>`          | Mustache 产物名模板（见下文）                          |
 | `--output <DIR>`                      | 输出目录（见下文）                                     |
 | `--skip-clean`                        | 构建前跳过 `flutter clean`                             |
+| `--skip-build`                        | 打包已有的构建输出（见[下文](#打包已有的构建输出)）    |
 | `--build-target <PATH>`               | 自定义 Flutter 入口                                    |
 | `--build-flavor <FLAVOR>`             | flavor（原生 Gradle 项目同样使用）                     |
 | `--build-target-platform <PLATFORM>`  | 目标架构                                               |
@@ -125,6 +126,17 @@ env:
   SUPPORT_EMAIL: team@example.com
   SIGNING_KEY_ID: ${SIGNING_KEY_ID}
 ```
+
+## 打包已有的构建输出
+
+`--skip-build` 直接打包之前构建的输出，不再运行 `flutter clean` 和 `flutter build`。适用于由其他工具构建到 Flutter 输出目录的应用（例如 [Shorebird](https://shorebird.dev)），或用同一次构建以不同渠道打包多次：
+
+```bash
+shorebird release windows
+fastforge package --platform windows --targets exe --skip-build
+```
+
+请传入与构建时相同的参数，例如 `--build-flavor`、`--build-target-platform`、`profile` 以及 `build-name`/`build-number`，这样 Fastforge 才能找到输出并以相同方式命名产物。输出不存在时打包失败。仅支持 Flutter 项目，且不能与 `--host` 同时使用。
 
 ## 自定义格式
 

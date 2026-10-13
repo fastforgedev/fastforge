@@ -12,7 +12,7 @@
 | [iOS](ios.md)          | [IPA](ios.md#ipa)                                                                                                                        | Xcode（package action）、Flutter Builder |
 | [macOS](macos.md)      | [DMG](macos.md#dmg)、[PKG](macos.md#pkg)、[ZIP](macos.md#zip)                                                                            | Xcode（package action）、Flutter Builder |
 | [Windows](windows.md)  | [EXE](windows.md#exe)、[MSIX](windows.md#msix)、[ZIP / direct](windows.md#zip-和-direct)                                                 | .NET、Flutter Builder                    |
-| [Linux](linux.md)      | [AppImage](linux.md#appimage)、[DEB](linux.md#deb)、[RPM](linux.md#rpm)、[Pacman](linux.md#pacman)、[Nix](linux.md#nix)、[ZIP / direct](linux.md#zip-和-direct) | Flutter Builder                        |
+| [Linux](linux.md)      | [AppImage](linux.md#appimage)、[DEB](linux.md#deb)、[RPM](linux.md#rpm)、[Pacman](linux.md#pacman)、[Flatpak](linux.md#flatpak)、[Nix](linux.md#nix)、[ZIP / direct](linux.md#zip-和-direct) | Flutter Builder                        |
 | [Web](web.md)          | [ZIP / direct](web.md)                                                                                                                   | Flutter Builder                          |
 | [OpenHarmony](ohos.md) | [HAP / APP](ohos.md)                                                                                                                     | Flutter Builder                          |
 | 任意平台               | [custom](../packaging.md#自定义格式)                                                                                                     | Flutter Builder、Xcode（macOS）、.NET    |

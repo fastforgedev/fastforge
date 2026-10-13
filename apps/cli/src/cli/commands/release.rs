@@ -144,6 +144,7 @@ fn run(args: &ReleaseArgs) -> Result<()> {
                 channel: job.package.channel.clone(),
                 artifact_name: opts.artifact_name.clone(),
                 clean_before_build,
+                skip_build: false,
                 build_arguments: yaml_map_to_json_map(job.package.build_args.as_ref())?,
                 variables: variables.clone(),
                 hooks: job.package.hooks.as_ref(),

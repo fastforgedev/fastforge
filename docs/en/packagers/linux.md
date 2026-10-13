@@ -2,13 +2,13 @@
 
 English | [简体中文](../../zh-Hans/packagers/linux.md)
 
-Fastforge packages Flutter Linux applications as [AppImage](#appimage), [DEB](#deb), [RPM](#rpm), [Pacman](#pacman), [Nix](#nix), [ZIP, or a direct copy](#zip-and-direct).
+Fastforge packages Flutter Linux applications as [AppImage](#appimage), [DEB](#deb), [RPM](#rpm), [Pacman](#pacman), [Flatpak](#flatpak), [Nix](#nix), [ZIP, or a direct copy](#zip-and-direct).
 
 ## Current Status
 
 | Build system    | `package` status                                              |
 | --------------- | ------------------------------------------------------------- |
-| Flutter Builder | AppImage, DEB, RPM, Pacman, Nix, ZIP, and direct through CLI/action |
+| Flutter Builder | AppImage, DEB, RPM, Pacman, Flatpak, Nix, ZIP, and direct through CLI/action |
 
 Linux packaging requires a Flutter project (`pubspec.yaml`). The build runs only on a Linux host; on other hosts `fastforge package` skips the target with a warning. The packagers use the bundle directory `build/linux/<x64|arm64>/<mode>/bundle/`, and artifacts are written to `dist/<version>/`.
 
@@ -97,7 +97,7 @@ env:
 
 ## DEB
 
-Requires `dpkg-deb` (`dpkg-dev` on Debian/Ubuntu). Files are owned by root. The package is compressed with xz rather than zstd, so older dpkg releases such as Debian 11, deepin, and UOS can install it. The default package name is the binary name, lowercased, with characters Debian does not allow, such as `_`, replaced by `-`. `Version` keeps the build number (`1.2.3+4`) and writes a pre-release's `-` as `~`. Without `dependencies` in `make_config.yaml`, the package depends on `libgtk-3-0`; an empty list opts out. The `/usr/bin` link is owned and removed by the package manager. Generated `postinst` restores it only when missing during configuration, before `postinstall_scripts`, because the old Dart package’s `postrm` can delete it during upgrade. Existing files and symlinks are kept, including dangling links, and symlink targets supplied by overlays are preserved. A raw `postinst` replaces the generated script and must handle this migration itself; `postrm` is only generated for configured `postuninstall_scripts`. Maintainer scripts run as root, with the package manager's action as `$1` (such as `remove`, `purge`, or `upgrade` for `postrm`), so `~` is root's home rather than the user's: they cannot clean up per-user data such as `~/.local/share/<app>`, which Debian policy leaves to the user. Remove system-wide files only, and check `$1` to skip upgrades, for example `[ "$1" = purge ] && rm -rf /var/lib/<app>`. Additional `make_config.yaml` keys include `maintainer`, `co_authors`, `priority`, `section`, `essential`, `installed_size`, `postinstall_scripts`, `postuninstall_scripts`, `supported_mime_type`, `actions`, `startup_wm_class`, and the relationship lists `dependencies`, `pre_dependencies`, `recommended_dependencies`, `suggested_dependencies`, `enhances`, `breaks`, `conflicts`, `provides`, `replaces`, `build_dependencies`, and `build_dependencies_indep`.
+Requires `dpkg-deb` (`dpkg-dev` on Debian/Ubuntu). Files are owned by root. The package is compressed with xz rather than zstd, so older dpkg releases such as Debian 11, deepin, and UOS can install it. The default package name is the binary name, lowercased, with characters Debian does not allow, such as `_`, replaced by `-`. `Version` keeps the build number (`1.2.3+4`) and writes a pre-release's `-` as `~`. Without `dependencies` in `make_config.yaml`, the package depends on `libgtk-3-0`; an empty list opts out. When `dpkg-shlibdeps` (from `dpkg-dev`) is available, the generated control file also depends on the system libraries the binaries link against, with versions, as debhelper's `${shlibs:Depends}` would; configured entries win for the same package, and on hosts where it fails, such as non-Debian distributions, a warning is printed and only the configured dependencies are used. A raw `control` file can write `${shlibs:Depends}` in a field such as `Depends: ${shlibs:Depends}, libmpv2`; it is then required to succeed. The `/usr/bin` link is owned and removed by the package manager. Generated `postinst` restores it only when missing during configuration, before `postinstall_scripts`, because the old Dart package’s `postrm` can delete it during upgrade. Existing files and symlinks are kept, including dangling links, and symlink targets supplied by overlays are preserved. A raw `postinst` replaces the generated script and must handle this migration itself; `postrm` is only generated for configured `postuninstall_scripts`. Maintainer scripts run as root, with the package manager's action as `$1` (such as `remove`, `purge`, or `upgrade` for `postrm`), so `~` is root's home rather than the user's: they cannot clean up per-user data such as `~/.local/share/<app>`, which Debian policy leaves to the user. Remove system-wide files only, and check `$1` to skip upgrades, for example `[ "$1" = purge ] && rm -rf /var/lib/<app>`. Additional `make_config.yaml` keys include `maintainer`, `co_authors`, `priority`, `section`, `essential`, `installed_size`, `postinstall_scripts`, `postuninstall_scripts`, `supported_mime_type`, `actions`, `startup_wm_class`, and the relationship lists `dependencies`, `pre_dependencies`, `recommended_dependencies`, `suggested_dependencies`, `enhances`, `breaks`, `conflicts`, `provides`, `replaces`, `build_dependencies`, and `build_dependencies_indep`.
 
 ## RPM
 
@@ -122,6 +122,32 @@ RPM keeps `/opt/<binary>` as the bundle directory. When the package name differs
 Requires `bsdtar` with zstd support (`libarchive-tools` on Debian/Ubuntu, `bsdtar` on Fedora, `libarchive` on Arch); `makepkg` is not used. The artifact is a `.pkg.tar.zst` archive owned by root, with `.MTREE`, `.PKGINFO`, `.INSTALL` when there is one, and the package root. The generated `.PKGINFO` uses makepkg's format, one `key = value` line per value. The default package name is the binary name. `pkgver` is `<build name>-<release>`, with `-` removed from the build name; the release is the first dot-separated part of the build number, `1` without one. `builddate` uses `SOURCE_DATE_EPOCH` when it is set. Without `dependencies` in `make_config.yaml`, the package depends on `gtk3`; an empty list opts out. Additional `make_config.yaml` keys include `maintainer`, `licenses`, `groups`, `dependencies`, `optional_dependencies`, `conflicts`, `provides`, `replaces`, `supported_mime_type`, `actions`, and `postinstall_scripts`, `postupgrade_scripts`, and `postuninstall_scripts`, which generate `.INSTALL`.
 
 The legacy Pacman `installed_size` and `options` settings now produce migration warnings. `size` is measured from the staged payload in bytes; `options` belongs to makepkg and cannot be represented in PKGINFO. Move required preprocessing to hooks or workflows.
+
+## Flatpak
+
+Requires `flatpak` and `flatpak-builder`. The artifact is a single-file bundle (`.flatpak`) that users install with `flatpak install --user <file>.flatpak`; it names Flathub as the runtime's repository, so the runtime is installed with it.
+
+The app is staged as the contents of `/app`: the bundle in `/app/lib/<binary>`, `/app/bin/<binary>`, and the desktop entry, icons, and metainfo named after the app ID, which Flatpak exports to the host. Only `usr/` of the shared `files/` overlay applies, as `/app`. `APP_ID` must be a valid Flatpak ID with at least three segments, such as `com.example.App`; set `project.app_id` and keep `APPLICATION_ID` in `linux/CMakeLists.txt` equal to it.
+
+The generated manifest runs the app on the GNOME runtime (`org.gnome.Platform` 48, which provides GTK 3) with access to Wayland, X11 as a fallback, the GPU, IPC, and the network. Fastforge adds Flathub as a user remote when it is missing, and `flatpak-builder` installs the runtime and SDK for the user. Set `FLATPAK_RUNTIME`, `FLATPAK_RUNTIME_VERSION`, and `FLATPAK_SDK` in `.fastforge/config.yaml` `env:` or the environment to change them. For other permissions or modules, put a manifest (`*.yml`, `*.yaml`, or `*.json`) in `.fastforge/packaging/linux/flatpak/`; it replaces the generated one and can copy the staged tree from `${PACKAGING_DIRECTORY}`:
+
+```yaml
+id: ${APP_ID}
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: ${APP_BINARY_NAME}
+finish-args: [--share=ipc, --socket=fallback-x11, --socket=wayland, --device=dri, --filesystem=xdg-download]
+modules:
+  - name: ${APP_BINARY_NAME}
+    buildsystem: simple
+    build-commands: [cp -a . /app/]
+    sources:
+      - type: dir
+        path: ${PACKAGING_DIRECTORY}
+```
+
+The bundle is built from the prebuilt Flutter output, so it suits distributing the file directly; Flathub itself requires building from source.
 
 ## Nix
 

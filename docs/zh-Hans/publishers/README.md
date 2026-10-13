@@ -17,10 +17,14 @@
 | `firebase`         | Firebase App Distribution  | [Firebase](firebase.md)      |
 | `firebase-hosting` | Firebase Hosting           | [Firebase](firebase.md)      |
 | `github`           | GitHub Releases            | [GitHub](github.md)          |
+| `gitea`            | Gitea/Forgejo/Codeberg Releases | [Gitea](gitea.md)           |
 | `appstore`         | App Store Connect 构建上传 | [App Store](appstore.md)     |
 | `playstore`        | Google Play AAB 上传       | [Google Play](playstore.md)  |
 | `appgallery`       | Huawei AppGallery          | [AppGallery](appgallery.md)  |
 | `vercel`           | Vercel Production          | [Vercel](vercel.md)          |
+| `apt-repo`         | 目录中的 APT 软件源        | [软件源](repositories.md)    |
+| `pacman-repo`      | 目录中的 Pacman 软件源     | [软件源](repositories.md)    |
+| `aur`              | Arch 用户软件仓库（AUR）   | [AUR](aur.md)                |
 | `custom`           | 自定义 shell 命令          | [Custom](custom.md)          |
 
 ## 通用用法
