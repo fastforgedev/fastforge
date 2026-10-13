@@ -22,6 +22,8 @@ This section groups the currently connected targets by purpose. Object storage s
 | `playstore`        | Google Play AAB upload         | [Google Play](playstore.md)       |
 | `appgallery`       | Huawei AppGallery              | [AppGallery](appgallery.md)       |
 | `vercel`           | Vercel Production              | [Vercel](vercel.md)               |
+| `apt-repo`         | APT repository in a directory  | [Repositories](repositories.md)   |
+| `pacman-repo`      | Pacman repository in a directory | [Repositories](repositories.md) |
 | `custom`           | Custom shell command           | [Custom](custom.md)               |
 
 ## General Usage
