@@ -2,13 +2,13 @@
 
 English | [简体中文](../../zh-Hans/packagers/linux.md)
 
-Fastforge packages Flutter Linux applications as [AppImage](#appimage), [DEB](#deb), [RPM](#rpm), [Pacman](#pacman), [Flatpak](#flatpak), [ZIP, or a direct copy](#zip-and-direct).
+Fastforge packages Flutter Linux applications as [AppImage](#appimage), [DEB](#deb), [RPM](#rpm), [Pacman](#pacman), [Flatpak](#flatpak), [Nix](#nix), [ZIP, or a direct copy](#zip-and-direct).
 
 ## Current Status
 
 | Build system    | `package` status                                              |
 | --------------- | ------------------------------------------------------------- |
-| Flutter Builder | AppImage, DEB, RPM, Pacman, Flatpak, ZIP, and direct through CLI/action |
+| Flutter Builder | AppImage, DEB, RPM, Pacman, Flatpak, Nix, ZIP, and direct through CLI/action |
 
 Linux packaging requires a Flutter project (`pubspec.yaml`). The build runs only on a Linux host; on other hosts `fastforge package` skips the target with a warning. The packagers use the bundle directory `build/linux/<x64|arm64>/<mode>/bundle/`, and artifacts are written to `dist/<version>/`.
 
@@ -148,6 +148,18 @@ modules:
 ```
 
 The bundle is built from the prebuilt Flutter output, so it suits distributing the file directly; Flathub itself requires building from source.
+
+## Nix
+
+`nix` needs no tools at packaging time. The artifact is a directory, `<artifact name>.nix/`, with the staged application in `usr/` and a `default.nix`. The derivation installs the prebuilt bundle in `$out/lib/<binary>`, patches its ELF files against nixpkgs' GTK and the other libraries a Flutter app usually links against with `autoPatchelfHook`, and wraps the binary in `$out/bin` with the GTK environment. The desktop entry, icons, and metainfo are installed in `$out/share`.
+
+```bash
+fastforge package --targets nix
+nix-build dist/1.2.3+4/hello-1.2.3+4-linux.nix
+nix profile install --file dist/1.2.3+4/hello-1.2.3+4-linux.nix
+```
+
+Libraries the plugins need beyond the defaults go in `extraBuildInputs`, for example `nix-build <dir> --arg extraBuildInputs 'with import <nixpkgs> {}; [ mpv ]'`, or in a `default.nix` in `.fastforge/packaging/linux/nix/`, which replaces the generated one. The version is the app version with `+` replaced by `-`. The bundle is built on the packaging host, so build the package for the architecture of the systems that use it; packaging for nixpkgs itself requires building from source.
 
 ## Studio forms
 

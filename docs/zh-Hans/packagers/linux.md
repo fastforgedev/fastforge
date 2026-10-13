@@ -2,13 +2,13 @@
 
 [English](../../en/packagers/linux.md) | 简体中文
 
-Fastforge 支持把 Flutter Linux 应用打包为 [AppImage](#appimage)、[DEB](#deb)、[RPM](#rpm)、[Pacman](#pacman)、[Flatpak](#flatpak)、[ZIP 或直接复制](#zip-和-direct)。
+Fastforge 支持把 Flutter Linux 应用打包为 [AppImage](#appimage)、[DEB](#deb)、[RPM](#rpm)、[Pacman](#pacman)、[Flatpak](#flatpak)、[Nix](#nix)、[ZIP 或直接复制](#zip-和-direct)。
 
 ## 当前状态
 
 | 构建系统        | `package` 状态                                          |
 | --------------- | ------------------------------------------------------- |
-| Flutter Builder | AppImage、DEB、RPM、Pacman、Flatpak、ZIP、direct 已通过 CLI/action 接入 |
+| Flutter Builder | AppImage、DEB、RPM、Pacman、Flatpak、Nix、ZIP、direct 已通过 CLI/action 接入 |
 
 Linux 打包需要 Flutter 项目（含 `pubspec.yaml`）。构建只能在 Linux 宿主上执行；在其他宿主上，`fastforge package` 会输出警告并跳过该 target。打包器使用 bundle 目录 `build/linux/<x64|arm64>/<mode>/bundle/`，产物写入 `dist/<version>/`。
 
@@ -148,6 +148,18 @@ modules:
 ```
 
 bundle 由预先构建的 Flutter 输出生成，适合直接分发文件；上架 Flathub 本身要求从源码构建。
+
+## Nix
+
+`nix` 打包时不需要额外工具。产物是目录 `<产物名>.nix/`，其中 `usr/` 为暂存的应用，另有 `default.nix`。该 derivation 把预构建的 bundle 安装到 `$out/lib/<binary>`，用 `autoPatchelfHook` 将其 ELF 文件链接到 nixpkgs 中的 GTK 及 Flutter 应用常用的其他库，并在 `$out/bin` 中用 GTK 环境包装可执行文件。桌面入口、图标和 metainfo 安装到 `$out/share`。
+
+```bash
+fastforge package --targets nix
+nix-build dist/1.2.3+4/hello-1.2.3+4-linux.nix
+nix profile install --file dist/1.2.3+4/hello-1.2.3+4-linux.nix
+```
+
+插件需要默认之外的库时，通过 `extraBuildInputs` 传入，例如 `nix-build <dir> --arg extraBuildInputs 'with import <nixpkgs> {}; [ mpv ]'`，或在 `.fastforge/packaging/linux/nix/` 中放置 `default.nix` 替换生成的文件。版本为应用版本，其中 `+` 替换为 `-`。bundle 在打包主机上构建，因此请为使用它的系统的架构打包；提交到 nixpkgs 本身则要求从源码构建。
 
 ## Studio 表单
 

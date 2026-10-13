@@ -35,7 +35,7 @@ fastforge package --platform macos --targets dmg,zip
 | Flutter Builder | 含 `pubspec.yaml` | iOS         | `ipa`、`custom`                                               |
 | Flutter Builder | 含 `pubspec.yaml` | macOS       | `dmg`、`pkg`、`zip`、`custom`                                 |
 | Flutter Builder | 含 `pubspec.yaml` | Windows     | `exe`、`msix`、`zip`、`direct`、`custom`                      |
-| Flutter Builder | 含 `pubspec.yaml` | Linux       | `appimage`、`deb`、`rpm`、`pacman`、`flatpak`、`zip`、`direct`、`custom` |
+| Flutter Builder | 含 `pubspec.yaml` | Linux       | `appimage`、`deb`、`rpm`、`pacman`、`flatpak`、`nix`、`zip`、`direct`、`custom` |
 | Flutter Builder | 含 `pubspec.yaml` | Web         | `zip`、`direct`、`custom`                                     |
 | Flutter Builder | 含 `pubspec.yaml` | OpenHarmony | `hap`、`app`、`custom`                                        |
 
