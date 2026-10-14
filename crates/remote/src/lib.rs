@@ -16,3 +16,4 @@ pub mod transport;
 pub use client::{LocalProject, RemoteClient, SyncStats, new_run_id};
 pub use hosts::{HostConfig, HostsFile, RemoteOs, TransportKind};
 pub use protocol::{AgentInfo, PROTOCOL_VERSION, RunSpec};
+pub use transport::PortForward;

@@ -139,7 +139,7 @@ fastforge host add <NAME> [DESTINATION] [OPTIONS]
 fastforge host list
 fastforge host remove <NAME>
 fastforge host doctor <NAME>
-fastforge host exec <NAME> [--no-sync] -- <COMMAND>...
+fastforge host exec <NAME> [--no-sync] [-L <PORT|LOCAL:REMOTE>]... -- <COMMAND>...
 ```
 
 | 子命令   | 说明 |
@@ -148,7 +148,7 @@ fastforge host exec <NAME> [--no-sync] -- <COMMAND>...
 | `list`   | 列出已配置的主机 |
 | `remove` | 删除主机 |
 | `doctor` | 检查连接、远端 fastforge 及工具链；未配置时保存探测到的系统和平台 |
-| `exec`   | 同步当前项目，并在远端工作区执行 shell 命令 |
+| `exec`   | 同步当前项目，并在远端工作区执行 shell 命令。`--forward-port` / `-L PORT\|LOCAL:REMOTE` 在命令执行期间将 TCP 端口转发到本地（可重复指定，仅支持 SSH 主机） |
 
 详见[远程主机](remote-hosts.md)。
 

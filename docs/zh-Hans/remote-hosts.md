@@ -146,6 +146,17 @@ fastforge host exec mac-mini --no-sync -- ls build
 
 `exec` 会先同步（除非指定 `--no-sync`），再通过登录 shell 在远端工作区执行命令。参数与 `ssh` 一样用空格拼接。`forward_env` 和 `env` 对 `exec` 都不生效。
 
+使用 `--forward-port`（简写 `-L`），即可在本机访问命令启动的远端服务：
+
+```bash
+# 在本机通过 http://127.0.0.1:8080 访问远端服务。
+fastforge host exec mac-mini --forward-port 8080 -- python3 -m http.server 8080 --bind 127.0.0.1
+# 指定不同的本地端口，并转发多个服务。
+fastforge host exec mac-mini --no-sync -L 18080:8080 -L 19000:9000 -- pnpm dev
+```
+
+`PORT` 表示两端使用相同端口，`LOCAL:REMOTE` 将本地端口映射到不同的远端端口。可重复指定多个 TCP 端口，范围为 1–65535。转发在本机的 `127.0.0.1` 上监听，并连接主机的 `127.0.0.1`，也适用于 Windows SSH 主机；服务需要监听该远端地址。转发随命令的 SSH 连接结束而关闭，包括按 Ctrl-C 停止命令。这类连接不使用持久共享 SSH 连接。如果无法绑定本地端口，SSH 会在执行命令前报错。端口转发需要 SSH 主机，`--transport local` 不支持。
+
 ## 安全
 
 - 转发的变量通过 SSH 通道的 stdin 传输，不出现在命令行中，因此不会出现在主机的进程列表里。只发送 `forward_env` 中列出的变量。

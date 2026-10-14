@@ -146,6 +146,17 @@ fastforge host exec mac-mini --no-sync -- ls build
 
 `exec` syncs first (unless `--no-sync`), then runs the command in the remote workspace through the login shell. The arguments are joined with spaces, like `ssh`. Neither `forward_env` nor `env` applies to `exec`.
 
+Use `--forward-port` (or `-L`) to reach a service started by the command from this machine:
+
+```bash
+# Reach the remote server at http://127.0.0.1:8080 locally.
+fastforge host exec mac-mini --forward-port 8080 -- python3 -m http.server 8080 --bind 127.0.0.1
+# Choose another local port, and forward multiple services.
+fastforge host exec mac-mini --no-sync -L 18080:8080 -L 19000:9000 -- pnpm dev
+```
+
+`PORT` forwards the same port on both machines; `LOCAL:REMOTE` maps a local port to a different remote port. Repeat the option for multiple TCP ports (1–65535). Each forward listens on local `127.0.0.1` and connects to `127.0.0.1` on the host, including Windows SSH hosts. The service must listen on that remote address. Forwarding lasts until the command's SSH connection ends, including when you stop it with Ctrl-C. These connections do not use a persistent shared SSH connection. If a local port cannot be bound, SSH fails before running the command. Port forwarding requires an SSH host; `--transport local` does not support it.
+
 ## Security
 
 - Forwarded variables are sent through the SSH channel's stdin, not the command line, so they don't show in the host's process list. Only variables listed in `forward_env` are sent.

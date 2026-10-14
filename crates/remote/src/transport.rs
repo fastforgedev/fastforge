@@ -2,14 +2,79 @@
 
 use crate::hosts::{HostConfig, TransportKind};
 use crate::shell::quote;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
+use std::collections::BTreeSet;
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::str::FromStr;
+
+/// A local loopback TCP port forwarded to a port on the host's loopback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PortForward {
+    local_port: NonZeroU16,
+    remote_port: NonZeroU16,
+}
+
+impl PortForward {
+    pub fn local_port(self) -> u16 {
+        self.local_port.get()
+    }
+
+    pub fn remote_port(self) -> u16 {
+        self.remote_port.get()
+    }
+
+    fn ssh_spec(self) -> String {
+        format!(
+            "127.0.0.1:{}:127.0.0.1:{}",
+            self.local_port, self.remote_port
+        )
+    }
+}
+
+impl FromStr for PortForward {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        let (local, remote) = value.split_once(':').unwrap_or((value, value));
+        let parse = |port: &str| {
+            if !port.is_empty() && port.bytes().all(|byte| byte.is_ascii_digit()) {
+                port.parse::<NonZeroU16>().ok()
+            } else {
+                None
+            }
+        };
+        match (parse(local), parse(remote)) {
+            (Some(local_port), Some(remote_port)) => Ok(Self {
+                local_port,
+                remote_port,
+            }),
+            _ => bail!(
+                "Invalid port forward `{value}`; expected PORT or LOCAL:REMOTE with ports in 1..=65535"
+            ),
+        }
+    }
+}
 
 pub trait Transport: Send + Sync {
     /// A command that runs the POSIX shell command `script` on the host.
     /// `tty` requests a terminal (interactive commands).
     fn command(&self, script: &str, tty: bool) -> Command;
+
+    /// Runs a command with TCP forwards owned by that connection, so they
+    /// close when the command ends. Only SSH supports port forwarding.
+    fn command_with_forwards(
+        &self,
+        script: &str,
+        tty: bool,
+        forwards: &[PortForward],
+    ) -> Result<Command> {
+        if !forwards.is_empty() {
+            bail!("Port forwarding requires an SSH host");
+        }
+        Ok(self.command(script, tty))
+    }
 
     /// Wraps `script` so it runs in the user's login shell, which is where
     /// `PATH` additions for Flutter, Homebrew etc. usually live.
@@ -90,6 +155,33 @@ impl Transport for SshTransport {
         let mut command = Command::new("ssh");
         command.args(self.args(script, tty));
         command
+    }
+
+    fn command_with_forwards(
+        &self,
+        script: &str,
+        tty: bool,
+        forwards: &[PortForward],
+    ) -> Result<Command> {
+        if forwards.is_empty() {
+            return Ok(self.command(script, tty));
+        }
+        let mut local_ports = BTreeSet::new();
+        let mut command = Command::new("ssh");
+        // These must precede the shared connection options: forwards on a
+        // persistent master would survive the command and keep ports bound.
+        command.args(["-o", "ControlPath=none", "-o", "ExitOnForwardFailure=yes"]);
+        for forward in forwards {
+            if !local_ports.insert(forward.local_port) {
+                bail!(
+                    "Local port {} is forwarded more than once",
+                    forward.local_port
+                );
+            }
+            command.arg("-L").arg(forward.ssh_spec());
+        }
+        command.args(self.args(script, tty));
+        Ok(command)
     }
 
     fn forward_port(&self, port: u16) -> Option<Command> {
@@ -175,6 +267,100 @@ impl Transport for LocalTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_port_forwards_and_rejects_invalid_ports() {
+        let same: PortForward = "8080".parse().unwrap();
+        assert_eq!((same.local_port(), same.remote_port()), (8080, 8080));
+        let mapped: PortForward = "18080:8080".parse().unwrap();
+        assert_eq!((mapped.local_port(), mapped.remote_port()), (18080, 8080));
+        assert!("1:65535".parse::<PortForward>().is_ok());
+        for value in [
+            "",
+            "0",
+            "65536",
+            "0:80",
+            "80:0",
+            "80:65536",
+            ":80",
+            "80:",
+            "1:2:3",
+            "abc",
+            "+80",
+            " 80",
+            "80:localhost",
+        ] {
+            assert!(value.parse::<PortForward>().is_err(), "accepted {value:?}");
+        }
+    }
+
+    #[test]
+    fn shell_forwards_belong_to_the_command_connection() {
+        let mut host = HostConfig::new("mac");
+        host.set_destination("builder@mac.local:2222").unwrap();
+        host.identity_file = Some("/tmp/key".into());
+        let transport = SshTransport::new(&host);
+        let forwards = ["8080".parse().unwrap(), "19000:9000".parse().unwrap()];
+        for tty in [false, true] {
+            let command = transport
+                .command_with_forwards("serve", tty, &forwards)
+                .unwrap();
+            let args: Vec<_> = command
+                .get_args()
+                .map(|arg| arg.to_str().unwrap())
+                .collect();
+            assert_eq!(
+                &args[..8],
+                &[
+                    "-o",
+                    "ControlPath=none",
+                    "-o",
+                    "ExitOnForwardFailure=yes",
+                    "-L",
+                    "127.0.0.1:8080:127.0.0.1:8080",
+                    "-L",
+                    "127.0.0.1:19000:127.0.0.1:9000",
+                ]
+            );
+            assert!(args.windows(2).any(|args| args == ["-p", "2222"]));
+            assert!(args.windows(2).any(|args| args == ["-l", "builder"]));
+            assert!(args.windows(2).any(|args| args == ["-i", "/tmp/key"]));
+            assert_eq!(
+                &args[args.len() - 3..],
+                &[if tty { "-tt" } else { "-T" }, "mac.local", "serve"]
+            );
+        }
+        let command = transport
+            .command_with_forwards("serve", false, &[])
+            .unwrap();
+        let args: Vec<_> = command.get_args().collect();
+        let ordinary = transport.command("serve", false);
+        assert_eq!(args, ordinary.get_args().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn rejects_duplicate_local_ports_and_non_ssh_forwards() {
+        let mut host = HostConfig::new("mac");
+        host.host = Some("mac.local".into());
+        let transport = SshTransport::new(&host);
+        for specs in [["8080", "8080"], ["8080:80", "8080:90"]] {
+            let forwards: Vec<PortForward> = specs.iter().map(|s| s.parse().unwrap()).collect();
+            let error = transport
+                .command_with_forwards("serve", false, &forwards)
+                .unwrap_err();
+            assert!(error.to_string().contains("Local port 8080"));
+        }
+        assert!(
+            LocalTransport
+                .command_with_forwards("serve", false, &["8080".parse().unwrap()])
+                .is_err()
+        );
+        assert!(
+            LocalTransport
+                .command_with_forwards("true", false, &[])
+                .is_ok()
+        );
+    }
 
     #[test]
     fn builds_ssh_arguments() {

@@ -7,7 +7,7 @@ use crate::protocol::{
     AgentInfo, EXIT_WORKSPACE_CHANGED, ExecRequest, ManifestResponse, PROTOCOL_VERSION, RunSpec,
 };
 use crate::shell::{quote, quote_cmd, quote_cmd_path, quote_path};
-use crate::transport::{self, Transport};
+use crate::transport::{self, PortForward, Transport};
 use anyhow::{Context, Result, anyhow, bail};
 use flate2::read::GzDecoder;
 use std::io::{Read, Write};
@@ -419,31 +419,38 @@ impl RemoteClient {
     /// Runs `command` in the workspace through the login shell (`cmd.exe` on
     /// Windows).
     pub fn shell(&self, workspace: &str, cwd: &str, command: &str, tty: bool) -> Result<i32> {
-        if self.host.os() == RemoteOs::Windows {
+        self.shell_with_forwards(workspace, cwd, command, tty, &[])
+    }
+
+    /// Runs a shell command with local TCP port forwards that last for the
+    /// duration of the command. An occupied local port fails before execution.
+    pub fn shell_with_forwards(
+        &self,
+        workspace: &str,
+        cwd: &str,
+        command: &str,
+        tty: bool,
+        forwards: &[PortForward],
+    ) -> Result<i32> {
+        let script = if self.host.os() == RemoteOs::Windows {
             let dir = if cwd.is_empty() {
                 workspace.to_string()
             } else {
                 format!("{workspace}/{cwd}")
             };
-            let script = format!("cd /d {} && {command}", quote_cmd_path(&dir));
-            let status = self
-                .transport
-                .command(&script, tty)
-                .status()
-                .context("Failed to start the transport")?;
-            return Ok(status.code().unwrap_or(1));
-        }
-        let mut dir = quote_path(workspace);
-        if !cwd.is_empty() {
-            dir.push('/');
-            dir.push_str(&quote(cwd));
-        }
-        let script = self
-            .transport
-            .login_script(&format!("cd {dir} && {command}"));
+            format!("cd /d {} && {command}", quote_cmd_path(&dir))
+        } else {
+            let mut dir = quote_path(workspace);
+            if !cwd.is_empty() {
+                dir.push('/');
+                dir.push_str(&quote(cwd));
+            }
+            self.transport
+                .login_script(&format!("cd {dir} && {command}"))
+        };
         let status = self
             .transport
-            .command(&script, tty)
+            .command_with_forwards(&script, tty, forwards)?
             .status()
             .context("Failed to start the transport")?;
         Ok(status.code().unwrap_or(1))

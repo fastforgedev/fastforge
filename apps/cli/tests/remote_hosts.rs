@@ -153,6 +153,36 @@ fn exec_propagates_the_exit_code() {
 }
 
 #[test]
+fn exec_rejects_forwarding_without_running_the_command() {
+    let env = Env::new();
+    // The local transport cannot create an SSH tunnel, and must not run a
+    // service that the requested local port cannot reach.
+    let out = env.run(&[
+        "host",
+        "exec",
+        "here",
+        "--forward-port",
+        "18080:8080",
+        "--",
+        "touch",
+        "started",
+    ]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("Port forwarding requires an SSH host"),
+        "{}",
+        text(&out)
+    );
+    assert!(!env.workspace().join("started").exists());
+
+    let out = env.run(&[
+        "host", "exec", "here", "-L", "8080:0", "--", "touch", "started",
+    ]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(!env.workspace().join("started").exists());
+}
+
+#[test]
 fn doctor_detects_and_saves_platforms() {
     let env = Env::new();
     let out = env.run(&["host", "doctor", "here"]);

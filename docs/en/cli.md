@@ -139,7 +139,7 @@ fastforge host add <NAME> [DESTINATION] [OPTIONS]
 fastforge host list
 fastforge host remove <NAME>
 fastforge host doctor <NAME>
-fastforge host exec <NAME> [--no-sync] -- <COMMAND>...
+fastforge host exec <NAME> [--no-sync] [-L <PORT|LOCAL:REMOTE>]... -- <COMMAND>...
 ```
 
 | Subcommand | Description |
@@ -148,7 +148,7 @@ fastforge host exec <NAME> [--no-sync] -- <COMMAND>...
 | `list`     | List the configured hosts |
 | `remove`   | Remove a host |
 | `doctor`   | Check the connection, the remote fastforge and its tools; saves the detected OS and platforms when not configured |
-| `exec`     | Sync the current project and run a shell command in the remote workspace |
+| `exec`     | Sync the current project and run a shell command in the remote workspace. `--forward-port` / `-L PORT\|LOCAL:REMOTE` forwards TCP ports locally for the command's duration (repeatable; SSH hosts only) |
 
 See [Remote Hosts](remote-hosts.md).
 

@@ -3,7 +3,8 @@
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Subcommand};
 use fastforge_remote::{
-    HostConfig, HostsFile, LocalProject, PROTOCOL_VERSION, RemoteClient, RemoteOs, TransportKind,
+    HostConfig, HostsFile, LocalProject, PROTOCOL_VERSION, PortForward, RemoteClient, RemoteOs,
+    TransportKind,
 };
 use std::io::IsTerminal;
 
@@ -38,6 +39,9 @@ pub enum HostCommands {
         /// Run in the remote workspace without syncing first
         #[arg(long = "no-sync")]
         no_sync: bool,
+        /// Forward a local TCP port to the host (PORT or LOCAL:REMOTE); may be repeated
+        #[arg(long = "forward-port", short = 'L', value_name = "PORT|LOCAL:REMOTE")]
+        forward_ports: Vec<PortForward>,
         /// The command (joined with spaces and run by the remote login shell)
         #[arg(last = true, required = true)]
         command: Vec<String>,
@@ -148,8 +152,9 @@ pub async fn execute(args: &HostArgs) -> Result<()> {
         HostCommands::Exec {
             name,
             no_sync,
+            forward_ports,
             command,
-        } => exec(name, *no_sync, command),
+        } => exec(name, *no_sync, forward_ports, command),
     }
 }
 
@@ -281,7 +286,12 @@ fn doctor(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn exec(name: &str, no_sync: bool, command: &[String]) -> Result<()> {
+fn exec(
+    name: &str,
+    no_sync: bool,
+    forward_ports: &[PortForward],
+    command: &[String],
+) -> Result<()> {
     let hosts = HostsFile::load()?;
     let host = hosts.require(name)?.clone();
     let mut client = RemoteClient::new(host.clone());
@@ -303,7 +313,13 @@ fn exec(name: &str, no_sync: bool, command: &[String]) -> Result<()> {
         }
     }
     let tty = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-    let code = client.shell(&workspace, &project.cwd, &command.join(" "), tty)?;
+    let code = client.shell_with_forwards(
+        &workspace,
+        &project.cwd,
+        &command.join(" "),
+        tty,
+        forward_ports,
+    )?;
     if code != 0 {
         std::process::exit(code);
     }
@@ -319,6 +335,56 @@ mod tests {
     struct Cli {
         #[command(flatten)]
         args: HostAddArgs,
+    }
+
+    #[derive(Parser)]
+    struct HostCli {
+        #[command(flatten)]
+        args: HostArgs,
+    }
+
+    #[test]
+    fn exec_accepts_multiple_port_forwards_and_preserves_command_arguments() {
+        let cli = HostCli::try_parse_from([
+            "x",
+            "exec",
+            "mac",
+            "--no-sync",
+            "--forward-port",
+            "8080",
+            "-L",
+            "19000:9000",
+            "--",
+            "serve",
+            "--forward-port",
+            "3000",
+        ])
+        .unwrap();
+        let HostCommands::Exec {
+            name,
+            no_sync,
+            forward_ports,
+            command,
+        } = cli.args.command
+        else {
+            panic!("expected exec");
+        };
+        assert_eq!(name, "mac");
+        assert!(no_sync);
+        assert_eq!(
+            forward_ports
+                .iter()
+                .map(|p| (p.local_port(), p.remote_port()))
+                .collect::<Vec<_>>(),
+            [(8080, 8080), (19000, 9000)]
+        );
+        assert_eq!(command, ["serve", "--forward-port", "3000"]);
+
+        for value in ["0", "8080:0", "65536", "80:90:100"] {
+            assert!(
+                HostCli::try_parse_from(["x", "exec", "mac", "-L", value, "--", "serve",]).is_err()
+            );
+        }
     }
 
     #[test]
