@@ -60,7 +60,7 @@ class _BuildOhosHapResultResolver extends BuildResultResolver {
     final String pattern = [
       '${r.outputDirectory.path}/**',
       '-${config.flavor ?? 'default'}',
-      '-signed.hap',
+      '-{unsigned,signed}.hap',
     ].join();
     r.outputFiles = Glob(pattern).listSync().map((e) => File(e.path)).toList();
     return r;
@@ -85,7 +85,7 @@ class _BuildOhosAppResultResolver extends BuildResultResolver {
     final String pattern = [
       '${r.outputDirectory.path}/**',
       '-${config.flavor ?? 'default'}',
-      '-signed.app',
+      '-{unsigned,signed}.app',
     ].join();
     r.outputFiles = Glob(pattern).listSync().map((e) => File(e.path)).toList();
     return r;
