@@ -10,6 +10,16 @@ use super::notarize;
 /// Builds a macOS `.pkg` installer using `xcrun productbuild` (and optionally
 /// `productsign`), mirroring Dart's `AppPackageMakerPkg`.
 ///
+/// Two kinds of package come out of it:
+///
+/// - A direct-download installer (the default): productbuild's output is
+///   expanded, its Distribution and PackageInfo are fixed up, and the result
+///   is flattened, optionally signed with `productsign` and notarized.
+/// - A Mac App Store package (`app_store`): the untouched output of a single
+///   `productbuild --component ... --sign` run. App Store Connect rejects
+///   rewritten packages (ITMS-90229 "not declared in PackageInfo",
+///   ITMS-90270 "Unsupported toolchain"), so nothing else touches it.
+///
 /// Requires Xcode command-line tools.
 #[derive(Default)]
 pub struct MacOSPkgPackager {
@@ -21,6 +31,27 @@ pub struct MacOSPkgPackager {
     pub scripts: Option<String>,
     /// Notarize and staple the signed package.
     pub notarize: bool,
+    /// Build a Mac App Store package: productbuild's output signed in one
+    /// step and left as is. Needs `sign_identity`; `scripts` and `notarize`
+    /// do not apply.
+    pub app_store: bool,
+}
+
+/// Prefixes of the installer identities Apple issues for Mac App Store
+/// submissions; a `sign-identity` starting with one of them switches the
+/// packager to App Store mode unless `app-store: false` is set.
+const APP_STORE_INSTALLER_IDENTITY_PREFIXES: [&str; 2] = [
+    "3rd Party Mac Developer Installer",
+    "Mac Installer Distribution",
+];
+
+/// Whether `identity` names a Mac App Store installer certificate (as opposed
+/// to a "Developer ID Installer" one).
+pub fn is_app_store_installer_identity(identity: &str) -> bool {
+    let identity = identity.trim();
+    APP_STORE_INSTALLER_IDENTITY_PREFIXES
+        .iter()
+        .any(|prefix| identity.starts_with(prefix))
 }
 
 impl MacOSPkgPackager {
@@ -41,16 +72,56 @@ impl MacOSPkgPackager {
             scripts: Option<String>,
             #[serde(default)]
             notarize: bool,
+            /// Explicit setting; unset means "detect from `sign-identity`".
+            app_store: Option<bool>,
         }
         let cfg: Config = serde_yaml::from_str(&content).map_err(|e| {
             PackageError::General(format!("Failed to parse {}: {}", path.display(), e))
         })?;
+        let app_store = cfg.app_store.unwrap_or_else(|| {
+            cfg.sign_identity
+                .as_deref()
+                .is_some_and(is_app_store_installer_identity)
+        });
         Ok(Self {
             sign_identity: cfg.sign_identity,
             install_path: cfg.install_path,
             scripts: cfg.scripts,
             notarize: cfg.notarize,
+            app_store,
         })
+    }
+
+    /// Checks the App Store mode settings, returning the installer identity.
+    fn app_store_identity(&self, config: &PackageConfig) -> Result<&str, PackageError> {
+        let identity = self.sign_identity.as_deref().ok_or_else(|| {
+            PackageError::General(
+                "A Mac App Store package needs `sign-identity` (a \"3rd Party Mac Developer \
+                 Installer\" or \"Mac Installer Distribution\" identity) in \
+                 macos/packaging/pkg/make_config.yaml, or `app-store: false` for a direct-\
+                 download installer"
+                    .into(),
+            )
+        })?;
+        if self.scripts.is_some() {
+            return Err(PackageError::General(
+                "`scripts` cannot be used with `app-store: true` in \
+                 macos/packaging/pkg/make_config.yaml: Mac App Store packages cannot carry \
+                 install scripts. Remove `scripts`, or set `app-store: false` for a \
+                 direct-download installer"
+                    .into(),
+            ));
+        }
+        if notarize::enabled(self.notarize, config) {
+            return Err(PackageError::General(
+                "`notarize` cannot be used with `app-store: true` in \
+                 macos/packaging/pkg/make_config.yaml: Mac App Store packages are not \
+                 notarized (App Store Connect handles them). Remove `notarize` (or \
+                 `--notarize`), or set `app-store: false` for a direct-download installer"
+                    .into(),
+            ));
+        }
+        Ok(identity)
     }
 }
 
@@ -97,6 +168,34 @@ fn productbuild_args(
         args.push(scripts.into());
     }
     args
+}
+
+/// `xcrun` arguments for the single productbuild run of App Store mode: the
+/// component is signed by productbuild itself, so the output needs no
+/// `productsign` pass and is not rewritten. This is the command
+/// `xcodebuild -exportArchive` runs for the `app-store-connect` method
+/// (`productbuild --sign <identity> --component <App.app> /Applications
+/// <out.pkg>`, see its Packaging.log); Xcode passes the install path without
+/// a trailing slash, so the slash is dropped here too and the resulting
+/// `install-location` matches Xcode's byte for byte.
+fn app_store_productbuild_args(
+    app_path: &Path,
+    install_path: Option<&str>,
+    identity: &str,
+    output_file: &Path,
+) -> Vec<OsString> {
+    let install_path = install_path.unwrap_or("/Applications");
+    let trimmed = install_path.trim_end_matches('/');
+    let install_path = if trimmed.is_empty() { "/" } else { trimmed };
+    vec![
+        "productbuild".into(),
+        "--component".into(),
+        app_path.into(),
+        install_path.into(),
+        "--sign".into(),
+        identity.into(),
+        output_file.into(),
+    ]
 }
 
 /// `xcrun productsign` arguments; a package that is notarized needs a secure
@@ -207,6 +306,24 @@ impl AppPackager for MacOSPkgPackager {
             .first_build_output_file()
             .ok_or_else(|| PackageError::General("no build output files".into()))?;
 
+        if self.app_store {
+            // App Store Connect validates the package against what productbuild
+            // wrote (ITMS-90229, ITMS-90270), so hand over its output untouched:
+            // one run that also signs, no expand/edit/flatten, no productsign.
+            // The component PackageInfo then lists the app bundle only, exactly
+            // like Xcode's own export; it is the rewrite that the store refuses,
+            // not missing declarations of nested bundles.
+            let identity = self.app_store_identity(config)?;
+            let output_file = config.output_file()?;
+            run(Command::new("xcrun").args(app_store_productbuild_args(
+                app_path,
+                self.install_path.as_deref(),
+                identity,
+                &output_file,
+            )))?;
+            return config.resolve_result(output_file);
+        }
+
         // Fail before building anything the notary service would reject.
         let credentials = if notarize::enabled(self.notarize, config) {
             if self.sign_identity.is_none() {
@@ -304,6 +421,200 @@ impl AppPackager for MacOSPkgPackager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn strings(args: &[OsString]) -> Vec<String> {
+        args.iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn test_config() -> PackageConfig {
+        PackageConfig {
+            app_name: "demo".into(),
+            app_binary_name: "demo".into(),
+            app_version: "1.0.0+1".into(),
+            build_mode: "release".into(),
+            platform: Platform::MacOS,
+            flavor: None,
+            channel: None,
+            artifact_name: None,
+            package_format: "pkg".into(),
+            is_installer: true,
+            build_output_dir: PathBuf::from("build/macos/Build/Products/Release"),
+            build_output_files: vec![PathBuf::from("build/macos/Build/Products/Release/Demo.app")],
+            output_dir: PathBuf::from("dist"),
+            environment: Default::default(),
+        }
+    }
+
+    fn from_yaml(content: &str) -> MacOSPkgPackager {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("make_config.yaml");
+        std::fs::write(&path, content).unwrap();
+        MacOSPkgPackager::from_yaml_file(&path).unwrap()
+    }
+
+    #[test]
+    fn app_store_installer_identities_are_recognised() {
+        assert!(is_app_store_installer_identity(
+            "3rd Party Mac Developer Installer: Jane Doe (TEAMID)"
+        ));
+        assert!(is_app_store_installer_identity(
+            "3rd Party Mac Developer Installer"
+        ));
+        assert!(is_app_store_installer_identity(
+            " Mac Installer Distribution: Jane Doe (TEAMID)"
+        ));
+        assert!(!is_app_store_installer_identity(
+            "Developer ID Installer: Jane Doe (TEAMID)"
+        ));
+        assert!(!is_app_store_installer_identity(
+            "3rd Party Mac Developer Application: Jane Doe (TEAMID)"
+        ));
+        assert!(!is_app_store_installer_identity(""));
+    }
+
+    #[test]
+    fn make_config_reads_app_store() {
+        assert!(
+            from_yaml("sign-identity: \"Developer ID Installer: Foo (TEAM)\"\napp-store: true\n")
+                .app_store
+        );
+        assert!(!from_yaml("install-path: /Applications/\n").app_store);
+        assert!(!from_yaml("sign-identity: \"Developer ID Installer: Foo (TEAM)\"\n").app_store);
+        assert!(!from_yaml("app-store: false\n").app_store);
+    }
+
+    #[test]
+    fn app_store_mode_is_detected_from_the_installer_identity() {
+        let packager = from_yaml(
+            "install-path: /Applications\nsign-identity: \"3rd Party Mac Developer Installer\"\n",
+        );
+        assert!(packager.app_store);
+        assert_eq!(packager.install_path.as_deref(), Some("/Applications"));
+        assert!(from_yaml("sign-identity: \"Mac Installer Distribution: Foo (TEAM)\"\n").app_store);
+        // An explicit `app-store: false` wins over the identity.
+        assert!(!from_yaml("sign-identity: \"3rd Party Mac Developer Installer: Foo (TEAM)\"\napp-store: false\n").app_store);
+    }
+
+    #[test]
+    fn missing_make_config_is_not_app_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let packager =
+            MacOSPkgPackager::from_yaml_file(&dir.path().join("make_config.yaml")).unwrap();
+        assert!(!packager.app_store);
+        assert!(packager.sign_identity.is_none());
+    }
+
+    #[test]
+    fn app_store_productbuild_signs_in_one_step() {
+        let args = app_store_productbuild_args(
+            Path::new("build/Demo.app"),
+            Some("/Applications/"),
+            "3rd Party Mac Developer Installer: Foo (TEAM)",
+            Path::new("dist/1.0.0+1/demo-1.0.0+1-macos.pkg"),
+        );
+        assert_eq!(
+            strings(&args),
+            vec![
+                "productbuild",
+                "--component",
+                "build/Demo.app",
+                "/Applications",
+                "--sign",
+                "3rd Party Mac Developer Installer: Foo (TEAM)",
+                "dist/1.0.0+1/demo-1.0.0+1-macos.pkg",
+            ]
+        );
+        assert!(
+            !strings(&args)
+                .iter()
+                .any(|a| a == "--scripts" || a == "--timestamp")
+        );
+        // The install path is passed as Xcode does, without a trailing slash.
+        let install_path = |path: Option<&str>| {
+            strings(&app_store_productbuild_args(
+                Path::new("build/Demo.app"),
+                path,
+                "Mac Installer Distribution: Foo (TEAM)",
+                Path::new("demo.pkg"),
+            ))[3]
+                .clone()
+        };
+        assert_eq!(install_path(None), "/Applications");
+        assert_eq!(install_path(Some("/Applications")), "/Applications");
+        assert_eq!(install_path(Some("/Library/Foo//")), "/Library/Foo");
+        assert_eq!(install_path(Some("/")), "/");
+    }
+
+    #[test]
+    fn direct_download_productbuild_has_no_sign_argument() {
+        let args = productbuild_args(
+            Path::new("build/Demo.app"),
+            None,
+            Path::new("dist/demo-unsigned.pkg"),
+            None,
+        );
+        assert_eq!(
+            strings(&args),
+            vec![
+                "productbuild",
+                "--component",
+                "build/Demo.app",
+                "/Applications/",
+                "dist/demo-unsigned.pkg",
+            ]
+        );
+    }
+
+    #[test]
+    fn app_store_package_needs_an_installer_identity() {
+        let packager = MacOSPkgPackager {
+            app_store: true,
+            ..Default::default()
+        };
+        let err = packager.package(&test_config()).unwrap_err().to_string();
+        assert!(err.contains("`sign-identity`"), "{err}");
+        assert!(err.contains("3rd Party Mac Developer Installer"), "{err}");
+    }
+
+    #[test]
+    fn app_store_package_rejects_scripts() {
+        let packager = MacOSPkgPackager {
+            app_store: true,
+            sign_identity: Some("3rd Party Mac Developer Installer: Foo (TEAM)".into()),
+            scripts: Some("macos/packaging/pkg/scripts".into()),
+            ..Default::default()
+        };
+        let err = packager.package(&test_config()).unwrap_err().to_string();
+        assert!(err.contains("`scripts`"), "{err}");
+        assert!(err.contains("`app-store: true`"), "{err}");
+    }
+
+    #[test]
+    fn app_store_package_rejects_notarize() {
+        let packager = MacOSPkgPackager {
+            app_store: true,
+            sign_identity: Some("Mac Installer Distribution: Foo (TEAM)".into()),
+            notarize: true,
+            ..Default::default()
+        };
+        let err = packager.package(&test_config()).unwrap_err().to_string();
+        assert!(err.contains("`notarize`"), "{err}");
+        assert!(err.contains("`app-store: true`"), "{err}");
+
+        // `fastforge package --notarize` sets the packaging variable instead.
+        let packager = MacOSPkgPackager {
+            notarize: false,
+            ..packager
+        };
+        let mut config = test_config();
+        config
+            .environment
+            .insert(notarize::NOTARIZE_ENV.into(), "true".into());
+        let err = packager.package(&config).unwrap_err().to_string();
+        assert!(err.contains("`--notarize`"), "{err}");
+    }
 
     #[test]
     fn scripts_are_appended_after_output_like_dart() {
