@@ -113,6 +113,7 @@ fn native_exe_install_uninstall_and_msix_unpack() {
             build_output_dir: bundle.clone(),
             build_output_files: vec![],
             output_dir: artifacts.clone(),
+            packaging_root: None,
             environment: Default::default(),
         };
         let exe = WindowsExePackager

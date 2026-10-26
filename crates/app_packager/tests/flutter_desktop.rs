@@ -81,6 +81,7 @@ impl Project {
                     .map(|p| std::path::absolute(p).unwrap())
                     .collect(),
                 output_dir: self.root.join("dist"),
+                packaging_root: None,
                 environment: Default::default(),
             })
             .expect("native packager failed");

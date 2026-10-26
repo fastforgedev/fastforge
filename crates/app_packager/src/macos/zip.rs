@@ -15,7 +15,8 @@ use super::notarize;
 /// `cp` and `7z`).
 pub struct MacOSZipPackager;
 
-/// `macos/packaging/zip/make_config.yaml`.
+/// `<packaging root>/zip/make_config.yaml` (`macos/packaging/zip/make_config.yaml`
+/// for Flutter projects; see `PackageConfig::packaging_root`).
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ZipMakeConfig {
@@ -67,7 +68,7 @@ impl AppPackager for MacOSZipPackager {
     }
 
     fn package(&self, config: &PackageConfig) -> Result<PackageResult, PackageError> {
-        let make_config = ZipMakeConfig::load(Path::new("macos/packaging/zip/make_config.yaml"))?;
+        let make_config = ZipMakeConfig::load(&config.make_config_path("zip"))?;
         let credentials = notarize::enabled(make_config.notarize, config)
             .then(|| notarize::Credentials::from_config(config))
             .transpose()?;

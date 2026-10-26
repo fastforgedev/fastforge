@@ -390,6 +390,7 @@ mod tests {
             build_output_dir: output.join("bundle"),
             build_output_files: vec![],
             output_dir: output.to_path_buf(),
+            packaging_root: None,
             environment: Default::default(),
         }
     }

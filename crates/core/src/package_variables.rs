@@ -429,6 +429,7 @@ stores: {}
             build_output_dir: directory.path().join("bundle"),
             build_output_files: vec![],
             output_dir: directory.path().join("dist"),
+            packaging_root: None,
             environment: Default::default(),
         };
         let settings = ProjectSettings {
@@ -481,6 +482,7 @@ stores: {}
             build_output_dir: PathBuf::new(),
             build_output_files: vec![],
             output_dir: PathBuf::new(),
+            packaging_root: None,
             environment: Default::default(),
         };
         let from_cmake = ProjectSettings::default().with_linux_application_id(&cmake);

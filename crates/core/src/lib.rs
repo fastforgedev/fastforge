@@ -14,7 +14,10 @@ pub use builder::{
 };
 pub use model::{AppMetadata, Platform};
 pub use package_variables::{ProjectSettings, Variables, environment_variables, render_variables};
-pub use packager::{AppPackager, PackageConfig, PackageError, PackageResult};
+pub use packager::{
+    AppPackager, PackageConfig, PackageError, PackageResult, default_packaging_root,
+    resolve_packaging_root,
+};
 pub use path_expansion::path_expansion;
 pub use publisher::{
     AppPublisher, PublishConfig, PublishError, PublishProgressCallback, PublishResult,

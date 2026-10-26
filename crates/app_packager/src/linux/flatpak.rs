@@ -308,6 +308,7 @@ mod tests {
             build_output_dir: bundle,
             build_output_files: vec![],
             output_dir: project.join("dist"),
+            packaging_root: None,
             environment: Default::default(),
         };
         let result = LinuxFlatpakPackager.package(&config).unwrap();

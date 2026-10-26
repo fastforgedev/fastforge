@@ -55,6 +55,7 @@ mod tests {
             build_output_dir: bundle,
             build_output_files: vec![],
             output_dir: tmp.path().join("dist"),
+            packaging_root: None,
             environment: Default::default(),
         };
         let first = LinuxDirectPackager.package(&config).unwrap();

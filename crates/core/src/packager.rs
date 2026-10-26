@@ -282,6 +282,38 @@ fn render_mustache(
     Ok(out)
 }
 
+/// The Flutter packaging layout: `<platform>/packaging/`, relative to the
+/// working directory (`macos/packaging/`, `linux/packaging/`, ...).
+pub fn default_packaging_root(platform: Platform) -> PathBuf {
+    Path::new(platform.as_str()).join("packaging")
+}
+
+/// Resolves the directory under which `<format>/make_config.yaml` and the
+/// format's assets are looked up, in this order:
+///
+/// 1. `explicit`, the `packaging-dir` build argument, relative to the working
+///    directory;
+/// 2. `<directory of project>/packaging/` when `project` (the `.xcodeproj` of a
+///    native project) is given and that directory exists;
+/// 3. [`default_packaging_root`], `<platform>/packaging/`, which is the Flutter
+///    layout and the fallback for native projects that keep such a tree.
+pub fn resolve_packaging_root(
+    platform: Platform,
+    explicit: Option<&Path>,
+    project: Option<&Path>,
+) -> PathBuf {
+    if let Some(dir) = explicit {
+        return dir.to_path_buf();
+    }
+    if let Some(project) = project {
+        let dir = project.parent().unwrap_or(Path::new("")).join("packaging");
+        if dir.is_dir() {
+            return dir;
+        }
+    }
+    default_packaging_root(platform)
+}
+
 #[derive(Debug, Clone)]
 pub struct PackageConfig {
     pub app_name: String,
@@ -297,6 +329,11 @@ pub struct PackageConfig {
     pub build_output_dir: PathBuf,
     pub build_output_files: Vec<PathBuf>,
     pub output_dir: PathBuf,
+    /// Directory holding the per-format packaging configuration
+    /// (`<packaging_root>/<format>/make_config.yaml` and the format's assets).
+    /// `None` means the Flutter layout, `<platform>/packaging/`; see
+    /// [`resolve_packaging_root`].
+    pub packaging_root: Option<PathBuf>,
     /// Variables from `distribute_options.yaml` (global/release/job) layered
     /// over the process environment, as Dart passes them to the packagers
     /// (e.g. `INNO_SETUP_PATH`). Lookups fall back to the process environment.
@@ -336,6 +373,26 @@ impl PackageConfig {
         }
         std::fs::create_dir_all(&dir).ok();
         Ok(dir)
+    }
+
+    /// The directory holding `<format>/make_config.yaml` for this package
+    /// (see [`resolve_packaging_root`]); `<platform>/packaging` unless a
+    /// different root was resolved.
+    pub fn packaging_root(&self) -> PathBuf {
+        self.packaging_root
+            .clone()
+            .unwrap_or_else(|| default_packaging_root(self.platform))
+    }
+
+    /// `<packaging root>/<format>/`: where a format keeps its
+    /// `make_config.yaml` and assets.
+    pub fn format_packaging_dir(&self, format: &str) -> PathBuf {
+        self.packaging_root().join(format)
+    }
+
+    /// `<packaging root>/<format>/make_config.yaml`.
+    pub fn make_config_path(&self, format: &str) -> PathBuf {
+        self.format_packaging_dir(format).join("make_config.yaml")
     }
 
     /// Looks up a variable in `environment`, then the process environment.
@@ -440,6 +497,7 @@ mod tests {
             build_output_dir: PathBuf::new(),
             build_output_files: vec![],
             output_dir: PathBuf::new(),
+            packaging_root: None,
             environment: Default::default(),
         }
     }
@@ -611,5 +669,86 @@ mod tests {
             "No output directory found."
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn flutter_layout_is_the_default_packaging_root() {
+        let mut config = base_config();
+        config.platform = Platform::MacOS;
+        assert_eq!(
+            config.make_config_path("pkg"),
+            Path::new("macos/packaging/pkg/make_config.yaml")
+        );
+        assert_eq!(
+            config.format_packaging_dir("dmg"),
+            Path::new("macos/packaging/dmg")
+        );
+        assert_eq!(
+            config.make_config_path("zip").display().to_string(),
+            "macos/packaging/zip/make_config.yaml"
+        );
+        config.platform = Platform::Linux;
+        assert_eq!(
+            config.make_config_path("deb"),
+            Path::new("linux/packaging/deb/make_config.yaml")
+        );
+    }
+
+    #[test]
+    fn config_uses_the_resolved_packaging_root() {
+        let mut config = base_config();
+        config.platform = Platform::MacOS;
+        config.packaging_root = Some(PathBuf::from("apps/desktop/macos/packaging"));
+        assert_eq!(
+            config.make_config_path("pkg"),
+            Path::new("apps/desktop/macos/packaging/pkg/make_config.yaml")
+        );
+        assert_eq!(
+            config.format_packaging_dir("dmg"),
+            Path::new("apps/desktop/macos/packaging/dmg")
+        );
+    }
+
+    #[test]
+    fn packaging_root_resolution_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("MyApp.xcodeproj");
+        std::fs::create_dir_all(&project).unwrap();
+
+        // No argument and no `packaging/` next to the project: Flutter layout.
+        assert_eq!(
+            resolve_packaging_root(Platform::MacOS, None, Some(&project)),
+            Path::new("macos/packaging")
+        );
+        assert_eq!(
+            resolve_packaging_root(Platform::MacOS, None, None),
+            Path::new("macos/packaging")
+        );
+
+        // `<project dir>/packaging/` wins once it exists.
+        let project_packaging = dir.path().join("packaging");
+        std::fs::create_dir_all(&project_packaging).unwrap();
+        assert_eq!(
+            resolve_packaging_root(Platform::MacOS, None, Some(&project)),
+            project_packaging
+        );
+        // A bare `MyApp.xcodeproj` in the working directory resolves to
+        // `packaging/` in the working directory.
+        let cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+        let resolved =
+            resolve_packaging_root(Platform::MacOS, None, Some(Path::new("MyApp.xcodeproj")));
+        std::env::set_current_dir(cwd).unwrap();
+        assert_eq!(resolved, Path::new("packaging"));
+
+        // An explicit `packaging-dir` wins over everything, even when missing.
+        assert_eq!(
+            resolve_packaging_root(
+                Platform::MacOS,
+                Some(Path::new("config/mac")),
+                Some(&project)
+            ),
+            Path::new("config/mac")
+        );
     }
 }

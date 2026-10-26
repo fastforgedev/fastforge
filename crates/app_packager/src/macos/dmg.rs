@@ -59,13 +59,17 @@ fn make_dmg(config: &PackageConfig, pkg_dir: &Path) -> Result<std::path::PathBuf
         })
         .ok_or_else(|| PackageError::NotFound(".app bundle in build output".into()))?;
 
-    // Prefer the project's `macos/packaging/dmg/make_config.yaml` (same
-    // appdmg-format schema as Dart's `MakeDmgConfig`: title, icon,
-    // background, background-color, icon-size, format, window, code-sign,
-    // contents). Fall back to a default spec when it's absent.
-    let mut spec = load_dmg_make_config(Path::new("macos/packaging/dmg/make_config.yaml"))?;
+    // Prefer the project's `make_config.yaml` (same appdmg-format schema as
+    // Dart's `MakeDmgConfig`: title, icon, background, background-color,
+    // icon-size, format, window, code-sign, contents). It lives in
+    // `<packaging root>/dmg/`, `macos/packaging/dmg/` for Flutter projects
+    // (see `PackageConfig::packaging_root`). Fall back to a default spec
+    // when it's absent.
+    let dmg_assets = config.format_packaging_dir("dmg");
+    let make_config = dmg_assets.join("make_config.yaml");
+    let mut spec = load_dmg_make_config(&make_config)?;
     let configured = match spec.as_mut() {
-        Some(spec) => take_notarize(spec)?,
+        Some(spec) => take_notarize(spec, &make_config)?,
         None => false,
     };
     let credentials = notarize::enabled(configured, config)
@@ -89,20 +93,19 @@ fn make_dmg(config: &PackageConfig, pkg_dir: &Path) -> Result<std::path::PathBuf
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| format!("{}.app", config.app_name));
 
-    // Copy the project's dmg packaging assets (background, icon, etc.)
-    // These are expected at macos/packaging/dmg/ relative to the project root.
-    let dmg_assets = Path::new("macos/packaging/dmg");
+    // Copy the project's dmg packaging assets (background, icon, etc.) from
+    // the directory that holds `make_config.yaml`.
     if dmg_assets.exists() {
-        run_cp_r_dir_contents(dmg_assets, pkg_dir)?;
+        run_cp_r_dir_contents(&dmg_assets, pkg_dir)?;
     }
 
     let output_file = config.output_file()?;
 
     let mut spec =
         spec.unwrap_or_else(|| default_spec(&config.app_name, &bundle_file_name, pkg_dir));
-    check_app_entries(&spec, pkg_dir, &bundle_file_name)?;
+    check_app_entries(&spec, pkg_dir, &bundle_file_name, &make_config)?;
     if credentials.is_some() {
-        sign_for_notarization(&mut spec, &app_bundle)?;
+        sign_for_notarization(&mut spec, &app_bundle, &make_config)?;
     }
 
     // Delegate DMG creation to the native dmg_maker crate.
@@ -122,7 +125,7 @@ fn make_dmg(config: &PackageConfig, pkg_dir: &Path) -> Result<std::path::PathBuf
 
 /// Removes Fastforge's `notarize` key, which is not part of the appdmg spec
 /// `dmg_maker` validates.
-fn take_notarize(spec: &mut serde_json::Value) -> Result<bool, PackageError> {
+fn take_notarize(spec: &mut serde_json::Value, make_config: &Path) -> Result<bool, PackageError> {
     let Some(value) = spec
         .as_object_mut()
         .and_then(|spec| spec.remove("notarize"))
@@ -130,9 +133,10 @@ fn take_notarize(spec: &mut serde_json::Value) -> Result<bool, PackageError> {
         return Ok(false);
     };
     value.as_bool().ok_or_else(|| {
-        PackageError::General(
-            "`notarize` in macos/packaging/dmg/make_config.yaml must be true or false".into(),
-        )
+        PackageError::General(format!(
+            "`notarize` in {} must be true or false",
+            make_config.display()
+        ))
     })
 }
 
@@ -142,13 +146,14 @@ fn take_notarize(spec: &mut serde_json::Value) -> Result<bool, PackageError> {
 fn sign_for_notarization(
     spec: &mut serde_json::Value,
     app_bundle: &Path,
+    make_config: &Path,
 ) -> Result<(), PackageError> {
     if spec.get("code-sign").is_none_or(|sign| sign.is_null()) {
         let identity = notarize::developer_id_identity(app_bundle).ok_or_else(|| {
             PackageError::General(format!(
                 "Notarizing the DMG needs a signing identity: add `code-sign.signing-identity` \
-                 to macos/packaging/dmg/make_config.yaml, or sign {} with a \
-                 \"Developer ID Application\" identity.",
+                 to {}, or sign {} with a \"Developer ID Application\" identity.",
+                make_config.display(),
                 app_bundle.display()
             ))
         })?;
@@ -167,6 +172,7 @@ fn check_app_entries(
     spec: &serde_json::Value,
     pkg_dir: &Path,
     bundle_file_name: &str,
+    make_config: &Path,
 ) -> Result<(), PackageError> {
     let entries = spec["contents"].as_array().into_iter().flatten();
     for entry in entries {
@@ -178,16 +184,19 @@ fn check_app_entries(
             .is_some_and(|ext| ext.eq_ignore_ascii_case("app"));
         if entry["type"] == "file" && is_app && !pkg_dir.join(path).exists() {
             return Err(PackageError::NotFound(format!(
-                "`{}` from macos/packaging/dmg/make_config.yaml is not in the build output; \
-                 the build produced `{}`. Set the entry's `path` to `{}`.",
-                path, bundle_file_name, bundle_file_name
+                "`{}` from {} is not in the build output; the build produced `{}`. \
+                 Set the entry's `path` to `{}`.",
+                path,
+                make_config.display(),
+                bundle_file_name,
+                bundle_file_name
             )));
         }
     }
     Ok(())
 }
 
-/// Loads `macos/packaging/dmg/make_config.yaml` as an appdmg-style JSON spec.
+/// Loads the DMG `make_config.yaml` as an appdmg-style JSON spec.
 /// Returns `Ok(None)` when the file does not exist.
 fn load_dmg_make_config(path: &Path) -> Result<Option<serde_json::Value>, PackageError> {
     if !path.exists() {
@@ -322,11 +331,15 @@ mod tests {
                 { "x": 2, "y": 2, "type": "file", "path": path },
             ]})
         };
-        assert!(check_app_entries(&spec("My App.app"), dir.path(), "My App.app").is_ok());
-        let error = check_app_entries(&spec("my_app.app"), dir.path(), "My App.app")
+        let make_config = Path::new("macos/packaging/dmg/make_config.yaml");
+        assert!(
+            check_app_entries(&spec("My App.app"), dir.path(), "My App.app", make_config).is_ok()
+        );
+        let error = check_app_entries(&spec("my_app.app"), dir.path(), "My App.app", make_config)
             .unwrap_err()
             .to_string();
         assert!(error.contains("`my_app.app`") && error.contains("produced `My App.app`"));
+        assert!(error.contains("macos/packaging/dmg/make_config.yaml"));
     }
 
     #[test]
@@ -374,19 +387,24 @@ contents:
 
     #[test]
     fn notarize_key_is_taken_out_of_the_spec() {
+        let make_config = Path::new("packaging/dmg/make_config.yaml");
         let mut spec = json!({ "title": "t", "contents": [], "notarize": true });
-        assert!(take_notarize(&mut spec).unwrap());
+        assert!(take_notarize(&mut spec, make_config).unwrap());
         assert!(spec.get("notarize").is_none());
-        assert!(!take_notarize(&mut spec).unwrap());
+        assert!(!take_notarize(&mut spec, make_config).unwrap());
         let mut invalid = json!({ "title": "t", "notarize": "yes" });
-        assert!(take_notarize(&mut invalid).is_err());
+        let error = take_notarize(&mut invalid, make_config)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("packaging/dmg/make_config.yaml"));
     }
 
     #[test]
     fn notarized_dmg_is_signed_with_a_timestamp() {
         let mut spec = json!({ "title": "t", "contents": [],
             "code-sign": { "signing-identity": "Developer ID Application: Foo (TEAM)" } });
-        sign_for_notarization(&mut spec, Path::new("/nonexistent/Demo.app")).unwrap();
+        let make_config = Path::new("macos/packaging/dmg/make_config.yaml");
+        sign_for_notarization(&mut spec, Path::new("/nonexistent/Demo.app"), make_config).unwrap();
         assert_eq!(spec["code-sign"]["timestamp"], true);
         assert_eq!(
             spec["code-sign"]["signing-identity"],
@@ -395,9 +413,13 @@ contents:
 
         // Without `code-sign`, an unsigned app leaves no identity to use.
         let mut unsigned = json!({ "title": "t", "contents": [] });
-        let error = sign_for_notarization(&mut unsigned, Path::new("/nonexistent/Demo.app"))
-            .unwrap_err()
-            .to_string();
+        let error = sign_for_notarization(
+            &mut unsigned,
+            Path::new("/nonexistent/Demo.app"),
+            make_config,
+        )
+        .unwrap_err()
+        .to_string();
         assert!(error.contains("code-sign.signing-identity"));
     }
 

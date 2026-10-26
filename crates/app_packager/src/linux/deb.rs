@@ -673,6 +673,7 @@ mod tests {
             build_output_dir: PathBuf::new(),
             build_output_files: vec![],
             output_dir: PathBuf::new(),
+            packaging_root: None,
             environment: Default::default(),
         }
     }

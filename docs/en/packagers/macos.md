@@ -19,6 +19,8 @@ fastforge package --targets dmg,pkg,zip
 
 Xcode projects should pass project arguments through workflow `build-args`; see [Xcode Builder](../builders/xcode.md#macos). Artifacts are written to `dist/<version>/`.
 
+The configuration paths below (`macos/packaging/<format>/`) are the Flutter layout, relative to the working directory. For a native Xcode project the same files are read from `packaging/<format>/` next to the `.xcodeproj` when that directory exists, or from the `packaging-dir` build argument; see [Packaging configuration directory](../builders/xcode.md#packaging-configuration-directory). The output names the `make_config.yaml` that was read, or says that none was found.
+
 ## Requirements
 
 - macOS

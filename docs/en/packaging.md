@@ -85,7 +85,7 @@ When a channel is set, `{{channel}}` replaces the flavor segment. `ext` is the f
 
 ### Format Configuration
 
-Most packagers read an optional `<platform>/packaging/<format>/make_config.yaml`, such as `macos/packaging/dmg/make_config.yaml` or `linux/packaging/deb/make_config.yaml`. A missing file means defaults; a file that cannot be parsed fails packaging. Only the `custom` format requires its configuration file.
+Most packagers read an optional `<platform>/packaging/<format>/make_config.yaml`, such as `macos/packaging/dmg/make_config.yaml` or `linux/packaging/deb/make_config.yaml`. A missing file means defaults; a file that cannot be parsed fails packaging. Only the `custom` format requires its configuration file. Native macOS Xcode projects read the same files from `packaging/<format>/` next to the `.xcodeproj` instead; see [Xcode Builder](builders/xcode.md#packaging-configuration-directory).
 
 The Linux AppImage, DEB, RPM, and Pacman packagers also accept the format's own raw files in `.fastforge/packaging/linux/`, such as a Debian `control` file or an RPM spec, rendered with the packaging variables below. Raw files take precedence over `make_config.yaml`. See [Linux](packagers/linux.md#configuration). Windows EXE and MSIX use the same model in `.fastforge/packaging/windows/`, with a native Inno Setup script, an MSIX manifest, and shared file overlays; see [Windows](packagers/windows.md#configuration).
 

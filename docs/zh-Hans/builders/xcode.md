@@ -34,12 +34,23 @@ Xcode Builder 已经接入 package 流程。顶层 `fastforge package` 没有 `p
 
 建议设置 `derived-data-path`，明确产品目录位置。打包格式在构建完成后才校验，因此不支持的 macOS 格式会在 `xcodebuild` 结束后才失败。
 
+### 打包配置目录
+
+DMG、PKG 和 ZIP 打包器读取 `<打包配置目录>/<format>/make_config.yaml`（DMG 还会使用旁边的资源文件）。原生项目的打包配置目录按以下顺序解析：
+
+1. 提供了 `packaging-dir` 构建参数时使用该目录，相对于工作目录。
+2. `.xcodeproj` 旁边的 `packaging/`（`<project 所在目录>/packaging/`），该目录存在时使用。
+3. `macos/packaging/`，即 Flutter 布局，也是已经保留这一目录结构的原生项目的回退路径。
+
+因此位于 `apps/desktop/macos/MyApp.xcodeproj` 的项目，配合 `apps/desktop/macos/packaging/pkg/make_config.yaml`，可以在 `apps/desktop/macos` 目录下以 `project=MyApp.xcodeproj` 运行 Fastforge，`dist/` 和 Derived Data 也留在项目内。输出会写明读取了哪个 `make_config.yaml`，或者说明未找到配置、使用了默认值（对 PKG 来说即未签名的安装包）。
+
 | 参数                | 必填 | 说明                                  |
 | ------------------- | :--: | ------------------------------------- |
 | `project`           |  是  | `.xcodeproj` 路径                     |
 | `scheme`            |  是  | Xcode scheme                          |
 | `configuration`     |  否  | 默认 `Release`                        |
 | `derived-data-path` |  否  | Derived Data 输出目录                 |
+| `packaging-dir`     |  否  | 存放 `<format>/make_config.yaml` 的目录，见[上文](#打包配置目录) |
 | `product-name`      |  否  | 要匹配的 `.app` 名称；未提供时匹配任意 `.app` |
 | `sdk`               |  否  | 传给 `xcodebuild -sdk`                |
 | `xcconfig-override` |  否  | 额外 xcconfig 文件                    |

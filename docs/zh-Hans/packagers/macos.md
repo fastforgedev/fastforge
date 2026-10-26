@@ -19,6 +19,8 @@ fastforge package --targets dmg,pkg,zip
 
 Xcode 项目的工程参数建议通过工作流 `build-args` 传入，见 [Xcode Builder](../builders/xcode.md#macos)。产物写入 `dist/<version>/`。
 
+下文的配置路径（`macos/packaging/<format>/`）是 Flutter 布局，相对于工作目录。原生 Xcode 项目会改为从 `.xcodeproj` 旁边的 `packaging/<format>/`（该目录存在时）或 `packaging-dir` 构建参数指定的目录读取同样的文件，见[打包配置目录](../builders/xcode.md#打包配置目录)。输出会写明读取了哪个 `make_config.yaml`，或者说明未找到配置。
+
 ## 环境要求
 
 - macOS

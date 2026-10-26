@@ -48,6 +48,7 @@ mod tests {
             build_output_dir: tmp.path().to_path_buf(),
             build_output_files: vec![src_file.to_path_buf()],
             output_dir: tmp.path().to_path_buf(),
+            packaging_root: None,
             environment: Default::default(),
         }
     }
