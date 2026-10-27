@@ -684,8 +684,8 @@ mod tests {
             Path::new("macos/packaging/dmg")
         );
         assert_eq!(
-            config.make_config_path("zip").display().to_string(),
-            "macos/packaging/zip/make_config.yaml"
+            config.make_config_path("zip"),
+            Path::new("macos/packaging/zip/make_config.yaml")
         );
         config.platform = Platform::Linux;
         assert_eq!(
