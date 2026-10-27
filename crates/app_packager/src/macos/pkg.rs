@@ -94,32 +94,31 @@ impl MacOSPkgPackager {
 
     /// Checks the App Store mode settings, returning the installer identity.
     fn app_store_identity(&self, config: &PackageConfig) -> Result<&str, PackageError> {
+        let make_config = config.make_config_path("pkg");
         let identity = self.sign_identity.as_deref().ok_or_else(|| {
-            PackageError::General(
+            PackageError::General(format!(
                 "A Mac App Store package needs `sign-identity` (a \"3rd Party Mac Developer \
-                 Installer\" or \"Mac Installer Distribution\" identity) in \
-                 macos/packaging/pkg/make_config.yaml, or `app-store: false` for a direct-\
-                 download installer"
-                    .into(),
-            )
+                 Installer\" or \"Mac Installer Distribution\" identity) in {}, or \
+                 `app-store: false` for a direct-download installer",
+                make_config.display()
+            ))
         })?;
         if self.scripts.is_some() {
-            return Err(PackageError::General(
-                "`scripts` cannot be used with `app-store: true` in \
-                 macos/packaging/pkg/make_config.yaml: Mac App Store packages cannot carry \
-                 install scripts. Remove `scripts`, or set `app-store: false` for a \
-                 direct-download installer"
-                    .into(),
-            ));
+            return Err(PackageError::General(format!(
+                "`scripts` cannot be used with `app-store: true` in {}: Mac App Store \
+                 packages cannot carry install scripts. Remove `scripts`, or set \
+                 `app-store: false` for a direct-download installer",
+                make_config.display()
+            )));
         }
         if notarize::enabled(self.notarize, config) {
-            return Err(PackageError::General(
-                "`notarize` cannot be used with `app-store: true` in \
-                 macos/packaging/pkg/make_config.yaml: Mac App Store packages are not \
-                 notarized (App Store Connect handles them). Remove `notarize` (or \
-                 `--notarize`), or set `app-store: false` for a direct-download installer"
-                    .into(),
-            ));
+            return Err(PackageError::General(format!(
+                "`notarize` cannot be used with `app-store: true` in {}: Mac App Store \
+                 packages are not notarized (App Store Connect handles them). Remove \
+                 `notarize` (or `--notarize`), or set `app-store: false` for a \
+                 direct-download installer",
+                make_config.display()
+            )));
         }
         Ok(identity)
     }
@@ -327,11 +326,11 @@ impl AppPackager for MacOSPkgPackager {
         // Fail before building anything the notary service would reject.
         let credentials = if notarize::enabled(self.notarize, config) {
             if self.sign_identity.is_none() {
-                return Err(PackageError::General(
+                return Err(PackageError::General(format!(
                     "Notarizing the PKG needs `sign-identity` (a \"Developer ID Installer\" \
-                     identity) in macos/packaging/pkg/make_config.yaml"
-                        .into(),
-                ));
+                     identity) in {}",
+                    config.make_config_path("pkg").display()
+                )));
             }
             let credentials = notarize::Credentials::from_config(config)?;
             notarize::check_app_signature(app_path)?;
@@ -577,6 +576,22 @@ mod tests {
         let err = packager.package(&test_config()).unwrap_err().to_string();
         assert!(err.contains("`sign-identity`"), "{err}");
         assert!(err.contains("3rd Party Mac Developer Installer"), "{err}");
+    }
+
+    #[test]
+    fn app_store_errors_name_the_resolved_make_config() {
+        let packager = MacOSPkgPackager {
+            app_store: true,
+            ..Default::default()
+        };
+        let root = PathBuf::from("apps/desktop/macos/packaging");
+        let config = PackageConfig {
+            packaging_root: Some(root.clone()),
+            ..test_config()
+        };
+        let err = packager.package(&config).unwrap_err().to_string();
+        let expected = root.join("pkg").join("make_config.yaml");
+        assert!(err.contains(&expected.display().to_string()), "{err}");
     }
 
     #[test]
