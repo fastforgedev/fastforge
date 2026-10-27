@@ -62,7 +62,7 @@ code-sign:
 
 ## PKG
 
-PKG 是 macOS 安装器包格式。安装包只能安装到启动磁盘（`enable_localSystem`）。Fastforge 使用 `xcrun productbuild` 和 `pkgutil` 生成 PKG。PKG 打包器会读取以下可选配置文件：
+PKG 是 macOS 安装器包格式。Fastforge 使用 `xcrun productbuild` 生成 PKG，可以是直接下载分发的安装包，也可以是 Mac App Store 安装包。PKG 打包器会读取以下可选配置文件：
 
 ```text
 macos/packaging/pkg/make_config.yaml
@@ -71,9 +71,10 @@ macos/packaging/pkg/make_config.yaml
 | 键              | 说明                                                |
 | --------------- | --------------------------------------------------- |
 | `install-path`  | 安装位置，默认 `/Applications/`                     |
-| `sign-identity` | 安装包签名身份，通过 `xcrun productsign` 签名       |
-| `scripts`       | 包含安装前/后脚本的目录                             |
-| `notarize`      | 为 `true` 时公证并装订安装包，见[公证](#公证)       |
+| `sign-identity` | 安装包签名身份：直接下载用 "Developer ID Installer"，Mac App Store 用 "3rd Party Mac Developer Installer" 或 "Mac Installer Distribution" |
+| `scripts`       | 包含安装前/后脚本的目录（App Store 安装包不可用）   |
+| `notarize`      | 为 `true` 时公证并装订安装包，见[公证](#公证)（App Store 安装包不可用） |
+| `app-store`     | 为 `true` 时生成 Mac App Store 安装包，见 [Mac App Store 安装包](#mac-app-store-安装包)；默认值取决于 `sign-identity` 是否为 App Store 安装包签名身份 |
 
 文件不存在时使用默认值；文件无法解析时打包失败。
 
@@ -81,9 +82,27 @@ macos/packaging/pkg/make_config.yaml
 fastforge package --targets pkg
 ```
 
-需要上传到 App Store 时：
+### 直接下载的安装包
+
+未开启 `app-store` 时，Fastforge 生成在商店之外分发的安装包：用 `pkgutil` 展开 productbuild 的输出，把 Distribution 限制为只能安装到启动磁盘（`enable_localSystem`），从组件 PackageInfo 中删除重定位（relocation）条目以保证应用总是安装到 `install-path` 而不是已有副本的位置，再重新打平。`sign-identity` 通过 `xcrun productsign` 签名，`scripts` 加入安装脚本，`notarize` 公证并装订。
+
+### Mac App Store 安装包
+
+App Store Connect 会按 productbuild 写出的内容校验安装包，事后被修改过的会被拒绝（ITMS-90229 "Bundle ... in Payload not declared in PackageInfo"、ITMS-90270 "Unsupported toolchain"）。因此 `app-store: true` 时，Fastforge 只运行一次 `xcrun productbuild --component <App>.app <install-path> --sign <sign-identity> <artifact>.pkg`，并原样交付其输出：不经过 `pkgutil` 展开/打平，不修改 Distribution 或 PackageInfo，也不再单独 `productsign`。这与 `xcodebuild -exportArchive` 以 `app-store-connect` 方式导出时运行的命令相同，结果也与 Xcode 的导出一致：安装路径按 Xcode 的做法去掉末尾斜杠传入，组件 PackageInfo 只列出应用 bundle（productbuild 不会声明嵌套的应用扩展或资源 bundle，Apple 接受的 Xcode 安装包同样如此）。ITMS-90229 和 ITMS-90270 的拒绝源于事后改写，而不是安装包内容。
+
+当 `sign-identity` 以 `3rd Party Mac Developer Installer` 或 `Mac Installer Distribution` 开头时自动进入 App Store 模式；设置 `app-store: false` 可在使用这类身份时保留直接下载的行为，`app-store: true` 则对任意身份强制开启。该模式下 `sign-identity` 为必填，`scripts` 和 `notarize`（包括 `--notarize`）会使打包失败：商店安装包不能携带安装脚本，也不需要公证。`.app` 必须已由构建按商店要求签名（"Apple Distribution" 或 "3rd Party Mac Developer Application" 身份，并带 Mac App Store 描述文件）。
+
+```yaml
+# macos/packaging/pkg/make_config.yaml
+install-path: /Applications/
+sign-identity: "3rd Party Mac Developer Installer: Example (TEAMID)"
+app-store: true   # 使用该身份时可省略
+```
+
+打包并上传：
 
 ```bash
+fastforge package --platform macos --targets pkg
 fastforge publish --path dist/<version>/<artifact>.pkg --targets appstore
 ```
 
@@ -129,7 +148,7 @@ API 密钥变量与 `fastforge publish --targets appstore` 使用的相同。使
 
 - **ZIP**：公证 `.app`（以 `ditto` 生成的 zip 提交）并装订，再压缩已装订的应用。ZIP 本身无法装订。
 - **DMG**：公证并装订 `.app`，用已装订的应用制作镜像，以 `--timestamp` 为镜像签名，再公证并装订 DMG。`make_config.yaml` 中没有 `code-sign` 时，使用应用的 Developer ID Application 身份为镜像签名。
-- **PKG**：需要 `sign-identity`（"Developer ID Installer" 身份）；用 `productsign --timestamp` 签名后公证并装订安装包。
+- **PKG**：需要 `sign-identity`（"Developer ID Installer" 身份）；用 `productsign --timestamp` 签名后公证并装订安装包。Mac App Store 安装包（`app-store: true`）不公证，为其设置 `notarize` 会使打包失败。
 
 `.app` 会在构建输出中原地装订，因此 `--targets dmg,zip` 只公证一次应用，两个归档中都是已装订的应用。`notarytool submit --wait` 通常几分钟内返回，但每次提交（应用、DMG、PKG）都会增加打包时间。提交结果为 `Invalid` 或 `Rejected` 时，Fastforge 会获取公证日志、打印其中的问题并使打包失败。可以用 [`fastforge analyze`](../tools/analyze.md) 检查结果，它会报告签名、装订和 Gatekeeper 状态。钩子仍会照常运行，可用于其他自定义步骤。
 
