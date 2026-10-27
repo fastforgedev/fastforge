@@ -254,6 +254,7 @@ mod tests {
             build_output_dir: bundle,
             build_output_files: vec![],
             output_dir: out,
+            packaging_root: None,
             environment: Default::default(),
         };
         println!(
@@ -283,6 +284,7 @@ mod tests {
             build_output_dir: bundle,
             build_output_files: vec![],
             output_dir: tmp.path().join("dist"),
+            packaging_root: None,
             environment: Default::default(),
         };
         let result = LinuxNixPackager.package(&config).unwrap();

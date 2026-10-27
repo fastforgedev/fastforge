@@ -116,6 +116,7 @@ fn config(project: &Project, format: &str, version: &str) -> PackageConfig {
         build_output_dir: project.root.join("build/bundle"),
         build_output_files: vec![],
         output_dir: project.root.join("dist"),
+        packaging_root: None,
         environment: Default::default(),
     }
 }

@@ -85,6 +85,7 @@ mod tests {
             build_output_dir: tmp.to_path_buf(),
             build_output_files,
             output_dir: tmp.to_path_buf(),
+            packaging_root: None,
             environment: Default::default(),
         }
     }

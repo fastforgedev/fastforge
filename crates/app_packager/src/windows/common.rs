@@ -211,6 +211,7 @@ pub(super) mod tests {
             build_output_dir: root.join("build/windows/arm64/runner/Release"),
             build_output_files: vec![],
             output_dir: root.join("dist"),
+            packaging_root: None,
             environment: Default::default(),
         }
     }

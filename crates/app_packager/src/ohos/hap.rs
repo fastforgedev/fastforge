@@ -52,6 +52,7 @@ mod tests {
             build_output_dir: tmp.path().to_path_buf(),
             build_output_files: vec![src],
             output_dir: tmp.path().to_path_buf(),
+            packaging_root: None,
             environment: Default::default(),
         };
         let result = OHOSHapPackager.package(&cfg).unwrap();

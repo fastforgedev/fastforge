@@ -199,6 +199,7 @@ mod tests {
             build_output_dir: dir.path().to_path_buf(),
             build_output_files: vec![],
             output_dir: dir.path().join("dist"),
+            packaging_root: None,
             environment: Default::default(),
         };
         let file = CustomPackager::new(Platform::Linux, "true".into(), "tar.gz".into());
@@ -239,6 +240,7 @@ mod tests {
             build_output_dir: dir.path().to_path_buf(),
             build_output_files: vec![],
             output_dir: out_dir.clone(),
+            packaging_root: None,
             environment: Default::default(),
         };
 

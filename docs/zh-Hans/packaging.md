@@ -85,7 +85,7 @@ fastforge package --platform macos --targets dmg,zip
 
 ### 格式配置
 
-大多数打包器会读取可选的 `<platform>/packaging/<format>/make_config.yaml`，例如 `macos/packaging/dmg/make_config.yaml` 或 `linux/packaging/deb/make_config.yaml`。文件不存在时使用默认值；文件无法解析时打包失败。只有 `custom` 格式必须提供配置文件。
+大多数打包器会读取可选的 `<platform>/packaging/<format>/make_config.yaml`，例如 `macos/packaging/dmg/make_config.yaml` 或 `linux/packaging/deb/make_config.yaml`。文件不存在时使用默认值；文件无法解析时打包失败。只有 `custom` 格式必须提供配置文件。原生 macOS Xcode 项目改为从 `.xcodeproj` 旁边的 `packaging/<format>/` 读取同样的文件，见 [Xcode Builder](builders/xcode.md#打包配置目录)。
 
 Linux 的 AppImage、DEB、RPM 和 Pacman 打包器还接受放在 `.fastforge/packaging/linux/` 中的各格式原始文件，例如 Debian 的 `control` 文件或 RPM spec，并用下文的打包变量渲染。原始文件优先于 `make_config.yaml`，详见 [Linux](packagers/linux.md#配置)。Windows EXE 和 MSIX 在 `.fastforge/packaging/windows/` 中采用同样的原生文件模型，支持 Inno Setup 脚本、MSIX 清单和共享文件覆盖层，参见 [Windows](packagers/windows.md#配置)。
 

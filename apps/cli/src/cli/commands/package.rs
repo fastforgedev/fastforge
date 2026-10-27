@@ -12,12 +12,14 @@ use fastforge_app_packager::{
     OHOSAppPackager, OHOSHapPackager, PackageConfig, WebDirectPackager, WebZipPackager,
     WindowsDirectPackager, WindowsExePackager, WindowsMsixPackager, WindowsZipPackager,
 };
-use fastforge_core::{ProjectSettings, environment_variables};
+use fastforge_core::{
+    ProjectSettings, default_packaging_root, environment_variables, resolve_packaging_root,
+};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use serde_yaml;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
 
@@ -357,7 +359,7 @@ pub fn package(request: PackageRequest) -> Result<Vec<PackagedTarget>> {
         // that can't run on this host is skipped with a warning (Dart
         // catches the builder's `UnsupportedError`); a packager that can't
         // run here fails before the expensive build.
-        let packager = resolve_packager(platform, target)?;
+        let packager = resolve_packager(platform, target, &default_packaging_root(platform))?;
         if !request.skip_build
             && builder.is_supported_on_current_platform(&platform, Some(target)) == Some(false)
         {
@@ -498,7 +500,7 @@ pub fn package_flutter_build(
     hooks: Option<&HashMap<String, serde_yaml::Value>>,
 ) -> Result<Vec<PathBuf>> {
     let platform = *platform;
-    let packager = resolve_packager(platform, target)?;
+    let packager = resolve_packager(platform, target, &default_packaging_root(platform))?;
     if !packager.is_supported_on_current_platform() {
         return Err(anyhow!(
             "Packager '{}' is not supported on the current platform",
@@ -530,10 +532,32 @@ pub fn package_flutter_build(
         build_output_dir: build.output_directory.clone(),
         build_output_files: build.output_files.clone(),
         output_dir: PathBuf::from(output),
+        packaging_root: None,
         environment: environment.clone(),
     };
 
     package_with_hooks(packager.as_ref(), &package_config, hooks, environment)
+}
+
+/// Prints which `make_config.yaml` a macOS packager reads, or that none was
+/// found, so a package built from defaults (for example an unsigned PKG) is
+/// visible in the output.
+fn report_macos_make_config(package_config: &PackageConfig, package_format: &str) {
+    if package_config.platform != Platform::MacOS
+        || !matches!(package_format, "pkg" | "dmg" | "zip")
+    {
+        return;
+    }
+    let path = package_config.make_config_path(package_format);
+    if path.is_file() {
+        eprintln!("Using {}", path.display());
+    } else {
+        eprintln!(
+            "No {} found; using the default {} settings.",
+            path.display(),
+            package_format
+        );
+    }
 }
 
 /// Runs the pre-package hooks, the packager and the post-package hooks, then
@@ -591,6 +615,7 @@ fn package_with_hooks(
     );
 
     run_hooks(&pre_hooks, &hook_env)?;
+    report_macos_make_config(package_config, &package_format);
     let result = packager
         .package(package_config)
         .map_err(|e| anyhow!("{}", e))?;
@@ -730,13 +755,20 @@ fn run_hooks(hooks: &[String], env: &HashMap<String, String>) -> Result<()> {
 }
 
 /// Resolves the packager for a `(platform, target)` pair, covering the same
-/// matrix as Dart's `FlutterAppPackager` maker registry.
+/// matrix as Dart's `FlutterAppPackager` maker registry. Packagers that read
+/// their configuration up front load it from
+/// `<packaging_root>/<target>/make_config.yaml` (see
+/// [`resolve_packaging_root`]).
 pub fn resolve_packager(
     platform: Platform,
     target: &str,
+    packaging_root: &Path,
 ) -> Result<Box<dyn AppPackager + Send + Sync>> {
     if target == "custom" {
-        return Ok(Box::new(CustomPackager::load(platform)?));
+        return Ok(Box::new(CustomPackager::from_yaml_file(
+            platform,
+            &packaging_root.join("custom").join("make_config.yaml"),
+        )?));
     }
     match (platform, target) {
         (Platform::Android, "aab") => Ok(Box::new(AndroidAabPackager)),
@@ -751,7 +783,7 @@ pub fn resolve_packager(
         (Platform::Linux, "zip") => Ok(Box::new(LinuxZipPackager)),
         (Platform::Linux, "direct") => Ok(Box::new(LinuxDirectPackager)),
         (Platform::MacOS, "pkg") => Ok(Box::new(MacOSPkgPackager::from_yaml_file(
-            std::path::Path::new("macos/packaging/pkg/make_config.yaml"),
+            &packaging_root.join("pkg").join("make_config.yaml"),
         )?)),
         (Platform::MacOS, "dmg") => Ok(Box::new(MacOSDmgPackager)),
         (Platform::MacOS, "zip") => Ok(Box::new(MacOSZipPackager)),
@@ -793,8 +825,19 @@ fn linux_binary_name() -> Option<String> {
     }
 }
 
-fn macos_packager(target: &str) -> Result<Box<dyn AppPackager + Send + Sync>> {
-    resolve_packager(Platform::MacOS, target)
+fn macos_packager(
+    target: &str,
+    packaging_root: &Path,
+) -> Result<Box<dyn AppPackager + Send + Sync>> {
+    resolve_packager(Platform::MacOS, target, packaging_root)
+}
+
+/// The packaging root of a native Xcode project: the `packaging-dir` build
+/// argument, else `packaging/` next to the `project`, else the Flutter
+/// layout (see [`resolve_packaging_root`]).
+fn native_macos_packaging_root(build_args: &Map<String, Value>) -> PathBuf {
+    let arg = |key: &str| build_args.get(key).and_then(Value::as_str).map(Path::new);
+    resolve_packaging_root(Platform::MacOS, arg("packaging-dir"), arg("project"))
 }
 
 fn ios_packager(target: &str) -> Result<Box<dyn AppPackager + Send + Sync>> {
@@ -826,6 +869,9 @@ fn android_packager(target: &str) -> Result<Box<dyn AppPackager + Send + Sync>> 
 /// - Uses `xcodebuild` to build the `.app` (via `MacOSXcodeAppBuilder`).
 /// - Reads app metadata from `Info.plist` in the built `.app`.
 /// - Supports all macOS packagers (pkg, dmg, zip).
+/// - Reads `<format>/make_config.yaml` from the `packaging-dir` build
+///   argument, else `packaging/` next to the `.xcodeproj`, else
+///   `macos/packaging/`.
 #[allow(clippy::too_many_arguments)]
 pub fn package_native_macos_artifact(
     target: &str,
@@ -857,6 +903,7 @@ pub fn package_native_macos_artifact(
     let (app_name, version, build_number) = read_native_macos_metadata(app_path)?;
     let app_version = format!("{}+{}", version, build_number);
 
+    let packaging_root = native_macos_packaging_root(&build_args);
     let package_config = PackageConfig {
         app_name: app_name.clone(),
         app_binary_name: app_name,
@@ -871,10 +918,11 @@ pub fn package_native_macos_artifact(
         build_output_dir: build.output_directory,
         build_output_files: build.output_files,
         output_dir: PathBuf::from(output),
+        packaging_root: Some(packaging_root.clone()),
         environment: environment.clone(),
     };
 
-    let packager = macos_packager(target)?;
+    let packager = macos_packager(target, &packaging_root)?;
     if !packager.is_supported_on_current_platform() {
         return Err(anyhow!(
             "Packager '{}' is not supported on the current platform",
@@ -1002,6 +1050,7 @@ pub fn package_native_ios_artifact(
         build_output_dir: build.output_directory,
         build_output_files: build.output_files,
         output_dir: PathBuf::from(output),
+        packaging_root: None,
         environment: environment.clone(),
     };
 
@@ -1128,6 +1177,7 @@ pub fn package_native_android_artifact(
         build_output_dir: build.output_directory,
         build_output_files: build.output_files,
         output_dir: PathBuf::from(output),
+        packaging_root: None,
         environment: environment.clone(),
     };
 
@@ -1227,7 +1277,11 @@ pub fn package_native_windows_artifact(
             ..Default::default()
         })
     } else {
-        resolve_packager(Platform::Windows, target)?
+        resolve_packager(
+            Platform::Windows,
+            target,
+            &default_packaging_root(Platform::Windows),
+        )?
     };
     if !packager.is_supported_on_current_platform() {
         return Err(anyhow!(
@@ -1265,6 +1319,7 @@ pub fn package_native_windows_artifact(
         build_output_dir: build.output_directory,
         build_output_files: build.output_files,
         output_dir: PathBuf::from(output),
+        packaging_root: None,
         environment: environment.clone(),
     };
 
@@ -1405,6 +1460,7 @@ mod tests {
             build_output_dir: "build/bundle".into(),
             build_output_files: vec![],
             output_dir: "dist".into(),
+            packaging_root: None,
             environment: [("PASSWORD".into(), "secret".into())].into(),
         };
         let result = fastforge_core::PackageResult {
@@ -1469,9 +1525,11 @@ mod tests {
         for (platform_str, targets) in matrix {
             let platform = Platform::from_str(platform_str).unwrap();
             for target in *targets {
-                let packager = resolve_packager(platform, target).unwrap_or_else(|e| {
-                    panic!("resolve_packager({platform_str}, {target}) failed: {e}")
-                });
+                let packager =
+                    resolve_packager(platform, target, &default_packaging_root(platform))
+                        .unwrap_or_else(|e| {
+                            panic!("resolve_packager({platform_str}, {target}) failed: {e}")
+                        });
                 assert_eq!(packager.name(), *target);
             }
         }
@@ -1486,7 +1544,7 @@ mod tests {
             ("web", "deb"),
         ] {
             let platform = Platform::from_str(platform_str).unwrap();
-            match resolve_packager(platform, target) {
+            match resolve_packager(platform, target, &default_packaging_root(platform)) {
                 Ok(_) => panic!("({platform_str}, {target}) must be rejected"),
                 Err(err) => assert!(
                     err.to_string().contains("Unsupported package target"),
@@ -1494,6 +1552,56 @@ mod tests {
                 ),
             }
         }
+    }
+
+    #[test]
+    fn native_macos_packaging_root_prefers_the_argument_then_the_project_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("MyApp.xcodeproj");
+        std::fs::create_dir_all(&project).unwrap();
+        let args = |pairs: &[(&str, &str)]| {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), Value::String(v.to_string())))
+                .collect::<Map<_, _>>()
+        };
+        let project_arg = project.to_string_lossy().into_owned();
+
+        // No `packaging/` next to the project: the Flutter layout.
+        assert_eq!(
+            native_macos_packaging_root(&args(&[("project", &project_arg)])),
+            Path::new("macos/packaging")
+        );
+        assert_eq!(
+            native_macos_packaging_root(&args(&[])),
+            Path::new("macos/packaging")
+        );
+
+        std::fs::create_dir_all(dir.path().join("packaging")).unwrap();
+        assert_eq!(
+            native_macos_packaging_root(&args(&[("project", &project_arg)])),
+            dir.path().join("packaging")
+        );
+
+        // `packaging-dir` wins over the project directory.
+        assert_eq!(
+            native_macos_packaging_root(&args(&[
+                ("project", &project_arg),
+                ("packaging-dir", "config/macos")
+            ])),
+            Path::new("config/macos")
+        );
+    }
+
+    #[test]
+    fn resolve_packager_reads_pkg_config_from_the_packaging_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let pkg_dir = dir.path().join("pkg");
+        std::fs::create_dir_all(&pkg_dir).unwrap();
+        std::fs::write(pkg_dir.join("make_config.yaml"), "notarize: [\n").unwrap();
+        // An unparsable file in the resolved root fails, proving it was read.
+        assert!(resolve_packager(Platform::MacOS, "pkg", dir.path()).is_err());
+        assert!(resolve_packager(Platform::MacOS, "pkg", &dir.path().join("elsewhere")).is_ok());
     }
 
     #[test]

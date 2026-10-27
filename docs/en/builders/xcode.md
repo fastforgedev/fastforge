@@ -34,12 +34,23 @@ The builder runs `xcodebuild`, then searches the build products directory for an
 
 Set `derived-data-path` so the products location is explicit. The package format is validated only after the build, so an unsupported macOS format fails after `xcodebuild` finishes.
 
+### Packaging configuration directory
+
+The DMG, PKG, and ZIP packagers read `<packaging directory>/<format>/make_config.yaml` (and, for DMG, the assets next to it). For a native project the packaging directory is resolved in this order:
+
+1. The `packaging-dir` build argument, relative to the working directory, when given.
+2. `packaging/` next to the `.xcodeproj` (`<directory of project>/packaging/`), when that directory exists.
+3. `macos/packaging/`, the Flutter layout and the fallback for native projects that already keep such a tree.
+
+So a project at `apps/desktop/macos/MyApp.xcodeproj` with `apps/desktop/macos/packaging/pkg/make_config.yaml` can run Fastforge from `apps/desktop/macos` with `project=MyApp.xcodeproj`, and `dist/` and the derived data stay inside the project. The output names the `make_config.yaml` that was read, or says that none was found and defaults were used (for PKG, an unsigned package).
+
 | Argument            | Required | Description                   |
 | ------------------- | :------: | ----------------------------- |
 | `project`           |   Yes    | Path to `.xcodeproj`          |
 | `scheme`            |   Yes    | Xcode scheme                  |
 | `configuration`     |    No    | Defaults to `Release`         |
 | `derived-data-path` |    No    | Derived Data output directory |
+| `packaging-dir`     |    No    | Directory holding `<format>/make_config.yaml`; see [above](#packaging-configuration-directory) |
 | `product-name`      |    No    | `.app` name to match; otherwise any `.app` |
 | `sdk`               |    No    | Passed to `xcodebuild -sdk`   |
 | `xcconfig-override` |    No    | Additional xcconfig file      |
