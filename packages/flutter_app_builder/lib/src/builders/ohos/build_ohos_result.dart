@@ -57,12 +57,7 @@ class _BuildOhosHapResultResolver extends BuildResultResolver {
   @override
   BuildResult resolve(BuildConfig config) {
     final r = _BuildOhosHapResult(config);
-    final String pattern = [
-      '${r.outputDirectory.path}/**',
-      '-${config.flavor ?? 'default'}',
-      '-signed.hap',
-    ].join();
-    r.outputFiles = Glob(pattern).listSync().map((e) => File(e.path)).toList();
+    r.outputFiles = _resolveOutputFiles(config, r.outputDirectory, 'hap');
     return r;
   }
 }
@@ -82,14 +77,31 @@ class _BuildOhosAppResultResolver extends BuildResultResolver {
   @override
   BuildResult resolve(BuildConfig config) {
     final r = _BuildOhosAppResult(config);
-    final String pattern = [
-      '${r.outputDirectory.path}/**',
-      '-${config.flavor ?? 'default'}',
-      '-signed.app',
-    ].join();
-    r.outputFiles = Glob(pattern).listSync().map((e) => File(e.path)).toList();
+    r.outputFiles = _resolveOutputFiles(config, r.outputDirectory, 'app');
     return r;
   }
+}
+
+List<File> _resolveOutputFiles(
+  BuildConfig config,
+  Directory outputDirectory,
+  String extension,
+) {
+  // Packagers use the first output file. Prefer signed artifacts unless signing
+  // was explicitly disabled, and fall back to unsigned builds when necessary.
+  final signingStates = config.arguments.containsKey('no-codesign')
+      ? ['unsigned']
+      : ['signed', 'unsigned'];
+  for (final signingState in signingStates) {
+    final pattern = [
+      '${outputDirectory.path}/**',
+      '-${config.flavor ?? 'default'}',
+      '-$signingState.$extension',
+    ].join();
+    final files = Glob(pattern).listSync().map((e) => File(e.path)).toList();
+    if (files.isNotEmpty) return files;
+  }
+  return [];
 }
 
 class _BuildOhosAppResult extends BuildResult {
