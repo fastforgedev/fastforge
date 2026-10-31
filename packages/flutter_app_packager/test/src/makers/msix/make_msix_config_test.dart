@@ -17,8 +17,7 @@ add_execution_alias: true
 build_windows: false
 msix_version: 1
 ''') as YamlMap;
-        final config =
-            MakeMsixConfig.fromJson(Map<String, dynamic>.from(yaml));
+        final config = MakeMsixConfig.fromJson(Map<String, dynamic>.from(yaml));
 
         expect(config.trim_logo, equals('false'));
         expect(config.store, equals('true'));
