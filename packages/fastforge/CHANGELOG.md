@@ -1,3 +1,10 @@
+## 0.6.13
+
+* fix(msix): accept YAML boolean and numeric configuration values (#379).
+* fix(ohos): recognize unsigned HAP and APP outputs while preserving signing
+  intent (#374).
+* bump `unified_distributor` to ^0.2.13.
+
 ## 0.6.12
 
 * bump `unified_distributor` to ^0.2.12

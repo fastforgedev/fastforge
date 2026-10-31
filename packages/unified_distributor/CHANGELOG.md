@@ -1,3 +1,8 @@
+## 0.2.13
+
+* bump `flutter_app_builder` to ^0.6.3 for unsigned OHOS build output support.
+* bump `flutter_app_packager` to ^0.6.12 for MSIX YAML scalar parsing fixes.
+
 ## 0.2.12
 
 * bump `flutter_app_packager` to ^0.6.11

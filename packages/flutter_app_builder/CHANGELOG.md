@@ -1,3 +1,9 @@
+## 0.6.3
+
+* fix(ohos): recognize unsigned HAP and APP build outputs (#374).
+* fix(ohos): prefer signed outputs by default and select only unsigned outputs
+  when `no-codesign` is specified.
+
 ## 0.6.2
 
 * chore: bump version for coordinated release

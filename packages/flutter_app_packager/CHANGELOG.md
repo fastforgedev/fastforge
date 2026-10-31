@@ -1,3 +1,9 @@
+## 0.6.12
+
+* fix(msix): accept YAML boolean and numeric scalars for string-typed options
+  without type errors (#379).
+* chore: resolve existing Dart analyzer diagnostics in the MSIX and PKG makers.
+
 ## 0.6.11
 
 * feat(rpm): add support for custom `package_name` to rename package artifacts (#355)
