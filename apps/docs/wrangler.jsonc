@@ -3,5 +3,8 @@
   "name": "fastforge-docs",
   "pages_build_output_dir": ".vitepress/dist",
   "compatibility_date": "2025-09-02",
-  "compatibility_flags": ["nodejs_compat"]
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "SKIP_DEPENDENCY_INSTALL": "1",
+  },
 }

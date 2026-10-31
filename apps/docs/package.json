@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vitepress dev",
     "build": "vitepress build",
+    "build:pages": "pnpm --filter docs... install --frozen-lockfile && pnpm run build",
     "preview": "vitepress preview",
     "deploy": "vitepress build && wrangler pages deploy .vitepress/dist --project-name fastforge-docs --commit-dirty=true",
     "format": "prettier --write ."
