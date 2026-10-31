@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter_app_packager/src/makers/pkg/make_pkg_config.dart';
 import 'package:test/test.dart';
 

@@ -43,9 +43,7 @@ class AppPackageMakerMsix extends AppPackageMaker {
 
     // Auto-detect architecture from the build output directory if not explicitly configured.
     // For example: "build/windows/arm64/runner/Release" -> arm64.
-    if (makeConfig.architecture == null) {
-      makeConfig.architecture = _detectArchitecture(appDirectory);
-    }
+    makeConfig.architecture ??= _detectArchitecture(appDirectory);
 
     Map<String, dynamic> makeConfigJson = makeConfig.toJson();
     List<String> arguments = [];

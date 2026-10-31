@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter_app_packager/src/api/app_package_maker.dart';
-import 'package:flutter_app_packager/src/api/make_error.dart';
 import 'package:flutter_app_packager/src/makers/pkg/make_pkg_config.dart';
 import 'package:shell_executor/shell_executor.dart';
 
@@ -92,16 +91,25 @@ class AppPackageMakerPkg extends AppPackageMaker {
       if (pkgInfoFile.existsSync()) {
         var content = pkgInfoFile.readAsStringSync();
         content = content.replaceAll(
-            RegExp(r'<relocate>.*?</relocate>', dotAll: true), '');
+          RegExp(r'<relocate>.*?</relocate>', dotAll: true),
+          '',
+        );
         content = content.replaceAll(
-            RegExp(r'<upgrade-bundle>.*?</upgrade-bundle>', dotAll: true), '');
+          RegExp(r'<upgrade-bundle>.*?</upgrade-bundle>', dotAll: true),
+          '',
+        );
         content = content.replaceAll(
-            RegExp(r'<update-bundle\s*/>', dotAll: true), '');
+          RegExp(r'<update-bundle\s*/>', dotAll: true),
+          '',
+        );
         content = content.replaceAll(
-            RegExp(r'<atomic-update-bundle\s*/>', dotAll: true), '');
+          RegExp(r'<atomic-update-bundle\s*/>', dotAll: true),
+          '',
+        );
         content = content.replaceAll(
-            RegExp(r'<strict-identifier>.*?</strict-identifier>', dotAll: true),
-            '');
+          RegExp(r'<strict-identifier>.*?</strict-identifier>', dotAll: true),
+          '',
+        );
         pkgInfoFile.writeAsStringSync(content);
       }
     }
