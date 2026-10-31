@@ -4,6 +4,10 @@ import 'dart:io';
 
 import 'package:flutter_app_packager/src/api/app_package_maker.dart';
 
+/// Accepts strings as well as natural YAML scalars (`true`, `1`) for the
+/// string-typed msix options, which are passed to the msix CLI as text.
+String? _scalar(dynamic value) => value?.toString();
+
 class MakeMsixConfig extends MakeConfig {
   MakeMsixConfig({
     this.display_name,
@@ -34,30 +38,30 @@ class MakeMsixConfig extends MakeConfig {
 
   factory MakeMsixConfig.fromJson(Map<String, dynamic> json) {
     return MakeMsixConfig(
-      display_name: json['display_name'],
-      publisher_display_name: json['publisher_display_name'],
-      identity_name: json['identity_name'],
-      msix_version: json['msix_version'],
-      logo_path: json['logo_path'],
-      trim_logo: json['trim_logo'],
-      capabilities: json['capabilities'],
-      languages: json['languages'],
-      file_extension: json['file_extension'],
-      protocol_activation: json['protocol_activation'],
-      add_execution_alias: json['add_execution_alias'],
-      enable_at_startup: json['enable_at_startup'],
-      store: json['store'],
-      debug: json['debug'],
-      output_path: json['output_path'],
-      output_name: json['output_name'],
-      architecture: json['architecture'],
-      build_windows: json['build_windows'],
-      certificate_path: json['certificate_path'],
-      certificate_password: json['certificate_password'],
-      publisher: json['publisher'],
-      signtool_options: json['signtool_options'],
-      sign_msix: json['sign_msix'],
-      install_certificate: json['install_certificate'],
+      display_name: _scalar(json['display_name']),
+      publisher_display_name: _scalar(json['publisher_display_name']),
+      identity_name: _scalar(json['identity_name']),
+      msix_version: _scalar(json['msix_version']),
+      logo_path: _scalar(json['logo_path']),
+      trim_logo: _scalar(json['trim_logo']),
+      capabilities: _scalar(json['capabilities']),
+      languages: _scalar(json['languages']),
+      file_extension: _scalar(json['file_extension']),
+      protocol_activation: _scalar(json['protocol_activation']),
+      add_execution_alias: _scalar(json['add_execution_alias']),
+      enable_at_startup: _scalar(json['enable_at_startup']),
+      store: _scalar(json['store']),
+      debug: _scalar(json['debug']),
+      output_path: _scalar(json['output_path']),
+      output_name: _scalar(json['output_name']),
+      architecture: _scalar(json['architecture']),
+      build_windows: _scalar(json['build_windows']),
+      certificate_path: _scalar(json['certificate_path']),
+      certificate_password: _scalar(json['certificate_password']),
+      publisher: _scalar(json['publisher']),
+      signtool_options: _scalar(json['signtool_options']),
+      sign_msix: _scalar(json['sign_msix']),
+      install_certificate: _scalar(json['install_certificate']),
     );
   }
   // MSIX configuration
