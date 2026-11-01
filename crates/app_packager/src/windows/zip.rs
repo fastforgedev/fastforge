@@ -50,7 +50,10 @@ mod tests {
         let zip = WindowsZipPackager.package(&zip_config).unwrap();
         let archive =
             zip::ZipArchive::new(std::fs::File::open(&zip.artifacts[0]).unwrap()).unwrap();
-        let mut names: Vec<_> = archive.file_names().map(String::from).collect();
+        let mut names: Vec<_> = archive
+            .file_names()
+            .map(|name| name.unwrap().into_owned())
+            .collect();
         names.sort();
         assert_eq!(names, ["data/", "data/app.so", "plugin/", "runner.exe"]);
 

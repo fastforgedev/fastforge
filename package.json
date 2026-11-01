@@ -17,6 +17,6 @@
     "studio:build": "pnpm --filter studio-web build",
     "studio:lint": "turbo lint --filter=studio-*",
     "studio:typecheck": "turbo typecheck --filter=studio-*",
-    "studio:test": "pnpm --filter studio-web test && cargo test -p studio-core -p studio-cli"
+    "studio:test": "node --test scripts/test-dependency-patches.mjs && pnpm --filter studio-web test && cargo test -p studio-core -p studio-cli"
   }
 }

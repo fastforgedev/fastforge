@@ -267,7 +267,7 @@ mod tests {
         let file = File::open(path).unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         (0..archive.len())
-            .map(|i| archive.by_index(i).unwrap().name().to_string())
+            .map(|i| archive.by_index(i).unwrap().name().unwrap().into_owned())
             .collect()
     }
 

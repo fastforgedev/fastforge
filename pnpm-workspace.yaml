@@ -35,3 +35,10 @@ overrides:
   "vitepress>vite": "^7.3.7"
   vue: "^3.5.42"
   "zod@4": "^4.6.6"
+  minimatch: "^11.0.3"
+
+# Bridge removed APIs until these upstream consumers support minimatch 11.
+# See patches/README.md for the patches and their regression checks.
+patchedDependencies:
+  "eslint-plugin-import-x@4.17.1": patches/eslint-plugin-import-x@4.17.1.patch
+  "@redocly/openapi-core@1.34.20": patches/@redocly__openapi-core@1.34.20.patch

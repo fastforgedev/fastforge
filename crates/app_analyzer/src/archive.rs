@@ -29,28 +29,28 @@ pub struct Archive {
 impl Archive {
     pub fn open(path: &Path) -> Result<Self, AnalyzeError> {
         let file = File::open(path).map_err(AnalyzeError::Io)?;
-        let archive = ZipArchive::new(file)
+        let mut archive = ZipArchive::new(file)
             .map_err(|e| AnalyzeError::Parse(format!("Not a readable Android package: {}", e)))?;
+        archive.validate_header_consistency().map_err(|e| {
+            AnalyzeError::Parse(format!("Inconsistent Android package headers: {}", e))
+        })?;
 
-        let entries = (0..archive.len())
-            .filter_map(|index| {
-                let entry = archive.name_for_index(index)?;
-                Some(entry.to_string())
-            })
-            .collect::<Vec<String>>();
-        let mut archive = archive;
-        let entries = entries
-            .into_iter()
-            .enumerate()
-            .filter_map(|(index, name)| {
-                let entry = archive.by_index_raw(index).ok()?;
-                entry.is_file().then(|| Entry {
-                    name,
+        let mut entries = Vec::new();
+        for index in 0..archive.len() {
+            let entry = archive.by_index_raw(index).map_err(|e| {
+                AnalyzeError::Parse(format!("Not a readable Android package entry: {}", e))
+            })?;
+            if entry.is_file() {
+                let name = entry.name().map_err(|e| {
+                    AnalyzeError::Parse(format!("Invalid Android package entry name: {}", e))
+                })?;
+                entries.push(Entry {
+                    name: name.into_owned(),
                     size_bytes: entry.size(),
                     compressed_size_bytes: entry.compressed_size(),
-                })
-            })
-            .collect();
+                });
+            }
+        }
 
         Ok(Self { archive, entries })
     }
@@ -207,4 +207,54 @@ fn largest_entries(entries: &[&Entry], prefix: &str) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Write};
+    use zip::write::SimpleFileOptions;
+
+    fn archive_bytes() -> Vec<u8> {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = SimpleFileOptions::default();
+        writer.start_file("safe.txt", options).unwrap();
+        writer.write_all(b"metadata").unwrap();
+        writer.add_directory("assets/", options).unwrap();
+        writer.start_file("assets/图标.txt", options).unwrap();
+        writer.write_all(b"icon").unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn reads_valid_archives_with_directories_and_unicode_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app.apk");
+        std::fs::write(&path, archive_bytes()).unwrap();
+
+        let mut archive = Archive::open(&path).unwrap();
+        assert_eq!(archive.entries().len(), 2);
+        assert_eq!(archive.read_text("safe.txt").as_deref(), Some("metadata"));
+        assert_eq!(archive.names_with_prefix("assets/"), ["assets/图标.txt"]);
+        assert_eq!(archive.size_under("assets/"), 4);
+        assert_eq!(
+            archive.read_text("assets/图标.txt").as_deref(),
+            Some("icon")
+        );
+    }
+
+    #[test]
+    fn rejects_different_local_and_central_header_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cloaked.apk");
+        let mut bytes = archive_bytes();
+        // The first local file header has a 30-byte fixed prefix. Keep the
+        // central-directory name intact to reproduce a ZIP cloaking archive.
+        assert_eq!(&bytes[30..38], b"safe.txt");
+        bytes[30..38].copy_from_slice(b"evil.txt");
+        std::fs::write(&path, bytes).unwrap();
+
+        let error = Archive::open(&path).err().expect("reject cloaked archive");
+        assert!(error.to_string().contains("filename mismatch"), "{error}");
+    }
 }

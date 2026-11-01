@@ -63,9 +63,12 @@ mod tests {
         let artifact: &PathBuf = &result.artifacts[0];
         assert!(artifact.ends_with("dist/1.0.0+1/demo-1.0.0+1-linux.zip"));
         let archive = zip::ZipArchive::new(std::fs::File::open(artifact).unwrap()).unwrap();
-        let names: Vec<&str> = archive.file_names().collect();
-        assert!(names.contains(&"demo"));
-        assert!(names.contains(&"lib/libapp.so"));
+        let names: Vec<String> = archive
+            .file_names()
+            .map(|name| name.unwrap().into_owned())
+            .collect();
+        assert!(names.iter().any(|name| name == "demo"));
+        assert!(names.iter().any(|name| name == "lib/libapp.so"));
         // Re-running overwrites the existing archive.
         assert!(LinuxZipPackager.package(&config).is_ok());
     }
