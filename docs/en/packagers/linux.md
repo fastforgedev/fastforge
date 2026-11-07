@@ -4,6 +4,8 @@ English | [简体中文](../../zh-Hans/packagers/linux.md)
 
 Fastforge packages Flutter Linux applications as [AppImage](#appimage), [DEB](#deb), [RPM](#rpm), [Pacman](#pacman), [Flatpak](#flatpak), [Nix](#nix), [ZIP, or a direct copy](#zip-and-direct).
 
+Also supports [tar.gz](tar-gz.md) archives without external compression tools.
+
 ## Current Status
 
 | Build system    | `package` status                                              |

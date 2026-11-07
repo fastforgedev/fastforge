@@ -4,6 +4,8 @@
 
 Fastforge 支持把 macOS 应用打包为 [DMG](#dmg)、[PKG](#pkg) 或 [ZIP](#zip)。
 
+也支持 [tar.gz](tar-gz.md) 归档，无需安装外部压缩工具。
+
 ## 当前状态
 
 | 构建系统        | `package` 状态                         |
@@ -124,7 +126,7 @@ fastforge publish --path dist/<version>/<artifact>.zip --targets github \
 
 ## 公证
 
-在 Mac App Store 之外分发的应用必须用 Developer ID 签名并经过公证，否则 Gatekeeper 会在首次启动时阻止或警告。Fastforge 可以用 `xcrun notarytool` 公证 DMG、PKG 和 ZIP 产物，并用 `xcrun stapler` 装订公证票据。该功能默认关闭；用 `--notarize` 为所有 macOS 目标开启：
+在 Mac App Store 之外分发的应用必须用 Developer ID 签名并经过公证，否则 Gatekeeper 会在首次启动时阻止或警告。Fastforge 可以用 `xcrun notarytool` 公证 DMG、PKG、ZIP 和 tar.gz 产物，并用 `xcrun stapler` 装订公证票据。该功能默认关闭；用 `--notarize` 为所有 macOS 目标开启：
 
 ```bash
 fastforge package --platform macos --targets dmg,zip --notarize

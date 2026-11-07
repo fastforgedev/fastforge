@@ -4,7 +4,7 @@
 //! 1. The package/build target(s): most targets map to exactly one platform
 //!    (e.g. `dmg` → macos, `apk` → android). Multi-target invocations use the
 //!    intersection of every target's candidate set.
-//! 2. Ambiguous targets (`zip`, `direct`, `custom`) or no target at all fall
+//! 2. Ambiguous targets (`zip`, `tar.gz`, `direct`, `custom`) or no target at all fall
 //!    back to the project layout (which platform directories/markers exist)
 //!    plus what the host OS can actually build, preferring the host platform
 //!    when several candidates remain.
@@ -23,7 +23,7 @@ fn target_candidates(target: &str) -> &'static [Platform] {
         "dmg" | "pkg" => &[Platform::MacOS],
         "app" | "hap" => &[Platform::Ohos],
         "exe" | "msix" => &[Platform::Windows],
-        "zip" => &[
+        "zip" | "tar.gz" => &[
             Platform::Linux,
             Platform::MacOS,
             Platform::Web,
@@ -254,6 +254,21 @@ mod tests {
         let dir = flutter_project(&["web"]);
         let inferred = infer_platform_in(&["zip"], dir.path(), Some(Platform::MacOS)).unwrap();
         assert_eq!(inferred, Platform::Web);
+    }
+
+    #[test]
+    fn tar_gz_uses_archive_platform_candidates() {
+        let dir = flutter_project(&["web"]);
+        assert_eq!(
+            infer_platform_in(&["tar.gz"], dir.path(), Some(Platform::MacOS)).unwrap(),
+            Platform::Web
+        );
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(
+            infer_platform_in(&["dmg", "tar.gz"], empty.path(), None).unwrap(),
+            Platform::MacOS
+        );
+        assert!(infer_platform_in(&["apk", "tar.gz"], empty.path(), None).is_err());
     }
 
     #[test]

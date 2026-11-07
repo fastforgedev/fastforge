@@ -9,7 +9,9 @@ fastforge package --targets apk,aab
 fastforge package --platform macos --targets dmg,zip
 ```
 
-`--targets`（别名 `--target`）接受一个或多个以逗号分隔的格式。`--platform` 可省略：只属于单一平台的格式可以直接确定平台（`apk` → `android`、`dmg` → `macos`），多个 target 取它们共同的平台，有歧义的格式（`zip`、`direct`、`custom`）则根据项目的平台目录和当前宿主判断。各平台的格式和环境要求见[打包器总览](packagers/README.md)。
+`--targets`（别名 `--target`）接受一个或多个以逗号分隔的格式。`--platform` 可省略：只属于单一平台的格式可以直接确定平台（`apk` → `android`、`dmg` → `macos`），多个 target 取它们共同的平台，有歧义的格式（`zip`、`tar.gz`、`direct`、`custom`）则根据项目的平台目录和当前宿主判断。各平台的格式和环境要求见[打包器总览](packagers/README.md)。
+
+`tar.gz` 支持 Linux、macOS、Windows 和 Web，不需要安装外部压缩工具。归档结构与用法见 [tar.gz](packagers/tar-gz.md)。
 
 ## 打包流程
 
@@ -29,14 +31,14 @@ fastforge package --platform macos --targets dmg,zip
 | --------------- | ----------------- | ----------- | ------------------------------------------------------------- |
 | Gradle          | 原生 Android      | Android     | `apk`、`aab`                                                  |
 | Xcode           | 原生 iOS          | iOS         | `ipa`                                                         |
-| Xcode           | 原生 macOS        | macOS       | `dmg`、`pkg`、`zip`、`custom`                                 |
-| .NET            | 原生 Windows      | Windows     | `exe`、`msix`、`zip`、`direct`、`custom`                      |
+| Xcode           | 原生 macOS        | macOS       | `dmg`、`pkg`、`zip`、`tar.gz`、`custom`                                 |
+| .NET            | 原生 Windows      | Windows     | `exe`、`msix`、`zip`、`tar.gz`、`direct`、`custom`                      |
 | Flutter Builder | 含 `pubspec.yaml` | Android     | `apk`、`aab`、`custom`                                        |
 | Flutter Builder | 含 `pubspec.yaml` | iOS         | `ipa`、`custom`                                               |
-| Flutter Builder | 含 `pubspec.yaml` | macOS       | `dmg`、`pkg`、`zip`、`custom`                                 |
-| Flutter Builder | 含 `pubspec.yaml` | Windows     | `exe`、`msix`、`zip`、`direct`、`custom`                      |
-| Flutter Builder | 含 `pubspec.yaml` | Linux       | `appimage`、`deb`、`rpm`、`pacman`、`flatpak`、`nix`、`zip`、`direct`、`custom` |
-| Flutter Builder | 含 `pubspec.yaml` | Web         | `zip`、`direct`、`custom`                                     |
+| Flutter Builder | 含 `pubspec.yaml` | macOS       | `dmg`、`pkg`、`zip`、`tar.gz`、`custom`                                 |
+| Flutter Builder | 含 `pubspec.yaml` | Windows     | `exe`、`msix`、`zip`、`tar.gz`、`direct`、`custom`                      |
+| Flutter Builder | 含 `pubspec.yaml` | Linux       | `appimage`、`deb`、`rpm`、`pacman`、`flatpak`、`nix`、`zip`、`tar.gz`、`direct`、`custom` |
+| Flutter Builder | 含 `pubspec.yaml` | Web         | `zip`、`tar.gz`、`direct`、`custom`                                     |
 | Flutter Builder | 含 `pubspec.yaml` | OpenHarmony | `hap`、`app`、`custom`                                        |
 
 不含 `pubspec.yaml` 的项目只支持 `android`、`ios`、`macos` 和 `windows`。以上组合都可以通过 CLI 和 `fastforge/package` action 使用。

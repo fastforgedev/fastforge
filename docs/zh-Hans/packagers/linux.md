@@ -4,6 +4,8 @@
 
 Fastforge 支持把 Flutter Linux 应用打包为 [AppImage](#appimage)、[DEB](#deb)、[RPM](#rpm)、[Pacman](#pacman)、[Flatpak](#flatpak)、[Nix](#nix)、[ZIP 或直接复制](#zip-和-direct)。
 
+也支持 [tar.gz](tar-gz.md) 归档，无需安装外部压缩工具。
+
 ## 当前状态
 
 | 构建系统        | `package` 状态                                          |

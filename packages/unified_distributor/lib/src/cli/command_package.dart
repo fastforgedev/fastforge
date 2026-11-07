@@ -41,6 +41,7 @@ class CommandPackage extends Command {
         'msix',
         'pkg',
         'rpm',
+        'tar.gz',
         'zip',
       ].join(','),
       help: 'Comma separated list of bundle types to build.',

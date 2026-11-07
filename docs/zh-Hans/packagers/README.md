@@ -15,6 +15,7 @@
 | [Linux](linux.md)      | [AppImage](linux.md#appimage)、[DEB](linux.md#deb)、[RPM](linux.md#rpm)、[Pacman](linux.md#pacman)、[Flatpak](linux.md#flatpak)、[Nix](linux.md#nix)、[ZIP / direct](linux.md#zip-和-direct) | Flutter Builder                        |
 | [Web](web.md)          | [ZIP / direct](web.md)                                                                                                                   | Flutter Builder                          |
 | [OpenHarmony](ohos.md) | [HAP / APP](ohos.md)                                                                                                                     | Flutter Builder                          |
+| Linux、macOS、Windows、Web | [tar.gz](tar-gz.md) | Flutter Builder、Xcode（macOS）、.NET（Windows） |
 | 任意平台               | [custom](../packaging.md#自定义格式)                                                                                                     | Flutter Builder、Xcode（macOS）、.NET    |
 
 `direct` 直接复制构建输出目录，不打成归档或安装包。

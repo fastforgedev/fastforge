@@ -6,6 +6,7 @@ pub mod linux;
 pub mod macos;
 pub mod ohos;
 mod raw;
+pub mod tar_gz;
 pub mod web;
 pub mod windows;
 
@@ -30,6 +31,7 @@ pub use macos::pkg::MacOSPkgPackager;
 pub use macos::zip::MacOSZipPackager;
 pub use ohos::app::OHOSAppPackager;
 pub use ohos::hap::OHOSHapPackager;
+pub use tar_gz::TarGzPackager;
 pub use web::direct::WebDirectPackager;
 pub use web::zip::WebZipPackager;
 pub use windows::appxmanifest::{AppxManifest, ManifestIdentity};

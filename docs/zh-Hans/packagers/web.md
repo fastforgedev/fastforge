@@ -4,6 +4,8 @@
 
 Fastforge 支持把 Flutter Web 构建结果打包为 ZIP 归档，或直接复制构建目录。
 
+也支持 [tar.gz](tar-gz.md) 归档，无需安装外部压缩工具。
+
 ## 当前状态
 
 | 构建系统        | `package` 状态                    |

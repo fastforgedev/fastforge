@@ -4,6 +4,8 @@ English | [简体中文](../../zh-Hans/packagers/macos.md)
 
 Fastforge packages macOS applications as [DMG](#dmg), [PKG](#pkg), or [ZIP](#zip).
 
+Also supports [tar.gz](tar-gz.md) archives without external compression tools.
+
 ## Current Status
 
 | Build system    | `package` status                                              |
@@ -124,7 +126,7 @@ fastforge publish --path dist/<version>/<artifact>.zip --targets github \
 
 ## Notarization
 
-Apps distributed outside the Mac App Store must be signed with a Developer ID and notarized, or Gatekeeper blocks or warns on first launch. Fastforge can notarize DMG, PKG, and ZIP artifacts with `xcrun notarytool` and staple the tickets with `xcrun stapler`. It is off by default; turn it on for every macOS target with `--notarize`:
+Apps distributed outside the Mac App Store must be signed with a Developer ID and notarized, or Gatekeeper blocks or warns on first launch. Fastforge can notarize DMG, PKG, ZIP, and tar.gz artifacts with `xcrun notarytool` and staple the tickets with `xcrun stapler`. It is off by default; turn it on for every macOS target with `--notarize`:
 
 ```bash
 fastforge package --platform macos --targets dmg,zip --notarize

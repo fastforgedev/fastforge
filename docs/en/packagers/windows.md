@@ -4,6 +4,8 @@ English | [简体中文](../../zh-Hans/packagers/windows.md)
 
 Fastforge packages Flutter and native .NET Windows applications as [EXE](#exe), [MSIX](#msix), [ZIP, or a direct copy](#zip-and-direct).
 
+Also supports [tar.gz](tar-gz.md) archives without external compression tools.
+
 ## Current Status
 
 | Build system    | `package` status                              |

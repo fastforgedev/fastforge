@@ -51,10 +51,10 @@ English | [简体中文](./README-ZH.md)
 - **Android**: [AAB](docs/en/packagers/android.md#aab), [APK](docs/en/packagers/android.md#apk)
 - **iOS**: [IPA](docs/en/packagers/ios.md#ipa)
 - **OpenHarmony**: [HAP](docs/en/packagers/ohos.md), [APP](docs/en/packagers/ohos.md)
-- **Linux**: [AppImage](docs/en/packagers/linux.md#appimage), [DEB](docs/en/packagers/linux.md#deb), [RPM](docs/en/packagers/linux.md#rpm), [Pacman](docs/en/packagers/linux.md#pacman), [ZIP](docs/en/packagers/linux.md#zip-and-direct)
-- **macOS**: [DMG](docs/en/packagers/macos.md#dmg), [PKG](docs/en/packagers/macos.md#pkg), [ZIP](docs/en/packagers/macos.md#zip)
-- **Windows**: [EXE](docs/en/packagers/windows.md#exe), [MSIX](docs/en/packagers/windows.md#msix), [ZIP](docs/en/packagers/windows.md#zip-and-direct)
-- **Web**: [ZIP](docs/en/packagers/web.md)
+- **Linux**: [AppImage](docs/en/packagers/linux.md#appimage), [DEB](docs/en/packagers/linux.md#deb), [RPM](docs/en/packagers/linux.md#rpm), [Pacman](docs/en/packagers/linux.md#pacman), [ZIP](docs/en/packagers/linux.md#zip-and-direct), [tar.gz](docs/en/packagers/tar-gz.md)
+- **macOS**: [DMG](docs/en/packagers/macos.md#dmg), [PKG](docs/en/packagers/macos.md#pkg), [ZIP](docs/en/packagers/macos.md#zip), [tar.gz](docs/en/packagers/tar-gz.md)
+- **Windows**: [EXE](docs/en/packagers/windows.md#exe), [MSIX](docs/en/packagers/windows.md#msix), [ZIP](docs/en/packagers/windows.md#zip-and-direct), [tar.gz](docs/en/packagers/tar-gz.md)
+- **Web**: [ZIP](docs/en/packagers/web.md), [tar.gz](docs/en/packagers/tar-gz.md)
 - **Any platform**: [custom](docs/en/packaging.md#custom-format) packaging commands; `direct` (the unpacked build output) on Linux, Windows and Web
 - More formats coming soon...
 

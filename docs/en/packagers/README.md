@@ -15,6 +15,7 @@ This section organizes Fastforge packaging capabilities by platform. Each platfo
 | [Linux](linux.md)             | [AppImage](linux.md#appimage), [DEB](linux.md#deb), [RPM](linux.md#rpm), [Pacman](linux.md#pacman), [Flatpak](linux.md#flatpak), [Nix](linux.md#nix), [ZIP / direct](linux.md#zip-and-direct) | Flutter Builder |
 | [Web](web.md)                 | [ZIP / direct](web.md)                                                                                         | Flutter Builder                         |
 | [OpenHarmony](ohos.md)        | [HAP / APP](ohos.md)                                                                                           | Flutter Builder                         |
+| Linux, macOS, Windows, Web | [tar.gz](tar-gz.md) | Flutter Builder, Xcode (macOS), .NET (Windows) |
 | Any                           | [custom](../packaging.md#custom-format)                                                                        | Flutter Builder, Xcode (macOS), .NET    |
 
 `direct` copies the build output directory as-is instead of wrapping it in an archive or installer.

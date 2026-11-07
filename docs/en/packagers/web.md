@@ -4,6 +4,8 @@ English | [简体中文](../../zh-Hans/packagers/web.md)
 
 Fastforge packages Flutter web builds as a ZIP archive or a direct copy of the build directory.
 
+Also supports [tar.gz](tar-gz.md) archives without external compression tools.
+
 ## Current Status
 
 | Build system    | `package` status                   |

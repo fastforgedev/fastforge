@@ -1,5 +1,5 @@
 pub mod appxmanifest;
-mod common;
+pub(crate) mod common;
 pub mod direct;
 pub mod exe;
 pub mod msix;

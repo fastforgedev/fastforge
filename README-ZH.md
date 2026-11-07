@@ -45,10 +45,10 @@
 - **Android**: [AAB](docs/zh-Hans/packagers/android.md#aab), [APK](docs/zh-Hans/packagers/android.md#apk)
 - **iOS**: [IPA](docs/zh-Hans/packagers/ios.md#ipa)
 - **OpenHarmony**: [HAP](docs/zh-Hans/packagers/ohos.md), [APP](docs/zh-Hans/packagers/ohos.md)
-- **Linux**: [AppImage](docs/zh-Hans/packagers/linux.md#appimage), [DEB](docs/zh-Hans/packagers/linux.md#deb), [RPM](docs/zh-Hans/packagers/linux.md#rpm), [Pacman](docs/zh-Hans/packagers/linux.md#pacman), [ZIP](docs/zh-Hans/packagers/linux.md#zip-和-direct)
-- **macOS**: [DMG](docs/zh-Hans/packagers/macos.md#dmg), [PKG](docs/zh-Hans/packagers/macos.md#pkg), [ZIP](docs/zh-Hans/packagers/macos.md#zip)
-- **Windows**: [EXE](docs/zh-Hans/packagers/windows.md#exe), [MSIX](docs/zh-Hans/packagers/windows.md#msix), [ZIP](docs/zh-Hans/packagers/windows.md#zip-和-direct)
-- **Web**: [ZIP](docs/zh-Hans/packagers/web.md)
+- **Linux**: [AppImage](docs/zh-Hans/packagers/linux.md#appimage), [DEB](docs/zh-Hans/packagers/linux.md#deb), [RPM](docs/zh-Hans/packagers/linux.md#rpm), [Pacman](docs/zh-Hans/packagers/linux.md#pacman), [ZIP](docs/zh-Hans/packagers/linux.md#zip-和-direct), [tar.gz](docs/zh-Hans/packagers/tar-gz.md)
+- **macOS**: [DMG](docs/zh-Hans/packagers/macos.md#dmg), [PKG](docs/zh-Hans/packagers/macos.md#pkg), [ZIP](docs/zh-Hans/packagers/macos.md#zip), [tar.gz](docs/zh-Hans/packagers/tar-gz.md)
+- **Windows**: [EXE](docs/zh-Hans/packagers/windows.md#exe), [MSIX](docs/zh-Hans/packagers/windows.md#msix), [ZIP](docs/zh-Hans/packagers/windows.md#zip-和-direct), [tar.gz](docs/zh-Hans/packagers/tar-gz.md)
+- **Web**: [ZIP](docs/zh-Hans/packagers/web.md), [tar.gz](docs/zh-Hans/packagers/tar-gz.md)
 - **任意平台**: [custom](docs/zh-Hans/packaging.md#自定义格式) 自定义打包命令；Linux、Windows 和 Web 还支持 `direct`（未打包的构建输出）
 - 更多格式持续增加中...
 

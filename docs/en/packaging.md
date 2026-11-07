@@ -9,7 +9,9 @@ fastforge package --targets apk,aab
 fastforge package --platform macos --targets dmg,zip
 ```
 
-`--targets` (alias `--target`) takes one or more comma-separated formats. `--platform` is optional: formats that belong to a single platform resolve it (`apk` → `android`, `dmg` → `macos`), multiple targets use the platform they share, and ambiguous formats (`zip`, `direct`, `custom`) fall back to the project's platform directories and the current host. See the [packager overview](packagers/README.md) for platform formats and environment requirements.
+`--targets` (alias `--target`) takes one or more comma-separated formats. `--platform` is optional: formats that belong to a single platform resolve it (`apk` → `android`, `dmg` → `macos`), multiple targets use the platform they share, and ambiguous formats (`zip`, `tar.gz`, `direct`, `custom`) fall back to the project's platform directories and the current host. See the [packager overview](packagers/README.md) for platform formats and environment requirements.
+
+`tar.gz` is available for Linux, macOS, Windows, and Web without external archive tools. See [tar.gz](packagers/tar-gz.md) for archive layout and usage.
 
 ## Packaging Process
 
@@ -29,14 +31,14 @@ Routing depends on `pubspec.yaml` in the project root and the platform:
 | --------------- | ----------------------- | ----------- | ------------------------------------------------------- |
 | Gradle          | Native Android          | Android     | `apk`, `aab`                                            |
 | Xcode           | Native iOS              | iOS         | `ipa`                                                   |
-| Xcode           | Native macOS            | macOS       | `dmg`, `pkg`, `zip`, `custom`                           |
-| .NET            | Native Windows          | Windows     | `exe`, `msix`, `zip`, `direct`, `custom`                |
+| Xcode           | Native macOS            | macOS       | `dmg`, `pkg`, `zip`, `tar.gz`, `custom`                           |
+| .NET            | Native Windows          | Windows     | `exe`, `msix`, `zip`, `tar.gz`, `direct`, `custom`                |
 | Flutter Builder | Contains `pubspec.yaml` | Android     | `apk`, `aab`, `custom`                                  |
 | Flutter Builder | Contains `pubspec.yaml` | iOS         | `ipa`, `custom`                                         |
-| Flutter Builder | Contains `pubspec.yaml` | macOS       | `dmg`, `pkg`, `zip`, `custom`                           |
-| Flutter Builder | Contains `pubspec.yaml` | Windows     | `exe`, `msix`, `zip`, `direct`, `custom`                |
-| Flutter Builder | Contains `pubspec.yaml` | Linux       | `appimage`, `deb`, `rpm`, `pacman`, `flatpak`, `nix`, `zip`, `direct`, `custom` |
-| Flutter Builder | Contains `pubspec.yaml` | Web         | `zip`, `direct`, `custom`                               |
+| Flutter Builder | Contains `pubspec.yaml` | macOS       | `dmg`, `pkg`, `zip`, `tar.gz`, `custom`                           |
+| Flutter Builder | Contains `pubspec.yaml` | Windows     | `exe`, `msix`, `zip`, `tar.gz`, `direct`, `custom`                |
+| Flutter Builder | Contains `pubspec.yaml` | Linux       | `appimage`, `deb`, `rpm`, `pacman`, `flatpak`, `nix`, `zip`, `tar.gz`, `direct`, `custom` |
+| Flutter Builder | Contains `pubspec.yaml` | Web         | `zip`, `tar.gz`, `direct`, `custom`                               |
 | Flutter Builder | Contains `pubspec.yaml` | OpenHarmony | `hap`, `app`, `custom`                                  |
 
 Projects without `pubspec.yaml` are supported only for `android`, `ios`, `macos`, and `windows`. All combinations are available from both the CLI and the `fastforge/package` action.

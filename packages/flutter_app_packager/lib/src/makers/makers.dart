@@ -12,4 +12,5 @@ export 'ipa/app_package_maker_ipa.dart';
 export 'msix/app_package_maker_msix.dart';
 export 'pkg/app_package_maker_pkg.dart';
 export 'rpm/app_package_maker_rpm.dart';
+export 'tar_gz/app_package_maker_tar_gz.dart';
 export 'zip/app_package_maker_zip.dart';

@@ -65,6 +65,7 @@ function sidebarGuide(): DefaultTheme.SidebarItem[] {
         { text: 'msix', link: 'makers/msix' },
         { text: 'pkg', link: 'makers/pkg' },
         { text: 'rpm', link: 'makers/rpm' },
+        { text: 'tar.gz', link: 'makers/tar-gz' },
         { text: 'zip', link: 'makers/zip' },
       ],
     },

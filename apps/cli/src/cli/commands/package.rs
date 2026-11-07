@@ -9,8 +9,9 @@ use fastforge_app_packager::{
     IOSIpaPackager, LinuxAppImagePackager, LinuxDebPackager, LinuxDirectPackager,
     LinuxFlatpakPackager, LinuxNixPackager, LinuxPacmanPackager, LinuxRpmPackager,
     LinuxZipPackager, MacOSDmgPackager, MacOSPkgPackager, MacOSZipPackager, NOTARIZE_ENV,
-    OHOSAppPackager, OHOSHapPackager, PackageConfig, WebDirectPackager, WebZipPackager,
-    WindowsDirectPackager, WindowsExePackager, WindowsMsixPackager, WindowsZipPackager,
+    OHOSAppPackager, OHOSHapPackager, PackageConfig, TarGzPackager, WebDirectPackager,
+    WebZipPackager, WindowsDirectPackager, WindowsExePackager, WindowsMsixPackager,
+    WindowsZipPackager,
 };
 use fastforge_core::{
     ProjectSettings, default_packaging_root, environment_variables, resolve_packaging_root,
@@ -41,7 +42,7 @@ pub struct PackageArgs {
         short,
         long = "targets",
         alias = "target",
-        value_name = "apk,aab,app,appimage,custom,deb,direct,dmg,exe,flatpak,hap,ipa,msix,nix,pacman,pkg,rpm,zip"
+        value_name = "apk,aab,app,appimage,custom,deb,direct,dmg,exe,flatpak,hap,ipa,msix,nix,pacman,pkg,rpm,tar.gz,zip"
     )]
     pub targets: Option<String>,
     #[arg(long = "channel")]
@@ -93,7 +94,7 @@ pub struct PackageArgs {
     #[arg(long = "hook-post")]
     pub hook_post: Option<String>,
 
-    /// Notarize and staple macOS DMG, PKG and ZIP artifacts with `xcrun
+    /// Notarize and staple macOS DMG, PKG, ZIP and tar.gz artifacts with `xcrun
     /// notarytool`. Credentials come from the environment.
     #[arg(long = "notarize")]
     pub notarize: bool,
@@ -187,7 +188,7 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
     };
     if args.notarize && platform != "macos" {
         return Err(anyhow!(
-            "--notarize only applies to macOS (dmg, pkg and zip targets)"
+            "--notarize only applies to macOS (dmg, pkg, zip and tar.gz targets)"
         ));
     }
 
@@ -771,6 +772,9 @@ pub fn resolve_packager(
         )?));
     }
     match (platform, target) {
+        (Platform::Linux | Platform::MacOS | Platform::Web | Platform::Windows, "tar.gz") => {
+            Ok(Box::new(TarGzPackager(platform)))
+        }
         (Platform::Android, "aab") => Ok(Box::new(AndroidAabPackager)),
         (Platform::Android, "apk") => Ok(Box::new(AndroidApkPackager)),
         (Platform::IOS, "ipa") => Ok(Box::new(IOSIpaPackager)),
@@ -1515,12 +1519,14 @@ mod tests {
             ("ios", &["ipa"]),
             (
                 "linux",
-                &["appimage", "deb", "pacman", "rpm", "zip", "direct"],
+                &[
+                    "appimage", "deb", "pacman", "rpm", "zip", "tar.gz", "direct",
+                ],
             ),
-            ("macos", &["dmg", "pkg", "zip"]),
+            ("macos", &["dmg", "pkg", "zip", "tar.gz"]),
             ("ohos", &["app", "hap"]),
-            ("web", &["zip", "direct"]),
-            ("windows", &["exe", "msix", "zip", "direct"]),
+            ("web", &["zip", "tar.gz", "direct"]),
+            ("windows", &["exe", "msix", "zip", "tar.gz", "direct"]),
         ];
         for (platform_str, targets) in matrix {
             let platform = Platform::from_str(platform_str).unwrap();
