@@ -282,9 +282,6 @@ class AppPackageMakerAppImage extends AppPackageMaker {
           ),
           outputMakeConfig.outputFile.path,
         ],
-        environment: {
-          'ARCH': 'x86_64',
-        },
       ).then((value) {
         if (value.exitCode != 0) {
           throw MakeError(value.stderr as String);

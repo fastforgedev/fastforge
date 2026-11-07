@@ -18,7 +18,7 @@
   安装 appimagetool，运行：
 
   ```bash
-  wget -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+  wget -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage"
   chmod +x appimagetool
   mv appimagetool /usr/local/bin/
   ```

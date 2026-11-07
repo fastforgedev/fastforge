@@ -18,7 +18,7 @@ Build your Flutter app as a Linux AppImage — a portable application format tha
   To install appimagetool, run:
 
   ```bash
-  wget -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+  wget -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage"
   chmod +x appimagetool
   mv appimagetool /usr/local/bin/
   ```
