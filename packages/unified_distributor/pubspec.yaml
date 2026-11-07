@@ -1,6 +1,6 @@
 name: unified_distributor
 description: A powerful and efficient tool for packaging and publishing your applications with ease.
-version: 0.2.13
+version: 0.2.14
 homepage: https://fastforge.dev
 repository: https://github.com/fastforgedev/fastforge/tree/main/packages/unified_distributor
 issue_tracker: https://github.com/fastforgedev/fastforge/issues
@@ -19,7 +19,7 @@ dependencies:
   charset: ^2.0.1
   dio: ^5.3.4
   flutter_app_builder: ^0.6.3
-  flutter_app_packager: ^0.6.12
+  flutter_app_packager: ^0.6.13
   flutter_app_publisher: ^0.6.9
   logging: ^1.0.2
   path: ^1.8.1

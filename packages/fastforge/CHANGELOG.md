@@ -1,3 +1,10 @@
+## 0.6.14
+
+* fix(appimage): produce an aarch64 runtime for aarch64 Linux applications (#380).
+* feat: support `--targets tar.gz` for Linux, macOS, Windows, and Web, preserving
+  UTF-8 paths, symbolic links, and executable permissions (#381).
+* bump `unified_distributor` to ^0.2.14.
+
 ## 0.6.13
 
 * fix(msix): accept YAML boolean and numeric configuration values (#379).

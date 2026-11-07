@@ -1,3 +1,9 @@
+## 0.2.14
+
+* feat: expose the `tar.gz` packaging target in command help (#381).
+* bump `flutter_app_packager` to ^0.6.13 for AppImage architecture detection and
+  portable TAR archives (#380, #381).
+
 ## 0.2.13
 
 * bump `flutter_app_builder` to ^0.6.3 for unsigned OHOS build output support.

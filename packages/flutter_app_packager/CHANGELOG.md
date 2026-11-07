@@ -1,3 +1,12 @@
+## 0.6.13
+
+* fix(appimage): let appimagetool detect the application architecture instead of
+  forcing an x86_64 runtime on aarch64 Linux (#380).
+* feat: add `tar.gz` archives for Linux, macOS, Windows, and Web without external
+  compression tools (#381).
+* fix(tar.gz): preserve UTF-8 and long paths, symbolic link targets, and executable
+  permissions using PAX extended headers.
+
 ## 0.6.12
 
 * fix(msix): accept YAML boolean and numeric scalars for string-typed options
