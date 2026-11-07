@@ -1,0 +1,3 @@
+# Project configuration tests change the process-wide working directory.
+# Keep suites serial so one suite cannot replace another suite's fixture.
+concurrency: 1

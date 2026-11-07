@@ -50,24 +50,26 @@ void main() {
         ShellExecutor.global = executor;
         File('pubspec.yaml')
             .writeAsStringSync('name: demo\nversion: 1.0.0+1\n');
-        final bundle = Directory('bundle')..createSync();
-        Directory('bundle/lib').createSync();
-        File('bundle/demo').writeAsStringSync('binary');
-        File('icon.png').writeAsStringSync('icon');
-        final config = MakeAppImageConfig(displayName: 'Demo', icon: 'icon.png')
+        final bundle = Directory('${temp.path}/bundle')..createSync();
+        Directory('${bundle.path}/lib').createSync();
+        File('${bundle.path}/demo').writeAsStringSync('binary');
+        final icon = File('${temp.path}/icon.png')..writeAsStringSync('icon');
+        final config = MakeAppImageConfig(displayName: 'Demo', icon: icon.path)
           ..platform = 'linux'
           ..packageFormat = 'appimage'
           ..buildMode = 'release'
           ..buildOutputDirectory = bundle
           ..buildOutputFiles = []
-          ..outputDirectory = Directory('dist/');
+          ..outputDirectory = Directory('${temp.path}/dist/');
 
         final result = await AppPackageMakerAppImage().make(config);
 
         expect(executor.invoked, isTrue);
         expect(result.artifacts.single.path, endsWith('.AppImage'));
         expect(
-            File(result.artifacts.single.path).readAsStringSync(), 'appimage');
+          File(result.artifacts.single.path).readAsStringSync(),
+          'appimage',
+        );
       } finally {
         ShellExecutor.global = originalExecutor;
         Directory.current = current;

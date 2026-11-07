@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
@@ -33,7 +34,7 @@ class AppPackageMakerTarGz extends AppPackageMaker {
     try {
       final tarFile = File(path.join(temp.path, 'archive.tar'));
       final stream = OutputFileStream(tarFile.path);
-      final encoder = TarEncoder()..start(stream);
+      final encoder = _PortableTarEncoder(stream);
       try {
         for (final entry in roots) {
           await _addEntry(encoder, entry, source, output);
@@ -91,5 +92,59 @@ class AppPackageMakerTarGz extends AppPackageMaker {
         await input.close();
       }
     }
+  }
+}
+
+// archive 3.x writes TAR header names as code units rather than UTF-8 bytes.
+// PAX extended headers preserve Unicode and names/link targets over 100 bytes
+// with both archive's decoder and standard TAR tools.
+class _PortableTarEncoder extends TarEncoder {
+  _PortableTarEncoder(this._output) {
+    start(_output);
+  }
+
+  final OutputFileStream _output;
+
+  @override
+  void add(ArchiveFile file) {
+    final name = file.name;
+    final target = file.nameOfLinkedFile;
+    final attributes = {
+      if (_needsPax(name)) 'path': name,
+      if (file.isSymbolicLink && _needsPax(target)) 'linkpath': target,
+    };
+    if (attributes.isNotEmpty) {
+      final bytes = <int>[];
+      for (final attribute in attributes.entries) {
+        final record = utf8.encode('${attribute.key}=${attribute.value}\n');
+        var length = record.length + 2;
+        while (true) {
+          final size = record.length + length.toString().length + 1;
+          if (size == length) break;
+          length = size;
+        }
+        bytes
+          ..addAll(ascii.encode('$length '))
+          ..addAll(record);
+      }
+      (TarFile()
+            ..filename = 'PaxHeader'
+            ..typeFlag = TarFile.TYPE_EX_HEADER
+            ..mode = 0
+            ..content = bytes)
+          .write(_output);
+    }
+    try {
+      if (attributes.containsKey('path')) file.name = 'PaxEntry';
+      if (attributes.containsKey('linkpath')) file.nameOfLinkedFile = 'PaxLink';
+      super.add(file);
+    } finally {
+      file.name = name;
+      file.nameOfLinkedFile = target;
+    }
+  }
+
+  bool _needsPax(String value) {
+    return value.length > 100 || value.codeUnits.any((unit) => unit > 0x7f);
   }
 }

@@ -100,4 +100,37 @@ void main() {
     );
     await expectLater(maker.make(config), throwsA(isA<MakeError>()));
   });
+
+  test('tar.gz preserves Unicode and long paths in standard PAX headers',
+      () async {
+    final longName = List.filled(40, '中文').join();
+    final names = ['资料/中文.txt', '资料/$longName.txt'];
+    Directory('bundle/资料').createSync();
+    for (final name in names) {
+      File('bundle/$name').writeAsStringSync('Unicode payload');
+    }
+    if (!Platform.isWindows) {
+      Link('bundle/中文链接').createSync(names.last);
+    }
+    final result = await FlutterAppPackager().package(
+      'linux',
+      'tar.gz',
+      {'build_mode': 'release'},
+      Directory('dist/'),
+      buildOutputDirectory: Directory('bundle'),
+      buildOutputFiles: [],
+    );
+    final bytes = gzip.decode(
+      File(result.artifacts.single.path).readAsBytesSync(),
+    );
+    final archive = TarDecoder().decodeBytes(bytes);
+    for (final name in names) {
+      expect(archive.findFile(name)?.content, utf8.encode('Unicode payload'));
+    }
+    if (!Platform.isWindows) {
+      final link = archive.findFile('中文链接')!;
+      expect(link.isSymbolicLink, isTrue);
+      expect(link.nameOfLinkedFile, names.last);
+    }
+  });
 }
