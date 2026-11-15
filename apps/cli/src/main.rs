@@ -42,10 +42,10 @@ enum Commands {
     #[command(about = "Build your project")]
     Build(BuildArgs),
     #[command(
-        about = "Package the current Flutter application for distribution",
-        long_about = "Package the current Flutter application for distribution\n\n\
-                      Options prefixed with --build- are passed directly to 'flutter build'\n\
-                      For more details on build options, refer to the 'flutter build' documentation."
+        about = "Package an application for distribution",
+        long_about = "Package an application for distribution.\n\n\
+                      Use --input-dir for a prebuilt Windows or Linux application.\n\
+                      Flutter build options are described in the 'flutter build' documentation."
     )]
     Package(PackageArgs),
     #[command(

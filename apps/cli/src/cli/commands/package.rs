@@ -66,6 +66,19 @@ pub struct PackageArgs {
     #[arg(long = "skip-build")]
     pub skip_build: bool,
 
+    /// Package an already built Windows or Linux application directory.
+    #[arg(long, requires_all = ["app_name", "app_binary", "app_version"], conflicts_with_all = ["skip_build", "host"])]
+    pub input_dir: Option<PathBuf>,
+    /// Application name used in artifact filenames with --input-dir.
+    #[arg(long, requires = "input_dir")]
+    pub app_name: Option<String>,
+    /// Main executable filename (without .exe on Windows) with --input-dir.
+    #[arg(long, requires = "input_dir")]
+    pub app_binary: Option<String>,
+    /// Version of the prebuilt application (for example 1.2.3+4).
+    #[arg(long, requires = "input_dir")]
+    pub app_version: Option<String>,
+
     /// Arguments to pass directly to flutter build
     #[arg(long = "flutter-build-args", value_name = "verbose,obfuscate")]
     pub flutter_build_args: Option<String>,
@@ -214,6 +227,29 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
     if args.notarize {
         variables.insert(NOTARIZE_ENV.to_string(), "true".to_string());
     }
+    if let Some(input_dir) = &args.input_dir {
+        let (Some(name), Some(binary), Some(version)) =
+            (&args.app_name, &args.app_binary, &args.app_version)
+        else {
+            return Err(anyhow!(
+                "A prebuilt application requires its name, binary and version"
+            ));
+        };
+        package_prebuilt_directory(
+            input_dir,
+            name,
+            binary,
+            version,
+            &platform,
+            &targets,
+            &output,
+            args.artifact_name.clone(),
+            args.channel.clone(),
+            variables,
+            hooks.as_ref(),
+        )?;
+        return Ok(());
+    }
     package(PackageRequest {
         platform: &platform,
         targets: &targets,
@@ -227,6 +263,108 @@ pub async fn execute(args: &PackageArgs) -> Result<()> {
         output: &output,
     })?;
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn package_prebuilt_directory(
+    input_dir: &Path,
+    name: &str,
+    binary: &str,
+    version: &str,
+    platform: &str,
+    targets: &[String],
+    output: &str,
+    artifact_name: Option<String>,
+    channel: Option<String>,
+    environment: HashMap<String, String>,
+    hooks: Option<&HashMap<String, serde_yaml::Value>>,
+) -> Result<Vec<PathBuf>> {
+    let platform = match Platform::from_str(platform) {
+        Ok(platform @ (Platform::Windows | Platform::Linux)) => platform,
+        _ => {
+            return Err(anyhow!(
+                "--input-dir supports Windows and Linux application directories"
+            ));
+        }
+    };
+    let version = fastforge_core::AppVersion::parse(version).map_err(|e| anyhow!("{e}"))?;
+    for (flag, value) in [("--app-name", name), ("--app-binary", binary)] {
+        if value.trim().is_empty()
+            || matches!(value, "." | "..")
+            || value.contains(['/', '\\', ':'])
+        {
+            return Err(anyhow!("{flag} must be a nonempty filename"));
+        }
+    }
+    let input_dir = std::path::absolute(input_dir)
+        .with_context(|| format!("Cannot resolve input directory {}", input_dir.display()))?;
+    let executable = if platform == Platform::Windows {
+        format!("{binary}.exe")
+    } else {
+        binary.to_string()
+    };
+    if !input_dir.join(&executable).is_file() {
+        return Err(anyhow!(
+            "Missing application executable {executable} in {}",
+            input_dir.display()
+        ));
+    }
+    let output_path = std::path::absolute(output)?;
+    // Resolve the source before creating any output. An output nested in the
+    // source would be copied by directory-based packagers.
+    let canonical_input = input_dir.canonicalize()?;
+    let mut existing = output_path.as_path();
+    while !existing.exists() {
+        existing = existing
+            .parent()
+            .ok_or_else(|| anyhow!("Invalid output directory"))?;
+    }
+    if existing.canonicalize()?.starts_with(&canonical_input) {
+        return Err(anyhow!("The output directory must be outside --input-dir"));
+    }
+    let packagers = targets
+        .iter()
+        .map(|target| {
+            let packager = resolve_packager(platform, target, &default_packaging_root(platform))?;
+            if !packager.is_supported_on_current_platform() {
+                return Err(anyhow!(
+                    "Packager '{target}' is not supported on the current platform"
+                ));
+            }
+            Ok((target, packager))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let mut artifacts = Vec::new();
+    for (target, packager) in packagers {
+        let config = PackageConfig {
+            app_name: name.to_string(),
+            app_binary_name: binary.to_string(),
+            app_version: version.text.clone(),
+            build_mode: "release".to_string(),
+            platform,
+            flavor: None,
+            channel: channel.clone(),
+            artifact_name: artifact_name.clone(),
+            package_format: if target == "direct" {
+                String::new()
+            } else {
+                target.clone()
+            },
+            is_installer: is_installer_target(target),
+            build_output_dir: input_dir.clone(),
+            build_output_files: Vec::new(),
+            output_dir: output_path.clone(),
+            packaging_root: None,
+            environment: environment.clone(),
+        };
+        artifacts.extend(package_with_hooks(
+            packager.as_ref(),
+            &config,
+            hooks,
+            environment.clone(),
+        )?);
+    }
+    Ok(artifacts)
 }
 
 /// The directory the artifacts are written to: the `--output` argument when it
