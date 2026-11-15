@@ -41,7 +41,7 @@ Routing depends on `pubspec.yaml` in the project root and the platform:
 | Flutter Builder | Contains `pubspec.yaml` | Web         | `zip`, `tar.gz`, `direct`, `custom`                               |
 | Flutter Builder | Contains `pubspec.yaml` | OpenHarmony | `hap`, `app`, `custom`                                  |
 
-Projects without `pubspec.yaml` are supported only for `android`, `ios`, `macos`, and `windows`. All combinations are available from both the CLI and the `fastforge/package` action.
+Automatic build routing without `pubspec.yaml` covers `android`, `ios`, `macos`, and `windows`. Both the CLI and the `fastforge/package` action can also package a prebuilt Windows or Linux application directory.
 
 In Flutter projects, an unsupported platform/format pair is rejected before building, `flutter clean` runs at most once per invocation, and every platform except Android builds once and reuses the output for all targets.
 
@@ -51,6 +51,17 @@ In Flutter projects, an unsupported platform/format pair is rejected before buil
 Native projects differ: each target triggers its own build, `flutter clean` is not run, channel and flavor are not used in artifact names, and native macOS validates the format only after the Xcode build. See [Gradle Builder](builders/gradle.md), [Xcode Builder](builders/xcode.md), and [.NET Builder](builders/dotnet.md) for their limitations.
 
 To inspect a Flutter Builder result separately, run `fastforge build`; see [Building](building.md).
+
+## Package a prebuilt desktop application
+
+Build the application with its native toolchain and put the executable, runtime libraries, and resources in one directory. From the project root, run:
+
+```sh
+fastforge package --platform linux --targets deb --input-dir build/release \
+  --app-name my-app --app-binary MyApp --app-version 1.2.3+4
+```
+
+Use `--platform windows --targets exe` for an Inno Setup installer. The Windows example expects `MyApp.exe` in the input directory. Fastforge reads the project's packaging configuration, and the format's host and tool requirements still apply. Choose an output directory outside the input directory. Run the command on the packaging host.
 
 ## Packaging Options
 

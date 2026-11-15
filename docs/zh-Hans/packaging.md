@@ -41,7 +41,7 @@ fastforge package --platform macos --targets dmg,zip
 | Flutter Builder | 含 `pubspec.yaml` | Web         | `zip`、`tar.gz`、`direct`、`custom`                                     |
 | Flutter Builder | 含 `pubspec.yaml` | OpenHarmony | `hap`、`app`、`custom`                                        |
 
-不含 `pubspec.yaml` 的项目只支持 `android`、`ios`、`macos` 和 `windows`。以上组合都可以通过 CLI 和 `fastforge/package` action 使用。
+不含 `pubspec.yaml` 时，自动构建路由覆盖 `android`、`ios`、`macos` 和 `windows`。CLI 和 `fastforge/package` action 也可以直接打包已构建的 Windows 或 Linux 应用目录。
 
 在 Flutter 项目中，不支持的平台/格式组合会在构建前被拒绝；每次调用最多执行一次 `flutter clean`；除 Android 外，所有平台只构建一次并在多个 target 间复用构建结果。
 
@@ -51,6 +51,17 @@ fastforge package --platform macos --targets dmg,zip
 原生项目的行为有所不同：每个 target 单独构建，不执行 `flutter clean`，产物名不使用 channel 和 flavor，原生 macOS 会在 Xcode 构建完成后才校验格式。相关限制见 [Gradle Builder](builders/gradle.md)、[Xcode Builder](builders/xcode.md) 和 [.NET Builder](builders/dotnet.md)。
 
 需要单独检查 Flutter Builder 的结果时，运行 `fastforge build`，详见[构建](building.md)。
+
+## 打包已构建的桌面应用
+
+用项目的原生工具链构建应用，将可执行文件、运行库和资源放在同一目录。在项目根目录运行：
+
+```sh
+fastforge package --platform linux --targets deb --input-dir build/release \
+  --app-name my-app --app-binary MyApp --app-version 1.2.3+4
+```
+
+使用 `--platform windows --targets exe` 生成 Inno Setup 安装包，输入目录中应有 `MyApp.exe`。Fastforge 会读取项目的打包配置。请在满足格式工具要求的打包主机上运行，输出目录应在输入目录之外。
 
 ## 打包参数
 

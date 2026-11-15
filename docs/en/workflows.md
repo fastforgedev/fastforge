@@ -119,7 +119,9 @@ Optional inputs:
 | `hook-post`     | Shell command to run after packaging    |
 | `notarize`      | Notarize macOS DMG, PKG, and ZIP when the string is `true` |
 
-`skip-clean` and `channel` only affect Flutter projects; native Gradle, Xcode, and .NET projects ignore them. Unlike `fastforge package`, the action does not read `distribute_options.yaml`: the output directory comes from `output`, and variables come from the workflow, job and step `env` merged with the process environment (the process environment wins on conflicts).
+`input-dir` selects a prebuilt Windows or Linux application directory. Also set `app-name`, `app-binary` (omit the Windows `.exe` suffix), and `app-version` when using this input. In this mode, the action uses the directory directly and accepts `channel` for artifact naming.
+
+`skip-clean` applies to Flutter builds. Flutter builds and prebuilt directories support `channel`. The action takes the output directory from `output` and merges workflow, job and step variables with the process environment. Process variables take precedence.
 
 The active builder determines the fields accepted by `build-args`. See [Gradle Builder](builders/gradle.md), [Xcode Builder](builders/xcode.md), [.NET Builder](builders/dotnet.md), and [Flutter Builder](builders/flutter.md).
 

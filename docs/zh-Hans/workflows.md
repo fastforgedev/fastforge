@@ -119,7 +119,9 @@ fastforge workflow run \
 | `hook-post`     | 打包后 shell 命令              |
 | `notarize`      | 字符串 `true` 时公证 macOS DMG、PKG 和 ZIP |
 
-`skip-clean` 和 `channel` 只对 Flutter 项目生效，原生 Gradle、Xcode 和 .NET 项目会忽略它们。与 `fastforge package` 不同，该 action 不读取 `distribute_options.yaml`：输出目录来自 `output`，变量来自工作流、job 和 step 的 `env` 与进程环境变量的合并结果（冲突时以进程环境变量为准）。
+`input-dir` 指向已构建的 Windows 或 Linux 应用目录。使用该输入时，也需设置 `app-name`、`app-binary`（Windows 省略 `.exe` 后缀）和 `app-version`。此模式直接打包指定目录，并支持用 `channel` 命名产物。
+
+`skip-clean` 对 Flutter 构建生效。Flutter 构建和预构建目录支持 `channel`。该 action 从 `output` 获取输出目录，并合并工作流、job、step 和进程的环境变量。进程变量优先。
 
 `build-args` 的字段由实际构建器决定，分别见 [Gradle Builder](builders/gradle.md)、[Xcode Builder](builders/xcode.md)、[.NET Builder](builders/dotnet.md) 和 [Flutter Builder](builders/flutter.md)。
 

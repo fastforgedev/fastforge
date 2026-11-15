@@ -573,7 +573,29 @@ impl Action for FastforgePackageAction {
         // appropriate native builder.
         let is_native = !super::package::is_flutter_project();
 
-        let artifacts = if is_native && platform == "macos" {
+        let artifacts = if let Some(input_dir) = ctx.inputs.get("input-dir") {
+            let input = |key: &str| {
+                ctx.inputs.get(key).map(String::as_str).ok_or_else(|| {
+                    WorkflowError::Other(format!(
+                        "fastforge/package with input-dir requires '{key}'"
+                    ))
+                })
+            };
+            super::package::package_prebuilt_directory(
+                std::path::Path::new(input_dir),
+                input("app-name")?,
+                input("app-binary")?,
+                input("app-version")?,
+                platform,
+                std::slice::from_ref(target),
+                &output,
+                artifact_name,
+                ctx.inputs.get("channel").cloned(),
+                environment,
+                hooks.as_ref(),
+            )
+            .map_err(|e| WorkflowError::Other(format!("Package failed: {e}")))?
+        } else if is_native && platform == "macos" {
             tracing::info!(
                 "[fastforge/package] Detected native macOS Xcode project (no pubspec.yaml)"
             );
