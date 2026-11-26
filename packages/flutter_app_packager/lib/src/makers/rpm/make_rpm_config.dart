@@ -154,6 +154,7 @@ class MakeRPMConfig extends MakeLinuxPackageConfig {
         'body': {
           '%description': description ?? pubspec.description,
           '%install': [
+            'cd "%{_topdir}/BUILD"',
             'mkdir -p %{buildroot}%{_bindir}',
             'mkdir -p %{buildroot}%{_datadir}/%{name}',
             'mkdir -p %{buildroot}%{_datadir}/applications',

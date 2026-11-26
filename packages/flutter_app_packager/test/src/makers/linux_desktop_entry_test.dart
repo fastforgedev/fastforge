@@ -111,6 +111,24 @@ void main() {
       );
     });
 
+    test('rpm changes to _topdir/BUILD at the start of %install for RPM 4.20+',
+        () {
+      final config = MakeRPMConfig(
+        displayName: 'Test App',
+        buildArch: 'x86_64',
+      )..pubspec = _pubspec();
+
+      final spec = config.toFilesString()['SPEC']!;
+      final installSection = spec.substring(
+        spec.indexOf('%install'),
+        spec.indexOf('\n%post\n'),
+      );
+      final installLines = installSection.split('\n');
+
+      expect(installLines[0], '%install');
+      expect(installLines[1], 'cd "%{_topdir}/BUILD"');
+    });
+
     test('rpm retains the legacy postun constructor parameter', () {
       final config = MakeRPMConfig(
         displayName: 'Test App',
