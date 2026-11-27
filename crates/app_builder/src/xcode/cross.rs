@@ -143,7 +143,7 @@ impl CrossXcodeProjectMetadata {
         let marketing_version = setting("MARKETING_VERSION").unwrap_or("0.1.0").to_string();
         let build_version = setting("CURRENT_PROJECT_VERSION").map(ToString::to_string);
         let bundle_identifier = setting("PRODUCT_BUNDLE_IDENTIFIER").map(ToString::to_string);
-        let built_products_dir = setting("BUILT_PRODUCTS_DIR").map(PathBuf::from);
+        let built_products_dir = setting("BUILT_PRODUCTS_DIR").map(normalize_host_path);
 
         Some(Self {
             product_name,
@@ -180,6 +180,10 @@ impl CrossXcodeProjectMetadata {
             built_products_dir: None,
         }
     }
+}
+
+fn normalize_host_path(raw: &str) -> PathBuf {
+    Path::new(raw).components().collect()
 }
 
 fn lookup_env(key: &str, environment: Option<&HashMap<String, String>>) -> Option<String> {
@@ -493,13 +497,14 @@ impl CrossXcodeBuilder {
     pub fn default_built_products_dir(&self, config: &BuildConfig) -> Result<PathBuf, BuildError> {
         let configuration = normalized_configuration(config)?;
         let derived_data = if let Some(ddp) = extract_optional_str(config, "derived-data-path") {
-            PathBuf::from(ddp)
+            normalize_host_path(ddp)
         } else {
             let project_root = extract_optional_str(config, "project")
                 .or_else(|| extract_optional_str(config, "workspace"))
                 .and_then(|p| Path::new(p).parent())
                 .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or_else(|| Path::new("."));
+                .map(|p| p.components().collect::<PathBuf>())
+                .unwrap_or_else(|| PathBuf::from("."));
             project_root.join("build")
         };
         Ok(derived_data
@@ -1005,6 +1010,22 @@ mod tests {
             meta.built_products_dir.as_deref(),
             Some(Path::new("/tmp/demo/build/Build/Products/Release"))
         );
+
+        #[cfg(windows)]
+        {
+            let win_raw = r#"[{"action":"build","target":"Demo","buildSettings":{"BUILT_PRODUCTS_DIR":"E:/Projects/demo/build/Build/Products/Release","PRODUCT_NAME":"Demo"}}]"#;
+            let win_meta =
+                CrossXcodeProjectMetadata::from_show_build_settings_json(win_raw).unwrap();
+            let dir = win_meta.built_products_dir.unwrap();
+            assert_eq!(
+                dir.to_string_lossy(),
+                r"E:\Projects\demo\build\Build\Products\Release"
+            );
+            assert_eq!(
+                dir.join("Demo").to_string_lossy(),
+                r"E:\Projects\demo\build\Build\Products\Release\Demo"
+            );
+        }
     }
 
     #[test]
