@@ -25,7 +25,15 @@ use std::time::{Duration, SystemTime};
 const STALE_RUN_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Tools reported by `info`.
-const TOOLS: &[&str] = &["flutter", "dart", "xcodebuild", "java", "hvigorw", "dotnet"];
+const TOOLS: &[&str] = &[
+    "flutter",
+    "dart",
+    "xcodebuild",
+    "crossxcodebuild",
+    "java",
+    "hvigorw",
+    "dotnet",
+];
 
 fn state_dir(workspace: &Path) -> PathBuf {
     workspace.join(".fastforge").join("remote")

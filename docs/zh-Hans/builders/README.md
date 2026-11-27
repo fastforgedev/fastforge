@@ -10,7 +10,7 @@
 | -------------------- | ----------------------------------------------------- | ----------------------------------------- | ----------------------------------------- |
 | Gradle Android       | Android APK、AAB                                      | 已接入 `package` 和 package action        | [Gradle](gradle.md)                       |
 | Gradle Multiplatform | Android、桌面、iOS framework                          | 暂未接入顶层 CLI                          | [Gradle](gradle.md#multiplatform-builder) |
-| Xcode                | iOS IPA、macOS `.app`                                 | 已接入 package action 和 `package`        | [Xcode](xcode.md)                         |
+| Xcode                | iOS IPA、macOS `.app`，以及基于 CrossXcodeBuild 的 Windows/Linux/Web/Android/HarmonyOS | 已接入 package action 和 `package` | [Xcode](xcode.md) |
 | .NET                 | Windows `dotnet publish` 目录                         | 已接入 package action 和 `package`        | [.NET](dotnet.md)                         |
 | Flutter              | Android、iOS、macOS、Windows、Linux、Web、OpenHarmony | 已接入 `build`、`package` 和 package action | [Flutter Builder](flutter.md)           |
 | Custom               | 用户自定义命令和产物规则                              | 暂未接入顶层 CLI                          | [Custom Builder](custom.md)               |
@@ -21,11 +21,12 @@
 
 `fastforge package` 和 `fastforge/package` action 按项目根目录是否存在 `pubspec.yaml` 以及平台（通过 `--platform` 指定或根据 target 推断）选择构建路径：
 
-1. 不存在 `pubspec.yaml` 且平台为 `macos` 或 `ios`：选择 Xcode Builder。
-2. 不存在 `pubspec.yaml` 且平台为 `android`：选择 Gradle Builder。
-3. 不存在 `pubspec.yaml` 且平台为 `windows`：选择 .NET Builder。
-4. 不存在 `pubspec.yaml` 且为其他平台：报错，这些平台必须是 Flutter 项目。
-5. 存在 `pubspec.yaml`：选择 Flutter Builder。
+1. 不存在 `pubspec.yaml` 且平台为 `macos` 或 `ios`：选择 Xcode Builder（Apple `xcodebuild`）。
+2. 不存在 `pubspec.yaml` 且平台为 `windows`、`linux`、`web`、`android` 或 `ohos`，同时为 Xcode 工程（含 `.xcodeproj` / `.xcworkspace` 或传入 Xcode 构建参数）：通过 CrossXcodeBuild（`libnativeapi/crossswift`）选择 Xcode Builder。
+3. 不存在 `pubspec.yaml` 且平台为 `android`：选择 Gradle Builder。
+4. 不存在 `pubspec.yaml` 且平台为 `windows`：选择 .NET Builder。
+5. 不存在 `pubspec.yaml` 且为其他平台：报错，这些平台需要 Flutter 或 Xcode 项目。
+6. 存在 `pubspec.yaml`：选择 Flutter Builder。
 
 `fastforge build` 不做路由，始终使用 Flutter Builder。
 

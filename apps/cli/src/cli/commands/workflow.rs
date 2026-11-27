@@ -622,21 +622,81 @@ impl Action for FastforgePackageAction {
             )
             .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
         } else if is_native && platform == "android" {
-            tracing::info!("[fastforge/package] Detected native Android project (no pubspec.yaml)");
-            super::package::package_native_android_artifact(
-                target,
-                build_args,
-                environment,
-                &output,
-                artifact_name,
-                hooks.as_ref(),
-            )
-            .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
+            if super::package::is_cross_xcode_project(
+                &build_args,
+                fastforge_app_builder::Platform::Android,
+            ) {
+                tracing::info!(
+                    "[fastforge/package] Detected Xcode project for Android via CrossXcodeBuild (no pubspec.yaml)"
+                );
+                super::package::package_cross_xcode_artifact(
+                    "android",
+                    target,
+                    build_args,
+                    environment,
+                    &output,
+                    artifact_name,
+                    hooks.as_ref(),
+                )
+                .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
+            } else {
+                tracing::info!(
+                    "[fastforge/package] Detected native Android project (no pubspec.yaml)"
+                );
+                super::package::package_native_android_artifact(
+                    target,
+                    build_args,
+                    environment,
+                    &output,
+                    artifact_name,
+                    hooks.as_ref(),
+                )
+                .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
+            }
         } else if is_native && platform == "windows" {
+            if super::package::is_cross_xcode_project(
+                &build_args,
+                fastforge_app_builder::Platform::Windows,
+            ) {
+                tracing::info!(
+                    "[fastforge/package] Detected Xcode project for Windows via CrossXcodeBuild (no pubspec.yaml)"
+                );
+                super::package::package_cross_xcode_artifact(
+                    "windows",
+                    target,
+                    build_args,
+                    environment,
+                    &output,
+                    artifact_name,
+                    hooks.as_ref(),
+                )
+                .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
+            } else {
+                tracing::info!(
+                    "[fastforge/package] Detected native Windows .NET project (no pubspec.yaml)"
+                );
+                super::package::package_native_windows_artifact(
+                    target,
+                    build_args,
+                    environment,
+                    &output,
+                    artifact_name,
+                    hooks.as_ref(),
+                )
+                .map_err(|e| WorkflowError::Other(format!("Package failed: {}", e)))?
+            }
+        } else if is_native
+            && matches!(platform.as_str(), "linux" | "web" | "ohos")
+            && platform
+                .parse::<fastforge_app_builder::Platform>()
+                .is_ok_and(|p| super::package::is_cross_xcode_project(&build_args, p))
+        {
             tracing::info!(
-                "[fastforge/package] Detected native Windows .NET project (no pubspec.yaml)"
+                "[fastforge/package] Detected Xcode project for {} via CrossXcodeBuild (no pubspec.yaml)",
+                platform
             );
-            super::package::package_native_windows_artifact(
+            super::package::package_cross_xcode_artifact(
+                platform,
                 target,
                 build_args,
                 environment,

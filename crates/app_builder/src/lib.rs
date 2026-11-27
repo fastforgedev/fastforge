@@ -22,7 +22,10 @@ pub use crate::gradle::{
     GradleKmpAndroidApkBuilder, GradleKmpDesktopBuilder, GradleKmpIosFrameworkBuilder,
 };
 pub use crate::xcode::ios::{IOSXcodeAppBuilder, IOSXcodeBuilder};
-pub use crate::xcode::{MacOSXcodeAppBuilder, MacOSXcodeBuilder};
+pub use crate::xcode::{
+    CrossXcodeAppBuilder, CrossXcodeBuildCommand, CrossXcodeBuilder, CrossXcodeProjectMetadata,
+    MacOSXcodeAppBuilder, MacOSXcodeBuilder,
+};
 
 pub struct FlutterAppBuilder {
     builders: Vec<Box<dyn AppBuilder + Send + Sync>>,

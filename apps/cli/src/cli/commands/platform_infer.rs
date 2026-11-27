@@ -79,13 +79,28 @@ fn project_candidates(root: &Path) -> Vec<Platform> {
                 .map(|ext| ext.to_string_lossy().to_ascii_lowercase())
         })
         .collect();
-    if extensions.iter().any(|ext| ext == "xcodeproj") {
-        candidates.push(Platform::IOS);
-        candidates.push(Platform::MacOS);
+    if extensions
+        .iter()
+        .any(|ext| matches!(ext.as_str(), "xcodeproj" | "xcworkspace"))
+    {
+        for platform in [
+            Platform::IOS,
+            Platform::MacOS,
+            Platform::Windows,
+            Platform::Linux,
+            Platform::Web,
+            Platform::Android,
+            Platform::Ohos,
+        ] {
+            if !candidates.contains(&platform) {
+                candidates.push(platform);
+            }
+        }
     }
     if extensions
         .iter()
         .any(|ext| matches!(ext.as_str(), "csproj" | "fsproj" | "vbproj" | "sln"))
+        && !candidates.contains(&Platform::Windows)
     {
         candidates.push(Platform::Windows);
     }
@@ -312,6 +327,14 @@ mod tests {
         std::fs::create_dir(dir.path().join("MyApp.xcodeproj")).unwrap();
         let inferred = infer_platform_in(&["zip"], dir.path(), Some(Platform::MacOS)).unwrap();
         assert_eq!(inferred, Platform::MacOS);
+        assert_eq!(
+            infer_platform_in(&["zip"], dir.path(), Some(Platform::Windows)).unwrap(),
+            Platform::Windows
+        );
+        assert_eq!(
+            infer_platform_in(&["zip"], dir.path(), Some(Platform::Linux)).unwrap(),
+            Platform::Linux
+        );
     }
 
     #[test]

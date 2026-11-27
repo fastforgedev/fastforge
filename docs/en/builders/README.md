@@ -10,7 +10,7 @@ Builders select a project's build tool, run the build command, and locate genera
 | -------------------- | ----------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------- |
 | Gradle Android       | Android APK, AAB                                      | Connected through `package` and the package action         | [Gradle](gradle.md)                       |
 | Gradle Multiplatform | Android, desktop, iOS framework                       | No top-level CLI integration                               | [Gradle](gradle.md#multiplatform-builder) |
-| Xcode                | iOS IPA, macOS `.app`                                 | Connected through the package action and `package`         | [Xcode](xcode.md)                         |
+| Xcode                | iOS IPA, macOS `.app`, plus Windows/Linux/Web/Android/HarmonyOS via CrossXcodeBuild | Connected through the package action and `package` | [Xcode](xcode.md) |
 | .NET                 | Windows `dotnet publish` directory                    | Connected through the package action and `package`         | [.NET](dotnet.md)                         |
 | Flutter              | Android, iOS, macOS, Windows, Linux, Web, OpenHarmony | Connected to `build`, `package`, and the package action    | [Flutter Builder](flutter.md)             |
 | Custom               | User-defined commands and artifact rules              | No top-level CLI integration                               | [Custom Builder](custom.md)               |
@@ -21,11 +21,12 @@ Builders select a project's build tool, run the build command, and locate genera
 
 `fastforge package` and the `fastforge/package` action select a build path based on the presence of `pubspec.yaml` in the project root and the platform (given with `--platform` or inferred from the targets):
 
-1. No `pubspec.yaml`, and the platform is `macos` or `ios`: select Xcode Builder.
-2. No `pubspec.yaml`, and the platform is `android`: select Gradle Builder.
-3. No `pubspec.yaml`, and the platform is `windows`: select .NET Builder.
-4. No `pubspec.yaml`, and any other platform: fail, because those platforms require a Flutter project.
-5. `pubspec.yaml` present: select Flutter Builder.
+1. No `pubspec.yaml`, and the platform is `macos` or `ios`: select Xcode Builder (Apple `xcodebuild`).
+2. No `pubspec.yaml`, and the platform is `windows`, `linux`, `web`, `android`, or `ohos` with an Xcode project (`.xcodeproj` / `.xcworkspace` or Xcode build arguments): select Xcode Builder via CrossXcodeBuild (`libnativeapi/crossswift`).
+3. No `pubspec.yaml`, and the platform is `android`: select Gradle Builder.
+4. No `pubspec.yaml`, and the platform is `windows`: select .NET Builder.
+5. No `pubspec.yaml`, and any other platform: fail, because those platforms require a Flutter or Xcode project.
+6. `pubspec.yaml` present: select Flutter Builder.
 
 `fastforge build` does not route; it always uses Flutter Builder.
 

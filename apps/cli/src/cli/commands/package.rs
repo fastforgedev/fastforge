@@ -1,8 +1,9 @@
 use anyhow::{Context, Result, anyhow};
 use clap::Args;
 use fastforge_app_builder::{
-    BuildConfig, BuildError, BuildResult, DotnetAppBuilder, DotnetProject, FlutterAppBuilder,
-    GradleAppBuilder, IOSXcodeAppBuilder, MacOSXcodeAppBuilder, Platform,
+    AppBuilder, BuildConfig, BuildError, BuildResult, CrossXcodeAppBuilder, CrossXcodeBuilder,
+    DotnetAppBuilder, DotnetProject, FlutterAppBuilder, GradleAppBuilder, IOSXcodeAppBuilder,
+    MacOSXcodeAppBuilder, Platform,
 };
 use fastforge_app_packager::{
     AndroidAabPackager, AndroidApkPackager, AppPackager, AppxManifest, CustomPackager,
@@ -483,26 +484,80 @@ pub fn package(request: PackageRequest) -> Result<Vec<PackagedTarget>> {
                     )?
                 }
                 "android" => {
-                    log::info!("Detected native Android project (no pubspec.yaml)");
-                    package_native_android_artifact(
-                        target,
-                        request.build_arguments.clone(),
-                        environment.clone(),
-                        request.output,
-                        request.artifact_name.clone(),
-                        request.hooks,
-                    )?
+                    if is_cross_xcode_project(&request.build_arguments, Platform::Android) {
+                        log::info!(
+                            "Detected Xcode project for Android via CrossXcodeBuild (no pubspec.yaml)"
+                        );
+                        package_cross_xcode_artifact(
+                            "android",
+                            target,
+                            request.build_arguments.clone(),
+                            environment.clone(),
+                            request.output,
+                            request.artifact_name.clone(),
+                            request.hooks,
+                        )?
+                    } else {
+                        log::info!("Detected native Android project (no pubspec.yaml)");
+                        package_native_android_artifact(
+                            target,
+                            request.build_arguments.clone(),
+                            environment.clone(),
+                            request.output,
+                            request.artifact_name.clone(),
+                            request.hooks,
+                        )?
+                    }
                 }
                 "windows" => {
-                    log::info!("Detected native Windows .NET project (no pubspec.yaml)");
-                    package_native_windows_artifact(
-                        target,
-                        request.build_arguments.clone(),
-                        environment.clone(),
-                        request.output,
-                        request.artifact_name.clone(),
-                        request.hooks,
-                    )?
+                    if is_cross_xcode_project(&request.build_arguments, Platform::Windows) {
+                        log::info!(
+                            "Detected Xcode project for Windows via CrossXcodeBuild (no pubspec.yaml)"
+                        );
+                        package_cross_xcode_artifact(
+                            "windows",
+                            target,
+                            request.build_arguments.clone(),
+                            environment.clone(),
+                            request.output,
+                            request.artifact_name.clone(),
+                            request.hooks,
+                        )?
+                    } else {
+                        log::info!("Detected native Windows .NET project (no pubspec.yaml)");
+                        package_native_windows_artifact(
+                            target,
+                            request.build_arguments.clone(),
+                            environment.clone(),
+                            request.output,
+                            request.artifact_name.clone(),
+                            request.hooks,
+                        )?
+                    }
+                }
+                platform_str @ ("linux" | "web" | "ohos") => {
+                    let parsed = Platform::from_str(platform_str)
+                        .map_err(|e| anyhow!("Invalid platform '{}': {}", platform_str, e))?;
+                    if is_cross_xcode_project(&request.build_arguments, parsed) {
+                        log::info!(
+                            "Detected Xcode project for {} via CrossXcodeBuild (no pubspec.yaml)",
+                            platform_str
+                        );
+                        package_cross_xcode_artifact(
+                            platform_str,
+                            target,
+                            request.build_arguments.clone(),
+                            environment.clone(),
+                            request.output,
+                            request.artifact_name.clone(),
+                            request.hooks,
+                        )?
+                    } else {
+                        return Err(anyhow!(
+                            "No pubspec.yaml found: `{}` projects must be Flutter or Xcode (CrossXcodeBuild) projects.",
+                            platform_str
+                        ));
+                    }
                 }
                 other => {
                     return Err(anyhow!(
@@ -1311,6 +1366,189 @@ fn read_app_name_from_ipa(ipa_path: &std::path::Path) -> Result<(String, String,
     Ok((name, version, build_number))
 }
 
+// ─── CrossXcodeBuild (libnativeapi/crossswift) project support ───────────────
+
+/// Whether a non-Flutter project targeting `platform` should be built with
+/// CrossXcodeBuild (`libnativeapi/crossswift`) instead of Gradle/.NET.
+pub(crate) fn is_cross_xcode_project(build_args: &Map<String, Value>, platform: Platform) -> bool {
+    is_cross_xcode_project_in(build_args, platform, Path::new("."))
+}
+
+fn is_cross_xcode_project_in(
+    build_args: &Map<String, Value>,
+    platform: Platform,
+    root: &Path,
+) -> bool {
+    if !matches!(
+        platform,
+        Platform::Windows | Platform::Linux | Platform::Web | Platform::Android | Platform::Ohos
+    ) {
+        return false;
+    }
+
+    if let Some(project) = build_args.get("project").and_then(Value::as_str)
+        && let Some(ext) = Path::new(project)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase)
+    {
+        if ext == "xcodeproj" {
+            return true;
+        }
+        if matches!(ext.as_str(), "csproj" | "fsproj" | "vbproj" | "sln") {
+            return false;
+        }
+    }
+
+    if let Some(workspace) = build_args.get("workspace").and_then(Value::as_str)
+        && Path::new(workspace)
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("xcworkspace"))
+    {
+        return true;
+    }
+
+    if [
+        "crossswift-path",
+        "nativeapi-path",
+        "xcodebuild-path",
+        "crossxcodebuild-path",
+        "scheme",
+        "xcode-target",
+    ]
+    .iter()
+    .any(|key| build_args.contains_key(*key))
+    {
+        return true;
+    }
+
+    let extensions: Vec<String> = std::fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext.to_string_lossy().to_ascii_lowercase())
+        })
+        .collect();
+
+    if !extensions
+        .iter()
+        .any(|ext| matches!(ext.as_str(), "xcodeproj" | "xcworkspace"))
+    {
+        return false;
+    }
+
+    match platform {
+        Platform::Windows => !extensions
+            .iter()
+            .any(|ext| matches!(ext.as_str(), "csproj" | "fsproj" | "vbproj" | "sln")),
+        Platform::Android => {
+            !root.join("gradlew").is_file()
+                && !root.join("app/build.gradle").is_file()
+                && !root.join("app/build.gradle.kts").is_file()
+        }
+        Platform::Linux | Platform::Web | Platform::Ohos => true,
+        Platform::MacOS | Platform::IOS => false,
+    }
+}
+
+/// Package an Xcode project for a non-Apple platform (`windows`, `linux`,
+/// `web`, `android`, `ohos`) using CrossXcodeBuild (`libnativeapi/crossswift`).
+#[allow(clippy::too_many_arguments)]
+pub fn package_cross_xcode_artifact(
+    platform_str: &str,
+    target: &str,
+    build_args: Map<String, Value>,
+    environment: HashMap<String, String>,
+    output: &str,
+    artifact_name: Option<String>,
+    hooks: Option<&HashMap<String, serde_yaml::Value>>,
+) -> Result<Vec<PathBuf>> {
+    let platform = Platform::from_str(platform_str)
+        .map_err(|e| anyhow!("Invalid platform '{}': {}", platform_str, e))?;
+
+    match (platform, target) {
+        (Platform::Android, "aab") => {
+            return Err(anyhow!(
+                "CrossXcodeBuild for Android produces APKs; 'aab' is not supported"
+            ));
+        }
+        (Platform::Ohos, "app") => {
+            return Err(anyhow!(
+                "CrossXcodeBuild for HarmonyOS produces HAPs; 'app' is not supported"
+            ));
+        }
+        _ => {}
+    }
+
+    let arg = |key: &str| build_args.get(key).and_then(Value::as_str).map(Path::new);
+    let packaging_root = resolve_packaging_root(
+        platform,
+        arg("packaging-dir"),
+        arg("project").or_else(|| arg("workspace")),
+    );
+
+    let packager = resolve_packager(platform, target, &packaging_root)?;
+    let cross_builder = CrossXcodeBuilder::new(platform);
+    if !cross_builder.is_supported_on_current_platform() {
+        return Err(anyhow!(
+            "CrossXcodeBuild for '{}' is not supported on the current platform",
+            platform.as_str()
+        ));
+    }
+    if !packager.is_supported_on_current_platform() {
+        return Err(anyhow!(
+            "Packager '{}' is not supported on the current platform",
+            target
+        ));
+    }
+
+    let (build, metadata) = CrossXcodeAppBuilder
+        .build_with_metadata(
+            platform_str,
+            Some(target),
+            build_args.clone(),
+            Some(environment.clone()),
+        )
+        .map_err(|e| anyhow!("CrossXcodeBuild failed: {}", e))?;
+    print_build_result(&build)?;
+
+    let build_mode = build_args
+        .get("configuration")
+        .and_then(Value::as_str)
+        .filter(|c| c.eq_ignore_ascii_case("debug"))
+        .map(|_| "debug")
+        .unwrap_or("release")
+        .to_string();
+
+    let package_config = PackageConfig {
+        app_name: metadata.product_name.clone(),
+        app_binary_name: metadata.executable_name.clone(),
+        app_version: metadata.app_version(),
+        build_mode,
+        platform,
+        flavor: None,
+        channel: None,
+        artifact_name,
+        package_format: if target == "direct" {
+            String::new()
+        } else {
+            target.to_string()
+        },
+        is_installer: is_installer_target(target),
+        build_output_dir: build.output_directory,
+        build_output_files: build.output_files,
+        output_dir: PathBuf::from(output),
+        packaging_root: Some(packaging_root),
+        environment: environment.clone(),
+    };
+
+    package_with_hooks(packager.as_ref(), &package_config, hooks, environment)
+}
+
 // ─── Native Android project support ───────────────────────────────────
 
 /// Package a native Android project into the specified format.
@@ -2010,5 +2248,60 @@ mod tests {
                 "{target} must not be an installer"
             );
         }
+    }
+
+    #[test]
+    fn detects_cross_xcode_projects_without_disrupting_gradle_or_dotnet() {
+        let xcode_dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(xcode_dir.path().join("MyApp.xcodeproj")).unwrap();
+        let empty = Map::new();
+
+        for platform in [
+            Platform::Windows,
+            Platform::Linux,
+            Platform::Web,
+            Platform::Android,
+            Platform::Ohos,
+        ] {
+            assert!(
+                is_cross_xcode_project_in(&empty, platform, xcode_dir.path()),
+                "{platform:?} should detect xcodeproj"
+            );
+        }
+        assert!(!is_cross_xcode_project_in(
+            &empty,
+            Platform::MacOS,
+            xcode_dir.path()
+        ));
+        assert!(!is_cross_xcode_project_in(
+            &empty,
+            Platform::IOS,
+            xcode_dir.path()
+        ));
+
+        // Explicit .csproj wins over a sibling .xcodeproj on Windows.
+        let mut dotnet_args = Map::new();
+        dotnet_args.insert("project".into(), Value::String("App.csproj".into()));
+        assert!(!is_cross_xcode_project_in(
+            &dotnet_args,
+            Platform::Windows,
+            xcode_dir.path()
+        ));
+
+        // Explicit .xcodeproj wins over a sibling Gradle project on Android.
+        let gradle_dir = tempfile::tempdir().unwrap();
+        std::fs::write(gradle_dir.path().join("gradlew"), "").unwrap();
+        assert!(!is_cross_xcode_project_in(
+            &empty,
+            Platform::Android,
+            gradle_dir.path()
+        ));
+        let mut xcode_args = Map::new();
+        xcode_args.insert("project".into(), Value::String("App.xcodeproj".into()));
+        assert!(is_cross_xcode_project_in(
+            &xcode_args,
+            Platform::Android,
+            gradle_dir.path()
+        ));
     }
 }
