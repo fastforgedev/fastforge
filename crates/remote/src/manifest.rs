@@ -24,11 +24,19 @@ const ALWAYS_EXCLUDED_DIRS: &[&str] = &[".git", ".dart_tool", ".gradle"];
 /// `.fastforge/` (packaging files, `config.yaml`) is part of the project.
 const ALWAYS_EXCLUDED_PATHS: &[&str] = &[".fastforge/remote"];
 
+/// Regular files up to this size are content-hashed so same-second, same-size
+/// edits (common during rapid saves/hot-reloads) are never missed by
+/// whole-second tar mtimes, without reading large binary assets on every scan.
+const HASH_MAX_SIZE: u64 = 256 * 1024;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     pub size: u64,
     /// Modification time in whole seconds since the Unix epoch.
     pub mtime: u64,
+    /// 64-bit FNV-1a digest for small regular files (`size <= HASH_MAX_SIZE`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<u64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub exec: bool,
     /// Target of a symbolic link.
@@ -45,6 +53,7 @@ impl Entry {
             return Ok(Self {
                 size: 0,
                 mtime: 0,
+                hash: None,
                 exec: false,
                 link: Some(target.to_string_lossy().replace('\\', "/")),
             });
@@ -55,12 +64,29 @@ impl Entry {
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
             .map(|d| d.as_secs())
             .unwrap_or(0);
+        let size = meta.len();
+        let hash = if meta.is_file() && size <= HASH_MAX_SIZE {
+            Some(fnv1a_file(path)?)
+        } else {
+            None
+        };
         Ok(Self {
-            size: meta.len(),
+            size,
             mtime,
+            hash,
             exec: is_executable(&meta),
             link: None,
         })
+    }
+
+    /// Whether two entries represent the same file state. If either side lacks
+    /// a content hash (e.g. an older protocol-1 peer), falls back to metadata.
+    fn matches(&self, other: &Self) -> bool {
+        self.size == other.size
+            && self.mtime == other.mtime
+            && self.exec == other.exec
+            && self.link == other.link
+            && (self.hash.is_none() || other.hash.is_none() || self.hash == other.hash)
     }
 }
 
@@ -163,7 +189,7 @@ impl Manifest {
                     if cfg!(not(unix)) {
                         actual.exec = recorded.exec;
                     }
-                    &actual == *recorded
+                    actual.matches(recorded)
                 })
             })
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -183,7 +209,12 @@ impl Manifest {
         let changed = self
             .entries
             .iter()
-            .filter(|(key, entry)| remote.entries.get(*key) != Some(*entry))
+            .filter(|(key, entry)| {
+                !remote
+                    .entries
+                    .get(*key)
+                    .is_some_and(|remote_entry| entry.matches(remote_entry))
+            })
             .map(|(key, _)| key.clone())
             .collect();
         let deleted = remote
@@ -198,12 +229,30 @@ impl Manifest {
 
 /// 64-bit FNV-1a; stable across Rust releases unlike `DefaultHasher`.
 pub fn fnv1a(bytes: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf29ce484222325;
+    fnv1a_update(0xcbf29ce484222325, bytes)
+}
+
+fn fnv1a_update(mut hash: u64, bytes: &[u8]) -> u64 {
     for byte in bytes {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x100000001b3);
     }
     hash
+}
+
+fn fnv1a_file(path: &Path) -> std::io::Result<u64> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hash = 0xcbf29ce484222325_u64;
+    let mut buf = [0_u8; 8192];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hash = fnv1a_update(hash, &buf[..n]);
+    }
+    Ok(hash)
 }
 
 fn relative_key(root: &Path, path: &Path) -> Option<String> {
@@ -302,6 +351,7 @@ mod tests {
             Entry {
                 size: 1,
                 mtime: 1,
+                hash: None,
                 exec: false,
                 link: None,
             },
@@ -317,6 +367,31 @@ mod tests {
         assert!(verified.entries.contains_key("a.txt"));
         assert!(!verified.entries.contains_key("b.txt"));
         assert_ne!(verified.digest(), local.digest());
+    }
+
+    #[test]
+    fn detects_same_size_same_second_edit() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "lib/version.txt", "v1");
+        let before = Manifest::scan(root, &[]).unwrap();
+
+        write(root, "lib/version.txt", "v2");
+        let mut after = Manifest::scan(root, &[]).unwrap();
+        // Force identical whole-second mtime to prove detection doesn't depend on clock tick.
+        let orig_mtime = before.entries["lib/version.txt"].mtime;
+        after.entries.get_mut("lib/version.txt").unwrap().mtime = orig_mtime;
+
+        assert_eq!(
+            after.plan_from(&before).changed,
+            vec!["lib/version.txt".to_string()]
+        );
+        assert!(
+            !before
+                .verified(root)
+                .entries
+                .contains_key("lib/version.txt")
+        );
     }
 
     #[test]

@@ -135,16 +135,21 @@ pub struct ExeMakeConfig {
 
 impl ExeMakeConfig {
     fn load() -> Result<Self, PackageError> {
-        let path = Path::new("windows/packaging/exe/make_config.yaml");
+        Self::load_from(Path::new("windows/packaging/exe/make_config.yaml"))
+    }
+
+    fn load_from(path: &Path) -> Result<Self, PackageError> {
         if !path.exists() {
             return Ok(Self::default());
         }
         let content = std::fs::read_to_string(path).map_err(|e| {
             PackageError::General(format!("Failed to read {}: {}", path.display(), e))
         })?;
-        serde_yaml::from_str(&content).map_err(|e| {
-            PackageError::General(format!("Failed to parse {}: {}", path.display(), e))
-        })
+        serde_yaml::from_str::<Option<Self>>(&content)
+            .map(Option::unwrap_or_default)
+            .map_err(|e| {
+                PackageError::General(format!("Failed to parse {}: {}", path.display(), e))
+            })
     }
 }
 
@@ -467,21 +472,24 @@ fn prepare_script(
 ) -> Result<String, PackageError> {
     let output_file = config.output_file()?;
     // Absolute setup icon path (mirrors Dart, which joins with cwd);
-    // empty when not configured.
-    let setup_icon_file = make_config
+    // empty when not configured or blank.
+    let configured_setup_icon = make_config
         .setup_icon_file
-        .as_ref()
+        .as_deref()
+        .map(str::trim)
+        .filter(|icon| !icon.is_empty());
+    let setup_icon_file = configured_setup_icon
         .map(|icon| {
             std::env::current_dir()
                 .map(|cwd| cwd.join(icon).display().to_string())
-                .unwrap_or_else(|_| icon.clone())
+                .unwrap_or_else(|_| icon.to_string())
         })
         .unwrap_or_default();
     // Inno Setup only reports "cannot find the path" for a missing icon.
     if !setup_icon_file.is_empty() && !Path::new(&setup_icon_file).is_file() {
         return Err(PackageError::NotFound(format!(
             "setup_icon_file `{}` from windows/packaging/exe/make_config.yaml: no file at {} (paths are relative to the project root)",
-            make_config.setup_icon_file.as_deref().unwrap_or_default(),
+            configured_setup_icon.unwrap_or_default(),
             setup_icon_file
         )));
     }
@@ -592,7 +600,7 @@ fn prepare_script(
 }
 
 fn prepare_setup_icon(icon: Option<&str>, root: &Path) -> Result<String, PackageError> {
-    let Some(icon) = icon else {
+    let Some(icon) = icon.map(str::trim).filter(|s| !s.is_empty()) else {
         let runner = Path::new("windows/runner/resources/app_icon.ico");
         return Ok(if runner.is_file() {
             absolute(runner)
@@ -939,5 +947,86 @@ mod tests {
             ),
             vec!["en".to_string(), "de".to_string(), "xx".to_string()]
         );
+    }
+
+    #[test]
+    fn make_config_loads_empty_and_comment_only_yaml() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Missing file returns defaults.
+        let missing = ExeMakeConfig::load_from(&tmp.path().join("missing.yaml")).unwrap();
+        assert!(missing.app_id.is_none());
+        assert!(missing.setup_icon_file.is_none());
+
+        // Empty, whitespace-only, and comment-only YAML files return defaults.
+        for (name, content) in [
+            ("empty.yaml", ""),
+            ("whitespace.yaml", "   \n  \n"),
+            ("comments.yaml", "# only comments\n# app_id: ignored\n"),
+        ] {
+            let path = tmp.path().join(name);
+            std::fs::write(&path, content).unwrap();
+            let loaded = ExeMakeConfig::load_from(&path).unwrap();
+            assert!(loaded.app_id.is_none(), "{name}");
+            assert!(loaded.setup_icon_file.is_none(), "{name}");
+        }
+
+        // Valid YAML still deserializes fields.
+        let valid = tmp.path().join("valid.yaml");
+        std::fs::write(&valid, "app_id: dev.example.demo\nsetup_icon_file: \"\"\n").unwrap();
+        let loaded = ExeMakeConfig::load_from(&valid).unwrap();
+        assert_eq!(loaded.app_id.as_deref(), Some("dev.example.demo"));
+        assert_eq!(loaded.setup_icon_file.as_deref(), Some(""));
+
+        // Malformed YAML still returns a parse error.
+        let invalid = tmp.path().join("invalid.yaml");
+        std::fs::write(&invalid, "app_id: [unclosed\n").unwrap();
+        assert!(
+            ExeMakeConfig::load_from(&invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to parse")
+        );
+    }
+
+    #[test]
+    fn blank_setup_icon_file_is_treated_like_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = config(tmp.path(), "exe");
+        write(&config.build_output_dir.join("runner.exe"), "runner");
+
+        let render_with = |setup_icon_file: Option<String>, settings: ProjectSettings| {
+            let root = tmp.path().join("stage");
+            if root.exists() {
+                std::fs::remove_dir_all(&root).unwrap();
+            }
+            let mut raw =
+                RawPackaging::new(tmp.path().join("exe"), settings, &config, &root).unwrap();
+            let mc = ExeMakeConfig {
+                setup_icon_file,
+                ..Default::default()
+            };
+            prepare_script(&config, &mc, &mut raw, &root, "iscc").unwrap()
+        };
+
+        let baseline = render_with(None, ProjectSettings::default());
+        assert_eq!(
+            render_with(Some(String::new()), ProjectSettings::default()),
+            baseline
+        );
+        assert_eq!(
+            render_with(Some("   \t ".into()), ProjectSettings::default()),
+            baseline
+        );
+
+        // Blank setup_icon_file also allows fallback to ProjectSettings::icon.
+        let ico = tmp.path().join("app.ico");
+        write(&ico, "ico");
+        let settings = ProjectSettings {
+            icon: Some(ico.display().to_string()),
+            ..Default::default()
+        };
+        let with_empty = render_with(Some(String::new()), settings);
+        assert!(with_empty.contains("app.ico"), "{with_empty}");
     }
 }

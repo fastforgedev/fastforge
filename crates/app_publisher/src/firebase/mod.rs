@@ -1,8 +1,7 @@
-use crate::common::{argument, artifact_path, run_streaming};
+use crate::common::{argument, artifact_path, cli_command, run_streaming};
 use fastforge_core::{
     AppPublisher, PublishConfig, PublishError, PublishProgressCallback, PublishResult,
 };
-use std::process::Command;
 
 pub struct FirebasePublisher;
 
@@ -31,7 +30,7 @@ impl AppPublisher for FirebasePublisher {
         let artifact_path = artifact_path(config)?;
         let cmd_args = distribute_args(config, artifact_path)?;
 
-        let output = run_streaming(Command::new("firebase").args(&cmd_args))
+        let output = run_streaming(cli_command("firebase").args(&cmd_args))
             .map_err(|e| PublishError::CommandFailed(format!("Failed to run firebase CLI: {e}")))?;
 
         if output.status.success() {

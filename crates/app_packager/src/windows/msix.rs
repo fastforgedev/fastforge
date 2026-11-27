@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -745,6 +746,150 @@ fn split_signing_options(input: &str) -> Result<Vec<String>, PackageError> {
     Ok(args)
 }
 
+/// Preferred Windows Kits architecture subdirectories for the host CPU.
+fn preferred_sdk_arches(host_arch: &str) -> [&'static str; 3] {
+    match host_arch {
+        "aarch64" => ["arm64", "x64", "x86"],
+        "x86" => ["x86", "x64", "arm64"],
+        _ => ["x64", "x86", "arm64"],
+    }
+}
+
+/// Parses a dotted numeric Windows SDK directory name such as `10.0.26100.0`
+/// so revisions sort numerically (`10.0.26100.0` > `10.0.19041.0` > `10.0.9999.0`).
+fn parse_sdk_version(name: &str) -> Option<Vec<u32>> {
+    let mut parts = Vec::new();
+    for segment in name.split('.') {
+        parts.push(segment.parse::<u32>().ok()?);
+    }
+    if parts.is_empty() { None } else { Some(parts) }
+}
+
+/// Looks up `<tool>.exe` (and bare `<tool>` on non-Windows) in a `PATH` string.
+fn find_tool_in_path(tool: &str, path_env: Option<&OsStr>) -> Option<PathBuf> {
+    let path_env = path_env?;
+    let exe_name = format!("{tool}.exe");
+    for dir in std::env::split_paths(path_env) {
+        if dir.as_os_str().is_empty() {
+            continue;
+        }
+        let candidate_exe = dir.join(&exe_name);
+        if candidate_exe.is_file() {
+            return Some(candidate_exe);
+        }
+        #[cfg(not(windows))]
+        {
+            let candidate = dir.join(tool);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Probes a Windows Kits root (e.g. `C:\Program Files (x86)\Windows Kits\10`)
+/// for `<tool>.exe`, preferring the highest numeric SDK version under `bin/`
+/// and the host CPU architecture, falling back to other architectures and the
+/// legacy unversioned `bin/<arch>/` layout.
+fn find_tool_in_kits_root(tool: &str, kits_root: &Path, host_arch: &str) -> Option<PathBuf> {
+    let bin_dir = kits_root.join("bin");
+    let entries = std::fs::read_dir(&bin_dir).ok()?;
+    let exe_name = format!("{tool}.exe");
+    let arches = preferred_sdk_arches(host_arch);
+
+    let mut versions: Vec<(Vec<u32>, PathBuf)> = entries
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .filter_map(|entry| {
+            let version = parse_sdk_version(&entry.file_name().to_string_lossy())?;
+            Some((version, entry.path()))
+        })
+        .collect();
+    versions.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+
+    for (_, version_dir) in versions {
+        for arch in arches {
+            let candidate = version_dir.join(arch).join(&exe_name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    for arch in arches {
+        let candidate = bin_dir.join(arch).join(&exe_name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+/// Candidate Windows Kits 10 roots derived from `ProgramFiles(x86)`,
+/// `ProgramFiles`, and the default `C:\Program Files (x86)` location.
+fn windows_kits_roots_from(
+    program_files_x86: Option<&OsStr>,
+    program_files: Option<&OsStr>,
+) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for base in [program_files_x86, program_files]
+        .into_iter()
+        .flatten()
+        .filter(|v| !v.is_empty())
+    {
+        let root = PathBuf::from(base).join("Windows Kits").join("10");
+        if !roots.contains(&root) {
+            roots.push(root);
+        }
+    }
+    let default = Path::new(r"C:\Program Files (x86)")
+        .join("Windows Kits")
+        .join("10");
+    if !roots.contains(&default) {
+        roots.push(default);
+    }
+    roots
+}
+
+fn windows_kits_roots() -> Vec<PathBuf> {
+    windows_kits_roots_from(
+        std::env::var_os("ProgramFiles(x86)").as_deref(),
+        std::env::var_os("ProgramFiles").as_deref(),
+    )
+}
+
+fn resolve_windows_sdk_tool_with(
+    tool: &str,
+    path_env: Option<&OsStr>,
+    kits_roots: &[PathBuf],
+    host_arch: &str,
+) -> PathBuf {
+    if let Some(found) = find_tool_in_path(tool, path_env) {
+        return found;
+    }
+    for kits_root in kits_roots {
+        if let Some(found) = find_tool_in_kits_root(tool, kits_root, host_arch) {
+            return found;
+        }
+    }
+    PathBuf::from(tool)
+}
+
+/// Resolves a Windows SDK tool (`makeappx`, `signtool`):
+/// 1. `PATH` (so explicit user overrides / developer prompts win)
+/// 2. Installed Windows Kits 10 (`<kits_root>\bin\<highest-version>\<arch>\<tool>.exe`)
+/// 3. Bare `<tool>` name
+fn resolve_windows_sdk_tool(tool: &str) -> PathBuf {
+    resolve_windows_sdk_tool_with(
+        tool,
+        std::env::var_os("PATH").as_deref(),
+        &windows_kits_roots(),
+        std::env::consts::ARCH,
+    )
+}
+
 fn run(cmd: &mut Command) -> Result<(), PackageError> {
     let out = cmd.output().map_err(|e| {
         PackageError::MissingTool(format!("{}: {}", cmd.get_program().to_string_lossy(), e))
@@ -943,7 +1088,7 @@ impl WindowsMsixPackager {
         }
         let result = (|| {
             prepare_package(&mc, config, &mut raw, &pkg_dir, project)?;
-            let mut command = Command::new("makeappx");
+            let mut command = Command::new(resolve_windows_sdk_tool("makeappx"));
             command.args([
                 "pack".as_ref(),
                 "/d".as_ref(),
@@ -998,7 +1143,7 @@ impl WindowsMsixPackager {
             let mut args: Vec<String> = vec!["sign".to_string()];
             args.extend(split_signing_options(signtool_options)?);
             args.push(output_file.display().to_string());
-            let mut command = Command::new("signtool");
+            let mut command = Command::new(resolve_windows_sdk_tool("signtool"));
             command.args(&args);
             raw.apply_env(&mut command, config);
             run(&mut command)
@@ -1022,7 +1167,7 @@ impl WindowsMsixPackager {
                 args.push(pwd.clone());
             }
             args.push(output_file.display().to_string());
-            let mut command = Command::new("signtool");
+            let mut command = Command::new(resolve_windows_sdk_tool("signtool"));
             command.args(&args);
             raw.apply_env(&mut command, config);
             run(&mut command)
@@ -1708,5 +1853,189 @@ msix_config:
         assert_eq!(find_executable(tmp.path(), "hola"), "runner.exe");
         std::fs::write(tmp.path().join("hola.exe"), b"").unwrap();
         assert_eq!(find_executable(tmp.path(), "hola"), "hola.exe");
+    }
+
+    #[test]
+    fn sdk_tool_resolution_prefers_path_over_windows_kits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path_dir = tmp.path().join("custom-path");
+        let path_makeappx = path_dir.join("makeappx.exe");
+        write(&path_makeappx, b"");
+
+        let kits_root = tmp.path().join("Windows Kits/10");
+        write(&kits_root.join("bin/10.0.26100.0/x64/makeappx.exe"), b"");
+        let kits_signtool = kits_root.join("bin/10.0.26100.0/x64/signtool.exe");
+        write(&kits_signtool, b"");
+
+        let path_env = std::env::join_paths([&path_dir]).unwrap();
+        assert_eq!(
+            resolve_windows_sdk_tool_with(
+                "makeappx",
+                Some(path_env.as_os_str()),
+                std::slice::from_ref(&kits_root),
+                "x86_64"
+            ),
+            path_makeappx
+        );
+        // Tool not in PATH falls through to Windows Kits.
+        assert_eq!(
+            resolve_windows_sdk_tool_with(
+                "signtool",
+                Some(path_env.as_os_str()),
+                std::slice::from_ref(&kits_root),
+                "x86_64"
+            ),
+            kits_signtool
+        );
+    }
+
+    #[test]
+    fn sdk_tool_resolution_picks_highest_version_numerically() {
+        let tmp = tempfile::tempdir().unwrap();
+        let kits_root = tmp.path().join("Windows Kits/10");
+        write(&kits_root.join("bin/10.0.9999.0/x64/makeappx.exe"), b"");
+        write(&kits_root.join("bin/10.0.19041.0/x64/makeappx.exe"), b"");
+        let newest = kits_root.join("bin/10.0.26100.0/x64/makeappx.exe");
+        write(&newest, b"");
+        write(&kits_root.join("bin/non-version/x64/makeappx.exe"), b"");
+        write(&kits_root.join("bin/README.txt"), b"");
+
+        assert_eq!(
+            resolve_windows_sdk_tool_with(
+                "makeappx",
+                None,
+                std::slice::from_ref(&kits_root),
+                "x86_64"
+            ),
+            newest
+        );
+    }
+
+    #[test]
+    fn sdk_tool_resolution_prefers_host_arch_and_falls_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let kits_root = tmp.path().join("Windows Kits/10");
+        let arm64 = kits_root.join("bin/10.0.26100.0/arm64/signtool.exe");
+        let x64 = kits_root.join("bin/10.0.26100.0/x64/signtool.exe");
+        let x86 = kits_root.join("bin/10.0.26100.0/x86/signtool.exe");
+        write(&arm64, b"");
+        write(&x64, b"");
+        write(&x86, b"");
+
+        assert_eq!(
+            resolve_windows_sdk_tool_with(
+                "signtool",
+                None,
+                std::slice::from_ref(&kits_root),
+                "x86_64"
+            ),
+            x64
+        );
+        assert_eq!(
+            resolve_windows_sdk_tool_with(
+                "signtool",
+                None,
+                std::slice::from_ref(&kits_root),
+                "aarch64"
+            ),
+            arm64
+        );
+        assert_eq!(
+            resolve_windows_sdk_tool_with(
+                "signtool",
+                None,
+                std::slice::from_ref(&kits_root),
+                "x86"
+            ),
+            x86
+        );
+
+        // Removing preferred host arch falls back to remaining available arches.
+        std::fs::remove_file(&arm64).unwrap();
+        assert_eq!(
+            resolve_windows_sdk_tool_with(
+                "signtool",
+                None,
+                std::slice::from_ref(&kits_root),
+                "aarch64"
+            ),
+            x64
+        );
+        std::fs::remove_file(&x64).unwrap();
+        assert_eq!(
+            resolve_windows_sdk_tool_with(
+                "signtool",
+                None,
+                std::slice::from_ref(&kits_root),
+                "x86_64"
+            ),
+            x86
+        );
+    }
+
+    #[test]
+    fn windows_kits_roots_honors_program_files_env_and_default() {
+        let default = Path::new(r"C:\Program Files (x86)")
+            .join("Windows Kits")
+            .join("10");
+        assert_eq!(windows_kits_roots_from(None, None), vec![default.clone()]);
+        assert_eq!(
+            windows_kits_roots_from(Some(OsStr::new("")), Some(OsStr::new(""))),
+            vec![default.clone()]
+        );
+        assert_eq!(
+            windows_kits_roots_from(Some(OsStr::new(r"D:\PF86")), Some(OsStr::new(r"D:\PF"))),
+            vec![
+                Path::new(r"D:\PF86").join("Windows Kits").join("10"),
+                Path::new(r"D:\PF").join("Windows Kits").join("10"),
+                default.clone(),
+            ]
+        );
+        // Deduplicates when ProgramFiles(x86) already matches the default.
+        assert_eq!(
+            windows_kits_roots_from(Some(OsStr::new(r"C:\Program Files (x86)")), None),
+            vec![default]
+        );
+    }
+
+    #[test]
+    fn sdk_tool_resolution_falls_back_across_versions_roots_legacy_and_bare_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let primary = tmp.path().join("Program Files (x86)/Windows Kits/10");
+        let secondary = tmp.path().join("Program Files/Windows Kits/10");
+
+        // Newest version lacks makeappx.exe, so an older version in the same root wins.
+        write(&primary.join("bin/10.0.26100.0/x64/signtool.exe"), b"");
+        let older_makeappx = primary.join("bin/10.0.19041.0/x64/makeappx.exe");
+        write(&older_makeappx, b"");
+        assert_eq!(
+            resolve_windows_sdk_tool_with(
+                "makeappx",
+                None,
+                &[primary.clone(), secondary.clone()],
+                "x86_64"
+            ),
+            older_makeappx
+        );
+
+        // Removing it from primary falls back to legacy unversioned layout in secondary.
+        std::fs::remove_file(&older_makeappx).unwrap();
+        let legacy_makeappx = secondary.join("bin/x64/makeappx.exe");
+        write(&legacy_makeappx, b"");
+        assert_eq!(
+            resolve_windows_sdk_tool_with(
+                "makeappx",
+                None,
+                &[primary.clone(), secondary.clone()],
+                "x86_64"
+            ),
+            legacy_makeappx
+        );
+
+        // Missing everywhere falls back to the bare tool name.
+        assert_eq!(
+            resolve_windows_sdk_tool_with("missingtool", None, &[primary, secondary], "x86_64"),
+            PathBuf::from("missingtool")
+        );
     }
 }

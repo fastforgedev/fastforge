@@ -17,14 +17,17 @@ pub struct LoadOptions {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AppDmgSpec {
     pub title: String,
     pub icon: Option<String>,
     pub background: Option<String>,
     #[serde(rename = "background-color")]
     pub background_color: Option<String>,
-    #[serde(rename = "icon-size")]
+    #[serde(
+        default,
+        rename = "icon-size",
+        deserialize_with = "deserialize_opt_u32_from_num"
+    )]
     pub icon_size: Option<u32>,
     pub window: Option<Window>,
     pub format: Option<String>,
@@ -35,23 +38,24 @@ pub struct AppDmgSpec {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Window {
     pub position: Option<Position>,
     pub size: Option<WindowSize>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Position {
+    #[serde(deserialize_with = "deserialize_i32_from_num")]
     pub x: i32,
+    #[serde(deserialize_with = "deserialize_i32_from_num")]
     pub y: i32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WindowSize {
+    #[serde(deserialize_with = "deserialize_i32_from_num")]
     pub width: i32,
+    #[serde(deserialize_with = "deserialize_i32_from_num")]
     pub height: i32,
 }
 
@@ -64,9 +68,10 @@ pub enum ContentType {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ContentEntry {
+    #[serde(deserialize_with = "deserialize_i32_from_num")]
     pub x: i32,
+    #[serde(deserialize_with = "deserialize_i32_from_num")]
     pub y: i32,
     #[serde(rename = "type")]
     pub kind: ContentType,
@@ -75,7 +80,6 @@ pub struct ContentEntry {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct CodeSign {
     #[serde(rename = "signing-identity")]
     pub signing_identity: String,
@@ -86,7 +90,6 @@ pub struct CodeSign {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct LegacySpec {
     title: String,
     app: String,
@@ -97,14 +100,101 @@ struct LegacySpec {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct LegacyIcons {
+    #[serde(deserialize_with = "deserialize_u32_from_num")]
     size: u32,
-    app: [i32; 2],
-    alias: [i32; 2],
+    app: [NumI32; 2],
+    alias: [NumI32; 2],
 }
 
-type LegacyExtra = (String, i32, i32);
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(transparent)]
+struct NumI32(#[serde(deserialize_with = "deserialize_i32_from_num")] i32);
+
+type LegacyExtra = (String, NumI32, NumI32);
+
+fn deserialize_i32_from_num<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct NumVisitor;
+
+    impl serde::de::Visitor<'_> for NumVisitor {
+        type Value = i32;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("an integer or floating-point number")
+        }
+
+        fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Self::Value, E> {
+            i32::try_from(v).map_err(|_| E::custom(format!("number out of i32 range: {v}")))
+        }
+
+        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
+            i32::try_from(v).map_err(|_| E::custom(format!("number out of i32 range: {v}")))
+        }
+
+        fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Self::Value, E> {
+            if !v.is_finite() {
+                return Err(E::custom(format!("non-finite number: {v}")));
+            }
+            let rounded = v.round();
+            if rounded < i32::MIN as f64 || rounded > i32::MAX as f64 {
+                return Err(E::custom(format!("number out of i32 range: {v}")));
+            }
+            Ok(rounded as i32)
+        }
+    }
+
+    deserializer.deserialize_any(NumVisitor)
+}
+
+fn deserialize_u32_from_num<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct NumVisitor;
+
+    impl serde::de::Visitor<'_> for NumVisitor {
+        type Value = u32;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a non-negative integer or floating-point number")
+        }
+
+        fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Self::Value, E> {
+            u32::try_from(v).map_err(|_| E::custom(format!("number out of u32 range: {v}")))
+        }
+
+        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
+            u32::try_from(v).map_err(|_| E::custom(format!("number out of u32 range: {v}")))
+        }
+
+        fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Self::Value, E> {
+            if !v.is_finite() {
+                return Err(E::custom(format!("non-finite number: {v}")));
+            }
+            let rounded = v.round();
+            if rounded < 0.0 || rounded > u32::MAX as f64 {
+                return Err(E::custom(format!("number out of u32 range: {v}")));
+            }
+            Ok(rounded as u32)
+        }
+    }
+
+    deserializer.deserialize_any(NumVisitor)
+}
+
+fn deserialize_opt_u32_from_num<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(transparent)]
+    struct NumU32(#[serde(deserialize_with = "deserialize_u32_from_num")] u32);
+
+    Ok(Option::<NumU32>::deserialize(deserializer)?.map(|n| n.0))
+}
 
 impl AppDmgSpec {
     pub fn validate(&self) -> Result<(), DmgMakerError> {
@@ -203,15 +293,15 @@ fn parse_spec_value(value: Value) -> Result<AppDmgSpec, DmgMakerError> {
 fn convert_legacy(src: LegacySpec) -> AppDmgSpec {
     let mut contents = vec![
         ContentEntry {
-            x: src.icons.alias[0],
-            y: src.icons.alias[1],
+            x: src.icons.alias[0].0,
+            y: src.icons.alias[1].0,
             kind: ContentType::Link,
             path: "/Applications".to_string(),
             name: None,
         },
         ContentEntry {
-            x: src.icons.app[0],
-            y: src.icons.app[1],
+            x: src.icons.app[0].0,
+            y: src.icons.app[1].0,
             kind: ContentType::File,
             path: src.app,
             name: None,
@@ -221,8 +311,8 @@ fn convert_legacy(src: LegacySpec) -> AppDmgSpec {
     if let Some(extra) = src.extra {
         for item in extra {
             contents.push(ContentEntry {
-                x: item.1,
-                y: item.2,
+                x: item.1.0,
+                y: item.2.0,
                 kind: ContentType::File,
                 path: item.0,
                 name: None,
@@ -373,5 +463,112 @@ mod tests {
         assert_eq!(parsed.spec.title, "Sample App");
         assert_eq!(parsed.spec.format.as_deref(), Some("ULFO"));
         assert_eq!(parsed.spec.filesystem.as_deref(), Some("APFS"));
+    }
+
+    #[test]
+    fn ignores_unknown_fields_like_dart() {
+        let parsed = load_spec(&LoadOptions {
+            source: None,
+            basepath: Some(PathBuf::from(".")),
+            specification: Some(json!({
+                "title": "Test App",
+                "badge-icon": "AppIcon.icns",
+                "extra-top-level": true,
+                "window": {
+                    "position": { "x": 100, "y": 120, "extra": 1 },
+                    "size": { "width": 600, "height": 400, "extra": 2 },
+                    "unknown": "ignored"
+                },
+                "code-sign": {
+                    "signing-identity": "Developer ID Application: Foo",
+                    "legacy-option": "ignored"
+                },
+                "contents": [
+                    { "x": 448, "y": 344, "type": "link", "path": "/Applications", "extra": "ok" },
+                    { "x": 192, "y": 344, "type": "file", "path": "Test.app" }
+                ]
+            })),
+        })
+        .expect("unknown fields should be ignored");
+
+        assert_eq!(parsed.spec.title, "Test App");
+        assert_eq!(parsed.spec.contents.len(), 2);
+    }
+
+    #[test]
+    fn accepts_float_coordinates_and_icon_size() {
+        let parsed = load_spec(&LoadOptions {
+            source: None,
+            basepath: Some(PathBuf::from(".")),
+            specification: Some(json!({
+                "title": "Float App",
+                "icon-size": 80.0,
+                "window": {
+                    "position": { "x": 100.0, "y": -10.5 },
+                    "size": { "width": 600.0, "height": 400.4 }
+                },
+                "contents": [
+                    { "x": 448.0, "y": 344.0, "type": "link", "path": "/Applications" },
+                    { "x": 192.6, "y": 344.2, "type": "file", "path": "Float.app" }
+                ]
+            })),
+        })
+        .expect("float coordinates should deserialize");
+
+        assert_eq!(parsed.spec.icon_size, Some(80));
+        let window = parsed.spec.window.expect("window should exist");
+        let pos = window.position.expect("position should exist");
+        let size = window.size.expect("size should exist");
+        assert_eq!((pos.x, pos.y), (100, -11));
+        assert_eq!((size.width, size.height), (600, 400));
+        assert_eq!(
+            (parsed.spec.contents[0].x, parsed.spec.contents[0].y),
+            (448, 344)
+        );
+        assert_eq!(
+            (parsed.spec.contents[1].x, parsed.spec.contents[1].y),
+            (193, 344)
+        );
+
+        // Legacy spec also accepts floats and unknown fields.
+        let legacy = load_spec(&LoadOptions {
+            source: None,
+            basepath: Some(PathBuf::from(".")),
+            specification: Some(json!({
+                "title": "Legacy Float",
+                "app": "Legacy.app",
+                "badge-icon": "ignored.icns",
+                "icons": {
+                    "size": 80.0,
+                    "app": [192.0, 344.0],
+                    "alias": [448.0, 344.0]
+                },
+                "extra": [["Readme.txt", 100.0, 200.0]]
+            })),
+        })
+        .expect("legacy float spec should deserialize");
+        assert_eq!(legacy.spec.icon_size, Some(80));
+        assert_eq!(
+            (legacy.spec.contents[1].x, legacy.spec.contents[1].y),
+            (192, 344)
+        );
+        assert_eq!(
+            (legacy.spec.contents[2].x, legacy.spec.contents[2].y),
+            (100, 200)
+        );
+
+        // Negative icon-size is rejected.
+        let negative = load_spec(&LoadOptions {
+            source: None,
+            basepath: Some(PathBuf::from(".")),
+            specification: Some(json!({
+                "title": "Bad Icon Size",
+                "icon-size": -1.0,
+                "contents": [
+                    { "x": 192, "y": 344, "type": "file", "path": "App.app" }
+                ]
+            })),
+        });
+        assert!(negative.is_err());
     }
 }

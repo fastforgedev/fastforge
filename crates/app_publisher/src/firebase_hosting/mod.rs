@@ -1,11 +1,12 @@
-use crate::common::{argument_or_env, artifact_path, extract_url_after, run_streaming};
+use crate::common::{
+    argument_or_env, artifact_path, cli_command, extract_url_after, run_streaming,
+};
 use fastforge_core::{
     AppPublisher, PublishConfig, PublishError, PublishProgressCallback, PublishResult,
 };
 use serde_json::{Map, Value, json};
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 pub struct FirebaseHostingPublisher;
 
@@ -48,7 +49,7 @@ impl AppPublisher for FirebaseHostingPublisher {
         fs::write(directory.join("firebase.json"), firebase_json.to_string())
             .map_err(|e| PublishError::General(format!("Failed to write firebase.json: {e}")))?;
 
-        let mut cmd = Command::new("firebase");
+        let mut cmd = cli_command("firebase");
         cmd.arg("deploy").current_dir(artifact_path);
         // Rust extra: pass `FIREBASE_TOKEN` when available.
         if let Some(token) = config.env_var(ENV_FIREBASE_TOKEN) {

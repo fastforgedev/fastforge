@@ -2,8 +2,9 @@ use crate::flutter::FlutterVersion;
 use fastforge_core::{BuildError, path_expansion};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 pub struct FlutterCommand<'a> {
@@ -117,13 +118,6 @@ impl<'a> FlutterCommand<'a> {
     }
 
     fn resolve_executable(&self) -> Result<String, BuildError> {
-        // On Windows `flutter` is a batch script; Dart ran it through the
-        // shell (`runInShell: true`), Rust has to name the `.bat` explicitly.
-        let file_name = if cfg!(windows) {
-            "flutter.bat"
-        } else {
-            "flutter"
-        };
         if let Some(env) = self.environment
             && let Some(root) = env.get("FLUTTER_ROOT")
             && !root.is_empty()
@@ -135,11 +129,113 @@ impl<'a> FlutterCommand<'a> {
                     root
                 )));
             }
-            let path = PathBuf::from(root).join("bin").join(file_name);
-            return Ok(path.to_string_lossy().to_string());
+            let bin_dir = PathBuf::from(root).join("bin");
+            if cfg!(windows) {
+                let extensions = windows_flutter_extensions(
+                    env_var_case_insensitive(self.environment, "PATHEXT").as_deref(),
+                );
+                let resolved = find_windows_flutter_in_dir(&bin_dir, &extensions)
+                    .unwrap_or_else(|| bin_dir.join("flutter.bat"));
+                return Ok(resolved.to_string_lossy().to_string());
+            }
+            return Ok(bin_dir.join("flutter").to_string_lossy().to_string());
         }
-        Ok(file_name.to_string())
+
+        if cfg!(windows) {
+            return Ok(resolve_windows_flutter(self.environment));
+        }
+        Ok("flutter".to_string())
     }
+}
+
+const WINDOWS_FLUTTER_EXTENSIONS: [&str; 3] = [".bat", ".cmd", ".exe"];
+
+fn env_var_case_insensitive(env: Option<&HashMap<String, String>>, name: &str) -> Option<String> {
+    if let Some(env) = env {
+        if let Some(val) = env.get(name) {
+            return Some(val.clone());
+        }
+        if let Some((_, val)) = env.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)) {
+            return Some(val.clone());
+        }
+    }
+    std::env::var(name).ok()
+}
+
+fn env_var_os_case_insensitive(
+    env: Option<&HashMap<String, String>>,
+    name: &str,
+) -> Option<OsString> {
+    if let Some(env) = env {
+        if let Some(val) = env.get(name) {
+            return Some(OsString::from(val));
+        }
+        if let Some((_, val)) = env.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)) {
+            return Some(OsString::from(val));
+        }
+    }
+    std::env::var_os(name)
+}
+
+/// Ordered candidate extensions for `flutter` on Windows, respecting `PATHEXT`
+/// among the directly executable / batch extensions (`.bat`, `.cmd`, `.exe`).
+fn windows_flutter_extensions(pathext: Option<&str>) -> Vec<&'static str> {
+    let mut ordered = Vec::with_capacity(WINDOWS_FLUTTER_EXTENSIONS.len());
+    if let Some(pathext) = pathext {
+        for raw in pathext.split(';') {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let normalized = if trimmed.starts_with('.') {
+                trimmed.to_ascii_lowercase()
+            } else {
+                format!(".{}", trimmed.to_ascii_lowercase())
+            };
+            if let Some(&ext) = WINDOWS_FLUTTER_EXTENSIONS
+                .iter()
+                .find(|&&candidate| candidate == normalized)
+                && !ordered.contains(&ext)
+            {
+                ordered.push(ext);
+            }
+        }
+    }
+    for &ext in &WINDOWS_FLUTTER_EXTENSIONS {
+        if !ordered.contains(&ext) {
+            ordered.push(ext);
+        }
+    }
+    ordered
+}
+
+fn find_windows_flutter_in_dir(dir: &Path, extensions: &[&str]) -> Option<PathBuf> {
+    for ext in extensions {
+        let candidate = dir.join(format!("flutter{}", ext));
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Resolves `flutter` on Windows across `.bat`, `.cmd`, and `.exe` via `PATH`
+/// and `PATHEXT` (supporting standard Flutter SDK, Scoop, Chocolatey, and
+/// custom shims), falling back to `"flutter.bat"` if none is found.
+fn resolve_windows_flutter(environment: Option<&HashMap<String, String>>) -> String {
+    let extensions =
+        windows_flutter_extensions(env_var_case_insensitive(environment, "PATHEXT").as_deref());
+    if let Some(path_var) = env_var_os_case_insensitive(environment, "PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            if dir.as_os_str().is_empty() {
+                continue;
+            }
+            if let Some(found) = find_windows_flutter_in_dir(&dir, &extensions) {
+                return found.to_string_lossy().to_string();
+            }
+        }
+    }
+    "flutter.bat".to_string()
 }
 
 /// Prints the command line before running it (Dart's `DefaultShellExecutor`
@@ -204,5 +300,140 @@ mod tests {
             err.to_string()
                 .contains("FLUTTER_ROOT environment variable is set to a path that does not exist")
         );
+    }
+
+    #[test]
+    fn windows_extensions_respect_pathext_and_append_defaults() {
+        assert_eq!(
+            windows_flutter_extensions(Some(".COM;.EXE;.BAT;.CMD;.VBS;.PS1")),
+            vec![".exe", ".bat", ".cmd"]
+        );
+        assert_eq!(
+            windows_flutter_extensions(Some("CMD;.bat")),
+            vec![".cmd", ".bat", ".exe"]
+        );
+        assert_eq!(
+            windows_flutter_extensions(Some("")),
+            vec![".bat", ".cmd", ".exe"]
+        );
+        assert_eq!(
+            windows_flutter_extensions(None),
+            vec![".bat", ".cmd", ".exe"]
+        );
+    }
+
+    #[test]
+    fn resolve_windows_flutter_finds_cmd_exe_and_bat_shims_on_path() {
+        let dir_empty = tempdir().expect("tempdir");
+        let dir_scoop = tempdir().expect("tempdir");
+        let dir_choco = tempdir().expect("tempdir");
+        let dir_sdk = tempdir().expect("tempdir");
+
+        // Extensionless POSIX script should be ignored on Windows.
+        fs::write(dir_empty.path().join("flutter"), "#!/bin/sh\n").expect("write");
+        let scoop_cmd = dir_scoop.path().join("flutter.cmd");
+        fs::write(&scoop_cmd, "@echo off\r\n").expect("write");
+        let choco_exe = dir_choco.path().join("flutter.exe");
+        fs::write(&choco_exe, b"MZ").expect("write");
+        let sdk_bat = dir_sdk.path().join("flutter.bat");
+        fs::write(&sdk_bat, "@echo off\r\n").expect("write");
+
+        // Finds `.cmd` (Scoop shim), skipping extensionless `flutter` in earlier dir.
+        let path_val = std::env::join_paths([dir_empty.path(), dir_scoop.path(), dir_sdk.path()])
+            .expect("join_paths")
+            .to_string_lossy()
+            .into_owned();
+        let mut env = HashMap::new();
+        env.insert("Path".to_string(), path_val);
+        env.insert("PathExt".to_string(), ".COM;.EXE;.BAT;.CMD".to_string());
+        assert_eq!(
+            PathBuf::from(resolve_windows_flutter(Some(&env))),
+            scoop_cmd
+        );
+
+        // Finds `.exe` (Chocolatey shim).
+        let path_val = std::env::join_paths([dir_choco.path(), dir_sdk.path()])
+            .expect("join_paths")
+            .to_string_lossy()
+            .into_owned();
+        env.insert("Path".to_string(), path_val);
+        assert_eq!(
+            PathBuf::from(resolve_windows_flutter(Some(&env))),
+            choco_exe
+        );
+
+        // Finds `.bat` (standard Flutter SDK).
+        let path_val = std::env::join_paths([dir_sdk.path()])
+            .expect("join_paths")
+            .to_string_lossy()
+            .into_owned();
+        env.insert("Path".to_string(), path_val);
+        assert_eq!(PathBuf::from(resolve_windows_flutter(Some(&env))), sdk_bat);
+
+        // Respects PATHEXT ordering when multiple candidates exist in the same directory.
+        let dir_both = tempdir().expect("tempdir");
+        let both_bat = dir_both.path().join("flutter.bat");
+        let both_cmd = dir_both.path().join("flutter.cmd");
+        fs::write(&both_bat, "@echo off\r\n").expect("write");
+        fs::write(&both_cmd, "@echo off\r\n").expect("write");
+        let path_val = std::env::join_paths([dir_both.path()])
+            .expect("join_paths")
+            .to_string_lossy()
+            .into_owned();
+        env.insert("Path".to_string(), path_val);
+        env.insert("PathExt".to_string(), ".CMD;.BAT;.EXE".to_string());
+        assert_eq!(PathBuf::from(resolve_windows_flutter(Some(&env))), both_cmd);
+
+        // Falls back to "flutter.bat" when nothing matches on PATH.
+        env.insert(
+            "Path".to_string(),
+            dir_empty.path().to_string_lossy().into_owned(),
+        );
+        assert_eq!(resolve_windows_flutter(Some(&env)), "flutter.bat");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_flutter_root_and_path_execute_cmd_shim() {
+        let dir = tempdir().expect("tempdir");
+        let bin_dir = dir.path().join("bin");
+        fs::create_dir_all(&bin_dir).expect("mkdir");
+        let cmd_shim = bin_dir.join("flutter.cmd");
+        fs::write(&cmd_shim, "@echo off\r\necho shim-ok\r\n").expect("write cmd");
+
+        // Via FLUTTER_ROOT
+        let mut env = HashMap::new();
+        env.insert(
+            "FLUTTER_ROOT".to_string(),
+            dir.path().to_string_lossy().into_owned(),
+        );
+        let command = FlutterCommand::new(Some(&env));
+        assert_eq!(
+            PathBuf::from(command.resolve_executable().expect("resolve")),
+            cmd_shim
+        );
+        let out = command
+            .base_command()
+            .expect("base_command")
+            .output()
+            .expect("run cmd shim");
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "shim-ok");
+
+        // Via PATH
+        let mut path_env = HashMap::new();
+        path_env.insert("PATH".to_string(), bin_dir.to_string_lossy().into_owned());
+        let command = FlutterCommand::new(Some(&path_env));
+        assert_eq!(
+            PathBuf::from(command.resolve_executable().expect("resolve")),
+            cmd_shim
+        );
+        let out = command
+            .base_command()
+            .expect("base_command")
+            .output()
+            .expect("run cmd shim via PATH");
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "shim-ok");
     }
 }

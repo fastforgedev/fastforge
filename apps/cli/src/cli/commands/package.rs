@@ -140,12 +140,7 @@ impl PackageArgs {
             );
         }
         if !self.build_dart_define.is_empty() {
-            let mut defines = Map::new();
-            for item in &self.build_dart_define {
-                if let Some((key, value)) = item.split_once('=') {
-                    defines.insert(key.to_string(), Value::String(value.to_string()));
-                }
-            }
+            let defines = parse_dart_defines(&self.build_dart_define);
             build_args.insert("dart-define".to_string(), Value::Object(defines));
         }
         for arg in self
@@ -171,6 +166,53 @@ impl PackageArgs {
         }
         build_args
     }
+}
+
+fn is_valid_dart_define_key(key: &str) -> bool {
+    let mut bytes = key.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == b'_')
+        && bytes.all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
+}
+
+/// Parses `--build-dart-define` values, supporting both repeated flags
+/// (`--build-dart-define A=1 --build-dart-define B=2`) and Dart's
+/// comma-separated form (`--build-dart-define A=1,B=2`) while preserving
+/// commas inside values that are not followed by a `KEY=VALUE` pair.
+fn parse_dart_defines(items: &[String]) -> Map<String, Value> {
+    let mut defines = Map::new();
+    for item in items {
+        let mut current: Option<(String, String)> = None;
+        for part in item.split(',') {
+            match &mut current {
+                None => {
+                    if let Some((key, value)) = part.split_once('=')
+                        && !key.is_empty()
+                    {
+                        current = Some((key.to_string(), value.to_string()));
+                    }
+                }
+                Some((_, value)) => {
+                    if let Some((next_key, next_value)) = part.split_once('=')
+                        && is_valid_dart_define_key(next_key)
+                    {
+                        let (prev_key, prev_value) = current.take().unwrap();
+                        defines.insert(prev_key, Value::String(prev_value));
+                        current = Some((next_key.to_string(), next_value.to_string()));
+                    } else {
+                        value.push(',');
+                        value.push_str(part);
+                    }
+                }
+            }
+        }
+        if let Some((key, value)) = current {
+            defines.insert(key, Value::String(value));
+        }
+    }
+    defines
 }
 
 pub async fn execute(args: &PackageArgs) -> Result<()> {
@@ -398,9 +440,10 @@ pub struct PackagedTarget {
 }
 
 /// Packages the project for every requested target, mirroring Dart's
-/// `UnifiedDistributor.package`: `flutter clean` at most once, non-android
-/// platforms build once and reuse the output for every target, and a target
-/// whose builder can't run on this host is skipped with a warning.
+/// `UnifiedDistributor.package`: `flutter clean` at most once, platforms
+/// whose targets share one Flutter build artifact build once and reuse the
+/// output for every target, and a target whose builder can't run on this host
+/// is skipped with a warning.
 pub fn package(request: PackageRequest) -> Result<Vec<PackagedTarget>> {
     std::fs::create_dir_all(request.output)
         .with_context(|| format!("Failed to create {}", request.output))?;
@@ -483,7 +526,7 @@ pub fn package(request: PackageRequest) -> Result<Vec<PackagedTarget>> {
             .map_err(|e| anyhow!("{}", e))?;
     }
 
-    let build_only_once = platform != Platform::Android;
+    let build_only_once = should_build_only_once(platform);
     let mut cached_build: Option<BuildResult> = None;
 
     for target in request.targets {
@@ -1511,6 +1554,67 @@ impl ProjectPubspec {
     }
 }
 
+fn should_build_only_once(platform: Platform) -> bool {
+    !matches!(platform, Platform::Android | Platform::Ohos)
+}
+
+fn validate_build_name(name: &str) -> Result<()> {
+    if name.is_empty()
+        || name.chars().any(char::is_whitespace)
+        || name.contains(['+', '/', '\\', ':'])
+        || name.contains("..")
+    {
+        return Err(anyhow!(
+            "build-name/build-number: Invalid build-name `{name}`"
+        ));
+    }
+    let (core, prerelease) = match name.split_once('-') {
+        Some((core, pre)) => (core, Some(pre)),
+        None => (name, None),
+    };
+    if core.is_empty()
+        || !core
+            .split('.')
+            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err(anyhow!(
+            "build-name/build-number: Invalid build-name `{name}`. Expected numeric version segments such as `1.2`, `1.2.3`, or `1.2.3.4`."
+        ));
+    }
+    if let Some(pre) = prerelease
+        && (pre.is_empty()
+            || pre.starts_with('.')
+            || pre.ends_with('.')
+            || !pre
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_')))
+    {
+        return Err(anyhow!(
+            "build-name/build-number: Invalid build-name `{name}`"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_build_number(number: &str) -> Result<()> {
+    if number.is_empty()
+        || number == "."
+        || number.starts_with('.')
+        || number.ends_with('.')
+        || number.contains("..")
+        || number.chars().any(char::is_whitespace)
+        || number.contains(['+', '/', '\\', ':'])
+        || !number
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+    {
+        return Err(anyhow!(
+            "build-name/build-number: Invalid build-number `{number}`"
+        ));
+    }
+    Ok(())
+}
+
 fn effective_version(pubspec_version: &str, arguments: &Map<String, Value>) -> Result<String> {
     let argument = |key: &str| match arguments.get(key) {
         Some(Value::String(value)) if !value.trim().is_empty() => Some(value.trim().to_string()),
@@ -1523,14 +1627,24 @@ fn effective_version(pubspec_version: &str, arguments: &Map<String, Value>) -> R
     }
     let pubspec = fastforge_core::AppVersion::parse(pubspec_version)
         .map_err(|e| anyhow!("pubspec.yaml: {e}"))?;
-    let build_name = build_name.unwrap_or(pubspec.build_name);
-    let version = match build_number.or(pubspec.build_number) {
-        Some(number) => format!("{}+{}", build_name, number),
-        None => build_name,
+    let build_name = match build_name {
+        Some(name) => {
+            validate_build_name(&name)?;
+            name
+        }
+        None => pubspec.build_name,
     };
-    Ok(fastforge_core::AppVersion::parse(&version)
-        .map_err(|e| anyhow!("build-name/build-number: {e}"))?
-        .text)
+    let build_number = match build_number {
+        Some(number) => {
+            validate_build_number(&number)?;
+            Some(number)
+        }
+        None => pubspec.build_number,
+    };
+    Ok(match build_number {
+        Some(number) => format!("{build_name}+{number}"),
+        None => build_name,
+    })
 }
 
 fn default_version() -> String {
@@ -1584,6 +1698,123 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn build_name_and_number_accept_non_strict_semver_and_reject_unsafe_values() {
+        let args = |pairs: &[(&str, Value)]| {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect::<Map<String, Value>>()
+        };
+
+        assert_eq!(
+            effective_version(
+                "1.0.0+1",
+                &args(&[("build-name", Value::String("1.2".into()))])
+            )
+            .unwrap(),
+            "1.2+1"
+        );
+        assert_eq!(
+            effective_version(
+                "1.0.0+1",
+                &args(&[("build-name", Value::String("1.2.3.4".into()))])
+            )
+            .unwrap(),
+            "1.2.3.4+1"
+        );
+        assert_eq!(
+            effective_version(
+                "1.0.0+1",
+                &args(&[("build-number", Value::String("2026_01".into()))])
+            )
+            .unwrap(),
+            "1.0.0+2026_01"
+        );
+        assert_eq!(
+            effective_version(
+                "1.0.0+1",
+                &args(&[
+                    ("build-name", Value::String("1.2.3.4-beta.1".into())),
+                    ("build-number", Value::String("2026_01".into())),
+                ])
+            )
+            .unwrap(),
+            "1.2.3.4-beta.1+2026_01"
+        );
+
+        for bad_name in [
+            "../1.2", "1.2/3", "1.2\\3", "1.2 3", "1.2+3", "1.2..3", "1.2-",
+        ] {
+            assert!(
+                effective_version(
+                    "1.0.0",
+                    &args(&[("build-name", Value::String(bad_name.into()))])
+                )
+                .is_err(),
+                "expected build-name `{bad_name}` to be rejected"
+            );
+        }
+        for bad_number in ["../1", "1/2", "1\\2", "1 2", "1+2", "..", ".", ".1", "1."] {
+            assert!(
+                effective_version(
+                    "1.0.0",
+                    &args(&[("build-number", Value::String(bad_number.into()))])
+                )
+                .is_err(),
+                "expected build-number `{bad_number}` to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn ohos_and_android_rebuild_per_target() {
+        assert!(!should_build_only_once(Platform::Android));
+        assert!(!should_build_only_once(Platform::Ohos));
+        for platform in [
+            Platform::IOS,
+            Platform::Linux,
+            Platform::MacOS,
+            Platform::Web,
+            Platform::Windows,
+        ] {
+            assert!(
+                should_build_only_once(platform),
+                "{platform:?} should build only once"
+            );
+        }
+    }
+
+    #[test]
+    fn build_dart_define_supports_repeated_and_comma_separated_pairs() {
+        let defines = parse_dart_defines(&["A=1".into(), "B=2".into()]);
+        assert_eq!(defines.get("A"), Some(&Value::String("1".into())));
+        assert_eq!(defines.get("B"), Some(&Value::String("2".into())));
+
+        let defines = parse_dart_defines(&["A=1,B=2".into(), "C=3".into()]);
+        assert_eq!(defines.get("A"), Some(&Value::String("1".into())));
+        assert_eq!(defines.get("B"), Some(&Value::String("2".into())));
+        assert_eq!(defines.get("C"), Some(&Value::String("3".into())));
+
+        // Commas inside values stay intact unless followed by a KEY=VALUE pair.
+        let defines = parse_dart_defines(&["HOSTS=a,b,c".into(), "ITEMS=1,2,ENV=prod".into()]);
+        assert_eq!(defines.get("HOSTS"), Some(&Value::String("a,b,c".into())));
+        assert_eq!(defines.get("ITEMS"), Some(&Value::String("1,2".into())));
+        assert_eq!(defines.get("ENV"), Some(&Value::String("prod".into())));
+
+        let defines = parse_dart_defines(&[
+            "URLS=https://a.example?x=1,https://b.example?y=2".into(),
+            "TOKEN=a=b=c".into(),
+        ]);
+        assert_eq!(
+            defines.get("URLS"),
+            Some(&Value::String(
+                "https://a.example?x=1,https://b.example?y=2".into()
+            ))
+        );
+        assert_eq!(defines.get("TOKEN"), Some(&Value::String("a=b=c".into())));
     }
 
     #[test]

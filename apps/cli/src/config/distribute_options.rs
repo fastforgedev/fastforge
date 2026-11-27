@@ -1,8 +1,17 @@
 use crate::config::release::Release;
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+
+/// Deserializes an explicit YAML `null` (e.g. `releases:` or `jobs:`) as `T::default()`.
+pub(crate) fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Option::deserialize(deserializer)?.unwrap_or_default())
+}
 
 /// Parsed contents of `distribute_options.yaml`.
 ///
@@ -27,7 +36,7 @@ pub struct DistributeOptions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_name: Option<String>,
     /// Named release definitions.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub releases: Vec<Release>,
 }
 
@@ -230,5 +239,35 @@ releases:
 "#;
         let opts = parse_yaml(yaml);
         assert!(opts.releases[0].jobs[0].package.build_args.is_none());
+    }
+
+    #[test]
+    fn test_null_releases_and_jobs_default_to_empty() {
+        let null_releases = r#"
+output: dist/
+releases:
+"#;
+        let opts = parse_yaml(null_releases);
+        assert!(opts.releases.is_empty());
+
+        let explicit_null_releases = r#"
+output: dist/
+releases: null
+"#;
+        let opts = parse_yaml(explicit_null_releases);
+        assert!(opts.releases.is_empty());
+
+        let null_jobs = r#"
+output: dist/
+releases:
+  - name: dev
+    jobs:
+  - name: prod
+    jobs: null
+"#;
+        let opts = parse_yaml(null_jobs);
+        assert_eq!(opts.releases.len(), 2);
+        assert!(opts.releases[0].jobs.is_empty());
+        assert!(opts.releases[1].jobs.is_empty());
     }
 }

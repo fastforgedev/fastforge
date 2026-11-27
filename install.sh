@@ -51,7 +51,7 @@ resolve_target() {
 
 # ── Fetch release JSON from GitHub API ────────────────────────────────────────
 fetch_releases() {
-  API_URL="https://api.github.com/repos/${REPO}/releases"
+  API_URL="https://api.github.com/repos/${REPO}/releases?per_page=100"
 
   if [ -n "$GITHUB_TOKEN" ]; then
     if command -v curl >/dev/null 2>&1; then
@@ -91,34 +91,145 @@ resolve_release() {
   info "Fetching latest release version..."
   fetch_releases
 
-  # Pick the newest release that ships a binary for this target (releases are
-  # listed newest first; releases from the Dart era carry no binaries).
-  ARCHIVE_NAME="$(printf '%s' "$RELEASE_JSON" \
-    | grep -o "\"name\": *\"${BINARY_NAME}-[^\"]*-${TARGET}\.tar\.gz\"" \
-    | head -1 \
-    | sed 's/.*"\([^"]*\)"$/\1/')"
+  # Pick the newest published (non-draft, non-prerelease) release that ships
+  # a binary for this target (releases are listed newest first; releases from
+  # the Dart era carry no binaries).
+  MATCHED_RELEASE="$(printf '%s\n' "$RELEASE_JSON" \
+    | awk -v prefix="${BINARY_NAME}-" -v suffix="-${TARGET}.tar.gz" '
+        function reset_release() {
+          is_draft = 0; is_pre = 0; in_assets = 0
+          found_name = ""; found_dl = ""; found_api = ""
+        }
+        function reset_asset() {
+          a_name = ""; a_dl = ""; a_api = ""
+        }
+        function matches_archive(name,    plen, slen, nlen) {
+          plen = length(prefix); slen = length(suffix); nlen = length(name)
+          return (nlen > plen + slen &&
+                  substr(name, 1, plen) == prefix &&
+                  substr(name, nlen - slen + 1, slen) == suffix)
+        }
+        {
+          line = $0
+          n = length(line)
+          i = 1
+          while (i <= n) {
+            c = substr(line, i, 1)
+            if (c == " " || c == "\t" || c == "\r" || c == "\n") {
+              i++
+              continue
+            }
+            if (c == "{") {
+              sp++; container[sp] = "{"
+              depth++
+              after_colon[depth] = 0
+              obj_key[depth] = ""
+              if (depth == 1) reset_release()
+              else if (in_assets && depth == 2) reset_asset()
+              i++
+            } else if (c == "}") {
+              if (in_assets && depth == 2 && found_name == "" && matches_archive(a_name)) {
+                found_name = a_name
+                found_dl = a_dl
+                found_api = a_api
+              } else if (depth == 1 && !is_draft && !is_pre && found_name != "") {
+                print found_name "|" found_dl "|" found_api
+                exit 0
+              }
+              depth--
+              sp--
+              i++
+            } else if (c == "[") {
+              sp++; container[sp] = "["
+              arr_depth++
+              if (depth == 1 && after_colon[1] && obj_key[1] == "assets") {
+                in_assets = 1
+                assets_arr_depth = arr_depth
+              }
+              i++
+            } else if (c == "]") {
+              if (in_assets && arr_depth == assets_arr_depth) {
+                in_assets = 0
+              }
+              arr_depth--
+              sp--
+              i++
+            } else if (c == ":") {
+              if (container[sp] == "{") after_colon[depth] = 1
+              i++
+            } else if (c == ",") {
+              if (container[sp] == "{") {
+                after_colon[depth] = 0
+                obj_key[depth] = ""
+              }
+              i++
+            } else if (c == "\"") {
+              capture = (container[sp] == "{" &&
+                         ((depth == 1 && !after_colon[1]) ||
+                          (in_assets && depth == 2 &&
+                           (!after_colon[2] || obj_key[2] == "name" ||
+                            obj_key[2] == "browser_download_url" || obj_key[2] == "url"))))
+              str = ""
+              i++
+              while (i <= n) {
+                ch = substr(line, i, 1)
+                if (ch == "\\") {
+                  i++
+                  if (capture && i <= n) str = str substr(line, i, 1)
+                } else if (ch == "\"") {
+                  break
+                } else if (capture) {
+                  str = str ch
+                }
+                i++
+              }
+              i++
+              if (container[sp] == "{") {
+                if (!after_colon[depth]) {
+                  obj_key[depth] = str
+                } else if (in_assets && depth == 2) {
+                  if (obj_key[2] == "name") a_name = str
+                  else if (obj_key[2] == "browser_download_url") a_dl = str
+                  else if (obj_key[2] == "url") a_api = str
+                }
+              }
+            } else {
+              tok = ""
+              while (i <= n) {
+                ch = substr(line, i, 1)
+                if (ch == " " || ch == "\t" || ch == "\r" || ch == "\n" ||
+                    ch == "," || ch == "}" || ch == "]" || ch == ":") {
+                  break
+                }
+                tok = tok ch
+                i++
+              }
+              if (container[sp] == "{" && after_colon[depth] && depth == 1) {
+                if (obj_key[1] == "draft") is_draft = (tok == "true")
+                else if (obj_key[1] == "prerelease") is_pre = (tok == "true")
+              }
+            }
+          }
+        }
+      ')"
+
+  ARCHIVE_NAME=""
+  DOWNLOAD_URL=""
+  ASSET_API_URL=""
+  if [ -n "$MATCHED_RELEASE" ]; then
+    IFS='|' read -r ARCHIVE_NAME DOWNLOAD_URL ASSET_API_URL <<EOF
+$MATCHED_RELEASE
+EOF
+  fi
 
   if [ -z "$ARCHIVE_NAME" ]; then
-    error "No release provides a prebuilt binary for ${TARGET}. Set FASTFORGE_VERSION to specify one manually."
+    error "No published release provides a prebuilt binary for ${TARGET}. Set FASTFORGE_VERSION to specify one manually."
   fi
 
   VERSION="${ARCHIVE_NAME#"${BINARY_NAME}-"}"
   VERSION="${VERSION%"-${TARGET}.tar.gz"}"
 
   info "Latest version: $VERSION"
-
-  # asset "url" field = API download endpoint (works for draft assets with token)
-  # Strategy: find the line with "url": ".../releases/assets/..." that appears just
-  # before the line containing the archive name (POSIX awk + sed, no gawk needed).
-  ASSET_API_URL="$(printf '%s' "$RELEASE_JSON" \
-    | awk -v name="$ARCHIVE_NAME" '
-        /"url":.*releases\/assets\// { last = $0 }
-        index($0, name) && last { print last; last = ""; exit }
-      ' \
-    | sed 's/[^"]*"url"[^"]*"\([^"]*\)".*/\1/')"
-
-  # browser_download_url = public CDN link (only works for published releases)
-  DOWNLOAD_URL="$(printf '%s' "$RELEASE_JSON" | grep '"browser_download_url"' | grep "${ARCHIVE_NAME}" | head -1 | sed 's/[^"]*"browser_download_url"[^"]*"\([^"]*\)".*/\1/')"
 
   if [ -z "$DOWNLOAD_URL" ] && [ -z "$ASSET_API_URL" ]; then
     error "No download asset found for target ${TARGET} in the latest release. The release may not have finished uploading assets yet."
@@ -194,13 +305,41 @@ install_binary() {
 
 # ── Verify ────────────────────────────────────────────────────────────────────
 verify() {
-  if command -v "$BINARY_NAME" >/dev/null 2>&1; then
-    INSTALLED_VERSION="$("${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null || true)"
-    success "Installation verified: ${INSTALLED_VERSION}"
-  else
+  EXPECTED_PATH="${INSTALL_DIR}/${BINARY_NAME}"
+  INSTALLED_VERSION="$("${EXPECTED_PATH}" --version 2>/dev/null || true)"
+  RESOLVED_PATH="$(command -v "$BINARY_NAME" 2>/dev/null || true)"
+
+  if [ -z "$RESOLVED_PATH" ]; then
+    if [ -n "$INSTALLED_VERSION" ]; then
+      success "Binary verified at ${EXPECTED_PATH}: ${INSTALLED_VERSION}"
+    fi
     warn "${BINARY_NAME} is not on your PATH."
     warn "Add the following line to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
     warn "  export PATH=\"${INSTALL_DIR}:\$PATH\""
+    return
+  fi
+
+  EXPECTED_DIR="$(cd "$(dirname "$EXPECTED_PATH")" 2>/dev/null && pwd -P || dirname "$EXPECTED_PATH")"
+  RESOLVED_DIR="$(cd "$(dirname "$RESOLVED_PATH")" 2>/dev/null && pwd -P || dirname "$RESOLVED_PATH")"
+  EXPECTED_CANON="${EXPECTED_DIR}/$(basename "$EXPECTED_PATH")"
+  RESOLVED_CANON="${RESOLVED_DIR}/$(basename "$RESOLVED_PATH")"
+
+  if [ "$RESOLVED_CANON" != "$EXPECTED_CANON" ]; then
+    if [ -n "$INSTALLED_VERSION" ]; then
+      success "Binary verified at ${EXPECTED_PATH}: ${INSTALLED_VERSION}"
+    fi
+    warn "Another '${BINARY_NAME}' at ${RESOLVED_PATH} shadows ${EXPECTED_PATH} on your PATH."
+    case "$RESOLVED_PATH" in
+      *.pub-cache*)
+        warn "This looks like an older Dart installation. Remove it with:"
+        warn "  dart pub global deactivate fastforge"
+        ;;
+      *)
+        warn "Adjust your PATH so ${INSTALL_DIR} appears earlier, or remove the shadowing binary (e.g. 'dart pub global deactivate fastforge' if installed via Dart)."
+        ;;
+    esac
+  else
+    success "Installation verified: ${INSTALLED_VERSION}"
   fi
 }
 

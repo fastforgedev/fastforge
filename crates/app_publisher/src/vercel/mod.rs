@@ -1,11 +1,12 @@
-use crate::common::{argument_or_env, artifact_path, extract_url_after, run_streaming};
+use crate::common::{
+    argument_or_env, artifact_path, cli_command, extract_url_after, run_streaming,
+};
 use fastforge_core::{
     AppPublisher, PublishConfig, PublishError, PublishProgressCallback, PublishResult,
 };
 use serde_json::json;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 pub struct VercelPublisher;
 
@@ -51,7 +52,7 @@ impl AppPublisher for VercelPublisher {
         })?;
 
         let output = run_streaming(
-            Command::new("vercel")
+            cli_command("vercel")
                 .arg("--prod")
                 .current_dir(artifact_path),
         )

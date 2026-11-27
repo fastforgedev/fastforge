@@ -335,6 +335,39 @@ fn base64_encode(input: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encodes_base64_and_escapes_xml() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(
+            escape_xml(r#"<a & "b" 'c'>"#),
+            "&lt;a &amp; &quot;b&quot; &apos;c&apos;&gt;"
+        );
+    }
+
+    #[test]
+    fn builds_and_sorts_non_plist_entries() {
+        let mut entries = [
+            Entry::iloc("Applications", 420, 140),
+            Entry::vsrn(1),
+            Entry::iloc("App.app", 120, 140),
+        ];
+        entries.sort_by(Entry::sort_order);
+
+        assert_eq!(entries[0].filename, ".");
+        assert_eq!(&entries[0].structure_id, b"vSrn");
+        assert_eq!(entries[1].filename, "App.app");
+        assert_eq!(&entries[1].structure_id, b"Iloc");
+        assert_eq!(entries[2].filename, "Applications");
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_tests {
+    use super::*;
     use std::collections::HashMap;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};

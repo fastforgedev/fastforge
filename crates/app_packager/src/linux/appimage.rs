@@ -26,13 +26,21 @@ use super::staging::{self, Contents, Layout};
 /// to be on `$PATH`.
 pub struct LinuxAppImagePackager;
 
+fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 /// A desktop action entry (`[Desktop Action <label>]`), mirroring Dart's
 /// `AppImageAction`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppImageAction {
     pub label: String,
     pub name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub arguments: Vec<String>,
 }
 
@@ -43,13 +51,13 @@ pub struct AppImageMakeConfig {
     pub display_name: Option<String>,
     pub icon: Option<String>,
     pub metainfo: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub include: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub keywords: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub categories: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub actions: Vec<AppImageAction>,
     pub startup_notify: Option<bool>,
     pub generic_name: Option<String>,
@@ -643,5 +651,39 @@ actions:
     fn desktop_file_has_a_default_category() {
         let desktop = AppImageMakeConfig::default().desktop_file(&test_config(), "hola_amigos");
         assert!(desktop.contains("Categories=Utility;"));
+    }
+
+    #[test]
+    fn explicit_null_lists_deserialize_as_empty() {
+        let mc: AppImageMakeConfig = serde_yaml::from_str(
+            r#"
+display_name: Hola Amigos
+include:
+keywords: null
+categories: ~
+actions:
+"#,
+        )
+        .expect("explicit null lists should deserialize as empty vecs");
+        assert!(mc.include.is_empty());
+        assert!(mc.keywords.is_empty());
+        assert!(mc.categories.is_empty());
+        assert!(mc.actions.is_empty());
+
+        let with_null_args: AppImageMakeConfig = serde_yaml::from_str(
+            r#"
+actions:
+  - label: open
+    name: Open App
+    arguments:
+  - label: settings
+    name: Open Settings
+    arguments: null
+"#,
+        )
+        .expect("action with explicit null arguments should deserialize");
+        assert_eq!(with_null_args.actions.len(), 2);
+        assert!(with_null_args.actions[0].arguments.is_empty());
+        assert!(with_null_args.actions[1].arguments.is_empty());
     }
 }

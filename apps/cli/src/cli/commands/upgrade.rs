@@ -76,11 +76,14 @@ pub(crate) async fn download(
 }
 
 pub(crate) fn extract(archive: &Path, into: &Path) -> Result<()> {
-    // `tar` ships with macOS, Linux and Windows 10+ (bsdtar, which also
-    // understands zip archives).
-    let flags = if cfg!(windows) { "-xf" } else { "-xzf" };
+    if archive
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
+    {
+        return extract_zip(archive, into);
+    }
     let status = Command::new("tar")
-        .arg(flags)
+        .arg("-xzf")
         .arg(archive)
         .arg("-C")
         .arg(into)
@@ -88,6 +91,56 @@ pub(crate) fn extract(archive: &Path, into: &Path) -> Result<()> {
         .context("failed to run `tar` to extract the release archive")?;
     if !status.success() {
         bail!("failed to extract {}", archive.display());
+    }
+    Ok(())
+}
+
+/// Extracts a `.zip` release archive in-process so Windows upgrades do not
+/// depend on `tar` on `PATH` (where Git Bash / MSYS2 GNU `tar` cannot extract
+/// `.zip` files). Rejects path-traversal entries (Zip Slip) and symlinks.
+fn extract_zip(archive: &Path, into: &Path) -> Result<()> {
+    let file = std::fs::File::open(archive)
+        .with_context(|| format!("failed to open {}", archive.display()))?;
+    let mut zip = zip::ZipArchive::new(file)
+        .with_context(|| format!("failed to read zip archive {}", archive.display()))?;
+    for i in 0..zip.len() {
+        let mut entry = zip
+            .by_index(i)
+            .with_context(|| format!("failed to read entry {i} from {}", archive.display()))?;
+        let entry_name = String::from_utf8_lossy(entry.name_raw()).into_owned();
+        let Some(rel_path) = entry.enclosed_name() else {
+            bail!(
+                "archive {} contains unsafe path: {}",
+                archive.display(),
+                entry_name
+            );
+        };
+        if entry.is_symlink() {
+            bail!(
+                "archive {} contains unsupported symlink: {}",
+                archive.display(),
+                entry_name
+            );
+        }
+        let out_path = into.join(rel_path);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path)
+                .with_context(|| format!("failed to create {}", out_path.display()))?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            let mut out_file = std::fs::File::create(&out_path)
+                .with_context(|| format!("failed to create {}", out_path.display()))?;
+            std::io::copy(&mut entry, &mut out_file)
+                .with_context(|| format!("failed to extract {}", out_path.display()))?;
+            #[cfg(unix)]
+            if let Some(mode) = entry.unix_mode() {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&out_path, std::fs::Permissions::from_mode(mode))?;
+            }
+        }
     }
     Ok(())
 }
@@ -248,28 +301,70 @@ mod tests {
     #[test]
     fn extracts_release_archive_layout() {
         let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().join("fastforge-9.9.9-test");
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join(binary_name()), b"bin").unwrap();
-        let archive = dir.path().join("a.tar.gz");
-        let status = Command::new("tar")
-            .arg("-czf")
-            .arg(&archive)
-            .arg("-C")
-            .arg(dir.path())
-            .arg("fastforge-9.9.9-test")
-            .status()
-            .unwrap();
-        assert!(status.success());
+        let archive = dir.path().join("fastforge-9.9.9-test.zip");
+        {
+            let file = std::fs::File::create(&archive).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            writer
+                .start_file(format!("fastforge-9.9.9-test/{}", binary_name()), options)
+                .unwrap();
+            writer.write_all(b"bin").unwrap();
+            writer.finish().unwrap();
+        }
         let out = dir.path().join("out");
         std::fs::create_dir_all(&out).unwrap();
-        if cfg!(unix) {
-            extract(&archive, &out).unwrap();
+        extract(&archive, &out).unwrap();
+        let extracted = out.join("fastforge-9.9.9-test").join(binary_name());
+        assert!(extracted.is_file());
+        assert_eq!(std::fs::read(&extracted).unwrap(), b"bin");
+
+        #[cfg(unix)]
+        {
+            let root = dir.path().join("fastforge-9.9.9-tar");
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::write(root.join(binary_name()), b"bin").unwrap();
+            let tar_archive = dir.path().join("a.tar.gz");
+            let status = Command::new("tar")
+                .arg("-czf")
+                .arg(&tar_archive)
+                .arg("-C")
+                .arg(dir.path())
+                .arg("fastforge-9.9.9-tar")
+                .status()
+                .unwrap();
+            assert!(status.success());
+            let tar_out = dir.path().join("tar-out");
+            std::fs::create_dir_all(&tar_out).unwrap();
+            extract(&tar_archive, &tar_out).unwrap();
             assert!(
-                out.join("fastforge-9.9.9-test")
+                tar_out
+                    .join("fastforge-9.9.9-tar")
                     .join(binary_name())
                     .is_file()
             );
         }
+    }
+
+    #[test]
+    fn extract_zip_rejects_path_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("evil.zip");
+        {
+            let file = std::fs::File::create(&archive).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            writer.start_file("../escape.txt", options).unwrap();
+            writer.write_all(b"pwn").unwrap();
+            writer.finish().unwrap();
+        }
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let err = extract(&archive, &out).unwrap_err();
+        assert!(
+            err.to_string().contains("unsafe path"),
+            "unexpected error: {err}"
+        );
+        assert!(!dir.path().join("escape.txt").exists());
     }
 }

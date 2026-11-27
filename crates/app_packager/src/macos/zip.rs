@@ -18,7 +18,6 @@ pub struct MacOSZipPackager;
 /// `<packaging root>/zip/make_config.yaml` (`macos/packaging/zip/make_config.yaml`
 /// for Flutter projects; see `PackageConfig::packaging_root`).
 #[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ZipMakeConfig {
     /// Notarize and staple the `.app` before zipping it.
     #[serde(default)]
@@ -118,7 +117,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn make_config_reads_notarize() {
+    fn make_config_reads_notarize_and_ignores_unknown_fields() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("make_config.yaml");
         assert!(!ZipMakeConfig::load(&path).unwrap().notarize);
@@ -126,7 +125,15 @@ mod tests {
         assert!(ZipMakeConfig::load(&path).unwrap().notarize);
         std::fs::write(&path, "").unwrap();
         assert!(!ZipMakeConfig::load(&path).unwrap().notarize);
-        std::fs::write(&path, "notarise: true\n").unwrap();
+        std::fs::write(&path, "# comment only\n").unwrap();
+        assert!(!ZipMakeConfig::load(&path).unwrap().notarize);
+        // Extra/legacy fields are ignored for Dart compatibility.
+        std::fs::write(&path, "legacy_option: foo\nnotarize: true\n").unwrap();
+        assert!(ZipMakeConfig::load(&path).unwrap().notarize);
+        std::fs::write(&path, "extra_field: 123\n").unwrap();
+        assert!(!ZipMakeConfig::load(&path).unwrap().notarize);
+        // Wrong type for a known field still fails.
+        std::fs::write(&path, "notarize: \"yes\"\n").unwrap();
         assert!(ZipMakeConfig::load(&path).is_err());
     }
 }

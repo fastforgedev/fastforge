@@ -64,7 +64,7 @@ impl MacOSPkgPackager {
         let content = std::fs::read_to_string(path).map_err(|e| {
             PackageError::General(format!("Failed to read {}: {}", path.display(), e))
         })?;
-        #[derive(Deserialize)]
+        #[derive(Default, Deserialize)]
         #[serde(rename_all = "kebab-case")]
         struct Config {
             install_path: Option<String>,
@@ -75,9 +75,11 @@ impl MacOSPkgPackager {
             /// Explicit setting; unset means "detect from `sign-identity`".
             app_store: Option<bool>,
         }
-        let cfg: Config = serde_yaml::from_str(&content).map_err(|e| {
-            PackageError::General(format!("Failed to parse {}: {}", path.display(), e))
-        })?;
+        let cfg = serde_yaml::from_str::<Option<Config>>(&content)
+            .map(Option::unwrap_or_default)
+            .map_err(|e| {
+                PackageError::General(format!("Failed to parse {}: {}", path.display(), e))
+            })?;
         let app_store = cfg.app_store.unwrap_or_else(|| {
             cfg.sign_identity
                 .as_deref()
@@ -504,6 +506,22 @@ mod tests {
             MacOSPkgPackager::from_yaml_file(&dir.path().join("make_config.yaml")).unwrap();
         assert!(!packager.app_store);
         assert!(packager.sign_identity.is_none());
+    }
+
+    #[test]
+    fn empty_or_comment_only_make_config_uses_defaults() {
+        for content in [
+            "",
+            "   \n",
+            "# comment only\n# install-path: /Applications/\n",
+        ] {
+            let packager = from_yaml(content);
+            assert!(!packager.app_store);
+            assert!(!packager.notarize);
+            assert!(packager.sign_identity.is_none());
+            assert!(packager.install_path.is_none());
+            assert!(packager.scripts.is_none());
+        }
     }
 
     #[test]

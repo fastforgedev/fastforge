@@ -3,9 +3,11 @@
 use fastforge_core::{PublishConfig, PublishError, PublishProgressCallback};
 use reqwest::blocking::multipart::Part;
 use reqwest::blocking::{Body, Client};
+#[cfg(any(windows, test))]
+use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -200,6 +202,115 @@ pub(crate) fn file_part(
 
 // ── External commands ─────────────────────────────────────────────────────────
 
+/// Builds a [`Command`] for an external CLI tool.
+///
+/// On Windows, `Command::new("firebase")` only searches for `.exe` and misses
+/// npm/pnpm `.cmd` and `.bat` shims, whereas Dart ran commands through a shell
+/// (`runInShell: true`). Resolving the program through `PATH` / `PATHEXT`
+/// locates `.exe`, `.cmd`, `.bat`, and `.com` executables before spawning.
+pub(crate) fn cli_command(program: &str) -> Command {
+    Command::new(resolve_program(program))
+}
+
+#[cfg(windows)]
+fn resolve_program(program: &str) -> PathBuf {
+    resolve_windows_program(
+        program,
+        std::env::var_os("PATH").as_deref(),
+        std::env::var_os("PATHEXT").as_deref(),
+    )
+}
+
+#[cfg(not(windows))]
+fn resolve_program(program: &str) -> PathBuf {
+    PathBuf::from(program)
+}
+
+#[cfg(any(windows, test))]
+fn resolve_windows_program(
+    program: &str,
+    path: Option<&OsStr>,
+    pathext: Option<&OsStr>,
+) -> PathBuf {
+    let extensions = windows_executable_extensions(pathext);
+    let program_path = Path::new(program);
+
+    if program_path.components().count() > 1 {
+        if program_path.is_file() {
+            return program_path.to_path_buf();
+        }
+        if program_path.extension().is_none() {
+            for ext in &extensions {
+                let candidate = PathBuf::from(format!("{program}{ext}"));
+                if candidate.is_file() {
+                    return candidate;
+                }
+            }
+        }
+        return program_path.to_path_buf();
+    }
+
+    let Some(path) = path else {
+        return program_path.to_path_buf();
+    };
+
+    let has_supported_ext = program_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "exe" | "cmd" | "bat" | "com"
+            )
+        });
+
+    for dir in std::env::split_paths(path) {
+        if has_supported_ext {
+            let candidate = dir.join(program);
+            if candidate.is_file() {
+                return candidate;
+            }
+        } else {
+            for ext in &extensions {
+                let candidate = dir.join(format!("{program}{ext}"));
+                if candidate.is_file() {
+                    return candidate;
+                }
+            }
+        }
+    }
+
+    program_path.to_path_buf()
+}
+
+#[cfg(any(windows, test))]
+fn windows_executable_extensions(pathext: Option<&OsStr>) -> Vec<String> {
+    const SUPPORTED: [&str; 4] = [".exe", ".cmd", ".bat", ".com"];
+    let mut extensions = Vec::new();
+    if let Some(pathext) = pathext {
+        for raw in pathext.to_string_lossy().split(';') {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let normalized = if trimmed.starts_with('.') {
+                trimmed.to_ascii_lowercase()
+            } else {
+                format!(".{}", trimmed.to_ascii_lowercase())
+            };
+            if SUPPORTED.contains(&normalized.as_str()) && !extensions.contains(&normalized) {
+                extensions.push(normalized);
+            }
+        }
+    }
+    for ext in SUPPORTED {
+        if !extensions.iter().any(|existing| existing == ext) {
+            extensions.push(ext.to_string());
+        }
+    }
+    extensions
+}
+
 pub(crate) struct CommandOutput {
     pub status: ExitStatus,
     pub stdout: String,
@@ -363,5 +474,78 @@ mod tests {
             None
         );
         assert_eq!(extract_url_after("nothing here", "Production: "), None);
+    }
+
+    #[test]
+    fn resolve_windows_program_prefers_cmd_over_extensionless_posix_shim() {
+        let dir = tempfile::tempdir().unwrap();
+        // npm/pnpm global installs place an extensionless POSIX sh shim alongside `.cmd` and `.ps1`.
+        std::fs::write(dir.path().join("firebase"), "#!/bin/sh\n").unwrap();
+        std::fs::write(dir.path().join("firebase.ps1"), "Write-Output 'ps1'\n").unwrap();
+        let cmd_shim = dir.path().join("firebase.cmd");
+        std::fs::write(&cmd_shim, "@echo off\r\n").unwrap();
+
+        let path = std::env::join_paths([dir.path()]).unwrap();
+        let pathext = OsStr::new(".COM;.EXE;.BAT;.CMD;.PS1");
+        let resolved = resolve_windows_program("firebase", Some(&path), Some(pathext));
+        assert_eq!(resolved, cmd_shim);
+    }
+
+    #[test]
+    fn resolve_windows_program_respects_pathext_and_path_order() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let first_cmd = first.path().join("vercel.cmd");
+        let first_exe = first.path().join("vercel.exe");
+        let second_exe = second.path().join("vercel.exe");
+        std::fs::write(&first_cmd, "@echo off\r\n").unwrap();
+        std::fs::write(&first_exe, "").unwrap();
+        std::fs::write(&second_exe, "").unwrap();
+
+        let path = std::env::join_paths([first.path(), second.path()]).unwrap();
+        assert_eq!(
+            resolve_windows_program("vercel", Some(&path), Some(OsStr::new(".EXE;.CMD;.BAT"))),
+            first_exe
+        );
+        assert_eq!(
+            resolve_windows_program("vercel", Some(&path), Some(OsStr::new(".CMD;.EXE"))),
+            first_cmd
+        );
+
+        let missing = resolve_windows_program("nonexistent-cli", Some(&path), None);
+        assert_eq!(missing, PathBuf::from("nonexistent-cli"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn run_streaming_executes_resolved_cmd_shim() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("fake-cli"), "#!/bin/sh\nexit 1\n").unwrap();
+        let cmd_shim = dir.path().join("fake-cli.cmd");
+        std::fs::write(
+            &cmd_shim,
+            "@echo off\r\necho args=%1 %2\r\necho Production: https://demo.vercel.app 1>&2\r\n",
+        )
+        .unwrap();
+
+        let path = std::env::join_paths([dir.path()]).unwrap();
+        let resolved = resolve_windows_program("fake-cli", Some(&path), None);
+        assert_eq!(resolved, cmd_shim);
+
+        let mut cmd = Command::new(&resolved);
+        cmd.args(["appdistribution:distribute", "--prod"]);
+        let output = run_streaming(&mut cmd).expect("spawn .cmd shim");
+        assert!(output.status.success());
+        assert!(
+            output
+                .stdout
+                .contains("args=appdistribution:distribute --prod"),
+            "unexpected stdout: {}",
+            output.stdout
+        );
+        assert_eq!(
+            extract_url_after(&output.stderr, "Production: "),
+            Some("https://demo.vercel.app".to_string())
+        );
     }
 }

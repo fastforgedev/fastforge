@@ -8,7 +8,6 @@ mod support;
 use fastforge_app_analyzer::{AnalyzeConfig, AndroidAabAnalyzer, AndroidApkAnalyzer, AppAnalyzer};
 use serde_json::Value;
 use serial_test::serial;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use support::write_zip;
 use tempfile::TempDir;
@@ -146,11 +145,7 @@ fn apk_analysis_reports_the_signing_certificate() {
 fn aab_analysis_reports_modules_and_dependencies() {
     let temp = TempDir::new().expect("temp dir");
     let aab = build_aab(temp.path());
-    let bundletool = write_stub(
-        &temp.path().join("tools"),
-        "bundletool",
-        &format!("cat <<'XML'\n{}\nXML", MANIFEST_XML),
-    );
+    let bundletool = write_stub(&temp.path().join("tools"), "bundletool", MANIFEST_XML);
     // An SDK without build-tools forces the bundletool fallback path.
     let empty_sdk = temp.path().join("empty-sdk");
     std::fs::create_dir_all(&empty_sdk).expect("create sdk dir");
@@ -375,25 +370,34 @@ fn app_dependencies(libraries: &[(&str, &str, &str)]) -> Vec<u8> {
 fn build_fake_sdk(parent: &Path) -> PathBuf {
     let sdk = parent.join("sdk");
     let build_tools = sdk.join("build-tools").join("36.0.0");
-    write_stub(
-        &build_tools,
-        "aapt2",
-        &format!("cat <<'EOF'\n{BADGING}\nEOF"),
-    );
-    write_stub(
-        &build_tools,
-        "apksigner",
-        &format!("cat <<'EOF'\n{APKSIGNER}\nEOF"),
-    );
+    write_stub(&build_tools, "aapt2", BADGING);
+    write_stub(&build_tools, "apksigner", APKSIGNER);
     sdk
 }
 
-fn write_stub(dir: &Path, name: &str, body: &str) -> PathBuf {
+#[cfg(unix)]
+fn write_stub(dir: &Path, name: &str, output: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
     std::fs::create_dir_all(dir).expect("create stub directory");
     let path = dir.join(name);
-    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write stub");
+    std::fs::write(&path, format!("#!/bin/sh\ncat <<'EOF'\n{output}\nEOF\n")).expect("write stub");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
         .expect("make stub executable");
+    path
+}
+
+#[cfg(windows)]
+fn write_stub(dir: &Path, name: &str, output: &str) -> PathBuf {
+    std::fs::create_dir_all(dir).expect("create stub directory");
+    let payload = dir.join(format!("{name}.txt"));
+    std::fs::write(&payload, format!("{output}\n")).expect("write stub payload");
+    let path = dir.join(format!("{name}.bat"));
+    std::fs::write(
+        &path,
+        format!("@echo off\r\ntype \"{}\"\r\n", payload.display()),
+    )
+    .expect("write stub");
     path
 }
 

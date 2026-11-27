@@ -197,7 +197,7 @@ fn check_app_entries(
 }
 
 /// Loads the DMG `make_config.yaml` as an appdmg-style JSON spec.
-/// Returns `Ok(None)` when the file does not exist.
+/// Returns `Ok(None)` when the file does not exist or is empty / comment-only.
 fn load_dmg_make_config(path: &Path) -> Result<Option<serde_json::Value>, PackageError> {
     if !path.exists() {
         return Ok(None);
@@ -206,6 +206,9 @@ fn load_dmg_make_config(path: &Path) -> Result<Option<serde_json::Value>, Packag
         .map_err(|e| PackageError::General(format!("Failed to read {}: {}", path.display(), e)))?;
     let yaml: serde_yaml::Value = serde_yaml::from_str(&content)
         .map_err(|e| PackageError::General(format!("Failed to parse {}: {}", path.display(), e)))?;
+    if yaml.is_null() {
+        return Ok(None);
+    }
     let spec = serde_json::to_value(yaml).map_err(|e| {
         PackageError::General(format!(
             "Failed to convert {} to JSON: {}",
@@ -223,27 +226,20 @@ fn load_dmg_make_config(path: &Path) -> Result<Option<serde_json::Value>, Packag
 /// copied into the packaging directory, which Xcode names after `PRODUCT_NAME`
 /// and not after the pubspec.
 fn default_spec(app_name: &str, bundle_file_name: &str, pkg_dir: &Path) -> serde_json::Value {
-    let escaped_name = app_name.replace('\\', "\\\\").replace('"', "\\\"");
-    let escaped_bundle = bundle_file_name.replace('\\', "\\\\").replace('"', "\\\"");
-    let mut contents = vec![
+    let contents = vec![
         json!({"x": 448, "y": 344, "type": "link", "path": "/Applications"}),
-        json!({"x": 192, "y": 344, "type": "file", "path": escaped_bundle}),
+        json!({"x": 192, "y": 344, "type": "file", "path": bundle_file_name}),
     ];
 
     // Only include a background if background.png actually exists in the
     // packaging dir (from dmg_assets) — dmg_maker errors out trying to
     // copy a background file that was declared but never provided.
-    let has_background = pkg_dir.join("background.png").exists();
-    if has_background {
-        contents.push(json!({"x": 0, "y": 0, "type": "position"}));
-    }
-
     let mut spec = json!({
-        "title": escaped_name,
+        "title": app_name,
         "icon-size": 80,
         "contents": contents,
     });
-    if has_background {
+    if pkg_dir.join("background.png").exists() {
         spec["background"] = json!("background.png");
     }
     spec
@@ -450,5 +446,54 @@ contents:
         let spec = default_spec("beyondtranslate_desktop", "beyondtranslate.app", dir.path());
         assert_eq!(spec["contents"][1]["path"], "beyondtranslate.app");
         assert_eq!(spec["title"], "beyondtranslate_desktop");
+    }
+
+    #[test]
+    fn default_spec_with_background_loads_in_dmg_maker() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("background.png"), b"png").unwrap();
+        let spec = default_spec("Demo", "Demo.app", dir.path());
+        assert_eq!(spec["background"], "background.png");
+        assert_eq!(spec["contents"].as_array().unwrap().len(), 2);
+
+        let parsed = dmg_maker::load_spec(&dmg_maker::LoadOptions {
+            source: None,
+            basepath: Some(dir.path().to_path_buf()),
+            specification: Some(spec),
+        })
+        .expect("default_spec with background.png should load cleanly");
+        assert_eq!(parsed.spec.title, "Demo");
+        assert_eq!(parsed.spec.background.as_deref(), Some("background.png"));
+        assert_eq!(parsed.spec.contents.len(), 2);
+    }
+
+    #[test]
+    fn default_spec_does_not_double_escape_quotes_or_backslashes() {
+        let dir = tempfile::tempdir().unwrap();
+        let app_name = r#"Demo "App" \ Test"#;
+        let bundle = r#"Demo "App" \ Test.app"#;
+        let spec = default_spec(app_name, bundle, dir.path());
+        assert_eq!(spec["title"], app_name);
+        assert_eq!(spec["contents"][1]["path"], bundle);
+
+        let parsed = dmg_maker::load_spec(&dmg_maker::LoadOptions {
+            source: None,
+            basepath: Some(dir.path().to_path_buf()),
+            specification: Some(spec),
+        })
+        .expect("spec with quotes and backslashes should load cleanly");
+        assert_eq!(parsed.spec.title, app_name);
+        assert_eq!(parsed.spec.contents[1].path, bundle);
+    }
+
+    #[test]
+    fn empty_or_comment_only_make_config_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("make_config.yaml");
+        std::fs::write(&path, "").unwrap();
+        assert!(load_dmg_make_config(&path).unwrap().is_none());
+
+        std::fs::write(&path, "# comment only\n# another comment\n").unwrap();
+        assert!(load_dmg_make_config(&path).unwrap().is_none());
     }
 }

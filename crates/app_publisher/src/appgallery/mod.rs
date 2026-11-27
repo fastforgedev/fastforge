@@ -28,7 +28,20 @@ struct TokenResponse {
 #[derive(Debug, Deserialize)]
 struct RetCode {
     code: i64,
-    msg: String,
+    #[serde(default)]
+    pub msg: Option<String>,
+}
+
+impl RetCode {
+    fn check(self) -> Result<(), PublishError> {
+        if self.code != 0 {
+            return Err(PublishError::ApiError {
+                status: self.code.to_string(),
+                message: self.msg.unwrap_or_default(),
+            });
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -193,12 +206,7 @@ fn get_upload_url(
         )));
     }
     let resp: UploadUrlResponse = response.json().map_err(to_publish_error)?;
-    if resp.ret.code != 0 {
-        return Err(PublishError::ApiError {
-            status: resp.ret.code.to_string(),
-            message: resp.ret.msg,
-        });
-    }
+    resp.ret.check()?;
     resp.url_info.ok_or_else(|| {
         PublishError::General("AppGallery upload-url response missing urlInfo.".to_string())
     })
@@ -267,12 +275,7 @@ fn apply_upload(
         )));
     }
     let resp: ApplyResponse = response.json().map_err(to_publish_error)?;
-    if resp.ret.code != 0 {
-        return Err(PublishError::ApiError {
-            status: resp.ret.code.to_string(),
-            message: resp.ret.msg,
-        });
-    }
+    resp.ret.check()?;
     Ok(())
 }
 
@@ -305,5 +308,40 @@ mod tests {
             info.headers.unwrap().pairs(),
             vec![("Host".to_string(), "obs.example".to_string())]
         );
+    }
+
+    #[test]
+    fn ret_code_allows_missing_or_null_msg() {
+        let upload: UploadUrlResponse = serde_json::from_str(
+            r#"{"ret":{"code":0},"urlInfo":{"url":"https://obs","objectId":"o1"}}"#,
+        )
+        .unwrap();
+        assert_eq!(upload.ret.msg, None);
+        assert!(upload.ret.check().is_ok());
+
+        let apply: ApplyResponse =
+            serde_json::from_str(r#"{"ret":{"code":0,"msg":null}}"#).unwrap();
+        assert_eq!(apply.ret.msg, None);
+        assert!(apply.ret.check().is_ok());
+
+        let missing_msg_err: ApplyResponse =
+            serde_json::from_str(r#"{"ret":{"code":205524993}}"#).unwrap();
+        match missing_msg_err.ret.check().unwrap_err() {
+            PublishError::ApiError { status, message } => {
+                assert_eq!(status, "205524993");
+                assert_eq!(message, "");
+            }
+            other => panic!("expected ApiError, got {other:?}"),
+        }
+
+        let with_msg_err: ApplyResponse =
+            serde_json::from_str(r#"{"ret":{"code":205524993,"msg":"invalid token"}}"#).unwrap();
+        match with_msg_err.ret.check().unwrap_err() {
+            PublishError::ApiError { status, message } => {
+                assert_eq!(status, "205524993");
+                assert_eq!(message, "invalid token");
+            }
+            other => panic!("expected ApiError, got {other:?}"),
+        }
     }
 }

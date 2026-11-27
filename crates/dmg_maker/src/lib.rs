@@ -3,8 +3,9 @@ pub mod error;
 mod config;
 mod ds_store;
 
+pub use crate::config::{LoadOptions, ParsedSpec, load_spec};
 pub use crate::error::DmgMakerError;
-use config::{AppDmgSpec, ContentType, LoadOptions};
+use config::{AppDmgSpec, ContentType};
 use csscolorparser::Color;
 use ds_store::DsStoreBuilder;
 use regex::Regex;
@@ -561,7 +562,7 @@ fn make_alias_record(path: &Path) -> Result<Vec<u8>, DmgMakerError> {
     write_u16_be(&mut buf, 6, 2);
     write_u16_be(&mut buf, 8, if target_meta.is_dir() { 1 } else { 0 });
 
-    write_pascal_ascii(&mut buf, 10, 27, volume_name)?;
+    write_pascal_ascii(&mut buf, 10, 27, volume_name);
     write_u32_be(&mut buf, 38, apple_time_seconds(volume_meta.ctime())?);
     buf[42..44].copy_from_slice(b"H+");
     write_u16_be(
@@ -570,7 +571,7 @@ fn make_alias_record(path: &Path) -> Result<Vec<u8>, DmgMakerError> {
         if volume_path == Path::new("/") { 0 } else { 5 },
     );
     write_u32_be(&mut buf, 46, parent_meta.ino() as u32);
-    write_pascal_ascii(&mut buf, 50, 63, target_name)?;
+    write_pascal_ascii(&mut buf, 50, 63, target_name);
     write_u32_be(&mut buf, 114, target_meta.ino() as u32);
     write_u32_be(&mut buf, 118, apple_time_seconds(target_meta.ctime())?);
     write_i16_be(&mut buf, 130, -1);
@@ -631,26 +632,17 @@ fn utf16be_pascal(value: &str) -> Result<Vec<u8>, DmgMakerError> {
     Ok(out)
 }
 
-#[cfg(unix)]
-fn write_pascal_ascii(
-    buf: &mut [u8],
-    offset: usize,
-    max_len: usize,
-    value: &str,
-) -> Result<(), DmgMakerError> {
-    let bytes = value.as_bytes();
-    if bytes.len() > max_len {
-        return Err(DmgMakerError::General(format!(
-            "Alias field too long: {}",
-            value
-        )));
+#[cfg(any(unix, test))]
+fn write_pascal_ascii(buf: &mut [u8], offset: usize, max_len: usize, value: &str) {
+    let limit = max_len.min(u8::MAX as usize);
+    let mut len = value.len().min(limit);
+    while len > 0 && !value.is_char_boundary(len) {
+        len -= 1;
     }
+    let bytes = &value.as_bytes()[..len];
     buf[offset] = bytes.len() as u8;
-    for i in 0..max_len {
-        buf[offset + 1 + i] = 0;
-    }
+    buf[offset + 1..offset + 1 + max_len].fill(0);
     buf[offset + 1..offset + 1 + bytes.len()].copy_from_slice(bytes);
-    Ok(())
 }
 
 #[cfg(unix)]
@@ -683,7 +675,7 @@ fn write_u32_be(buf: &mut [u8], offset: usize, value: u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_mount_path;
+    use super::{parse_mount_path, write_pascal_ascii};
 
     #[test]
     fn parse_mount_path_multiline_output() {
@@ -694,5 +686,54 @@ mod tests {
 
         let mount = parse_mount_path(output).expect("should parse mount path");
         assert_eq!(mount.to_string_lossy(), "/Volumes/Test Title");
+    }
+
+    #[test]
+    fn pascal_field_preserves_short_ascii() {
+        let mut buf = vec![0xAA_u8; 40];
+        write_pascal_ascii(&mut buf, 10, 27, "Demo App");
+        assert_eq!(buf[10], 8);
+        assert_eq!(&buf[11..19], b"Demo App");
+        assert!(buf[19..38].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn pascal_field_truncates_long_ascii_and_mount_suffix() {
+        let mut buf = vec![0xAA_u8; 40];
+        let name = "My Super Long Application Name 1";
+        assert!(name.len() > 27);
+        write_pascal_ascii(&mut buf, 10, 27, name);
+        assert_eq!(buf[10], 27);
+        assert_eq!(&buf[11..38], &name.as_bytes()[..27]);
+    }
+
+    #[test]
+    fn pascal_field_truncates_utf8_on_char_boundary() {
+        // 10 Chinese characters = 30 UTF-8 bytes; fits 9 chars = 27 bytes.
+        let mut buf = vec![0_u8; 40];
+        let chinese = "一二三四五六七八九十";
+        assert_eq!(chinese.len(), 30);
+        write_pascal_ascii(&mut buf, 10, 27, chinese);
+        assert_eq!(buf[10], 27);
+        let written = std::str::from_utf8(&buf[11..11 + buf[10] as usize]).unwrap();
+        assert_eq!(written, "一二三四五六七八九");
+
+        // Mixed ASCII + Chinese where byte 27 falls in the middle of a 3-byte char.
+        let mut buf = vec![0xFF_u8; 40];
+        let mixed = "A一二三四五六七八九十";
+        write_pascal_ascii(&mut buf, 10, 27, mixed);
+        assert_eq!(buf[10], 25);
+        let written = std::str::from_utf8(&buf[11..11 + buf[10] as usize]).unwrap();
+        assert_eq!(written, "A一二三四五六七八");
+        assert!(buf[11 + 25..38].iter().all(|&b| b == 0));
+
+        // 4-byte emoji: 7 emojis = 28 bytes -> truncates to 6 emojis = 24 bytes.
+        let mut buf = vec![0xFF_u8; 40];
+        let emoji = "🚀".repeat(7);
+        write_pascal_ascii(&mut buf, 10, 27, &emoji);
+        assert_eq!(buf[10], 24);
+        let written = std::str::from_utf8(&buf[11..11 + buf[10] as usize]).unwrap();
+        assert_eq!(written, "🚀".repeat(6));
+        assert!(buf[11 + 24..38].iter().all(|&b| b == 0));
     }
 }

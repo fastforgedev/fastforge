@@ -1,4 +1,5 @@
 use super::job::ReleaseJob;
+use crate::config::distribute_options::deserialize_null_default;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -10,7 +11,7 @@ pub struct Release {
     /// overridden by job-level variables.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variables: Option<HashMap<String, String>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub jobs: Vec<ReleaseJob>,
 }
 
@@ -93,5 +94,15 @@ mod tests {
         let jobs = release.filter_jobs(&["a".to_string()], &["a".to_string()]);
         assert_eq!(jobs.len(), 1);
         assert_eq!(jobs[0].name, "a");
+    }
+
+    #[test]
+    fn deserializes_explicit_null_jobs_as_empty() {
+        let release: Release = serde_yaml::from_str("name: dev\njobs:\n").unwrap();
+        assert_eq!(release.name, "dev");
+        assert!(release.jobs.is_empty());
+
+        let release: Release = serde_yaml::from_str("name: dev\njobs: null\n").unwrap();
+        assert!(release.jobs.is_empty());
     }
 }

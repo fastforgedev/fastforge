@@ -132,7 +132,10 @@ fn remote_path(value: &str, project: &LocalProject) -> Result<String> {
             project.root.display()
         )
     })?;
-    if !path.is_absolute() {
+    if !path.is_absolute() && !path.has_root() {
+        #[cfg(windows)]
+        return Ok(value.replace('\\', "/"));
+        #[cfg(not(windows))]
         return Ok(value.to_string());
     }
     // Absolute local paths don't exist remotely: go up from the cwd.
@@ -415,6 +418,39 @@ mod tests {
             "/etc/x.plist",
         ]);
         assert!(remote_argv(&raw, "package", PACKAGE_PATH_FLAGS, &project).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn maps_windows_absolute_and_relative_paths() {
+        let project = LocalProject::new(PathBuf::from(r"C:\repo"), Path::new(r"C:\repo\app"));
+        let raw = strings(&[
+            "fastforge",
+            "package",
+            "--build-export-options-plist",
+            r"C:\repo\app\ios\Export.plist",
+            "--build-target",
+            r"lib\main_prod.dart",
+        ]);
+        let argv = remote_argv(&raw, "package", PACKAGE_PATH_FLAGS, &project).unwrap();
+        assert_eq!(
+            argv,
+            strings(&[
+                "package",
+                "--build-export-options-plist",
+                "../app/ios/Export.plist",
+                "--build-target",
+                "lib/main_prod.dart",
+            ])
+        );
+
+        let outside = strings(&[
+            "fastforge",
+            "package",
+            "--build-export-options-plist",
+            r"C:\other\Export.plist",
+        ]);
+        assert!(remote_argv(&outside, "package", PACKAGE_PATH_FLAGS, &project).is_err());
     }
 
     fn host(name: &str, platforms: &[&str]) -> HostConfig {

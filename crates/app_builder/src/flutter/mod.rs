@@ -1,7 +1,7 @@
 use fastforge_core::{AppBuilder, BuildConfig, BuildError, BuildResult, Platform, android_apk_abi};
 use glob::{MatchOptions, glob_with};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub mod command;
 pub mod flutter_version;
@@ -65,10 +65,53 @@ fn linux_arch() -> &'static str {
 
 /// Keeps the APKs of the current build: the output directory keeps APKs from
 /// earlier builds, so take the split APKs only when the build splits them,
-/// else the universal one.
-fn select_apks(mut files: Vec<PathBuf>, split_per_abi: bool) -> Vec<PathBuf> {
-    files.retain(|file| android_apk_abi(file).is_some() == split_per_abi);
-    files
+/// else the universal one. If a project enables Gradle ABI splits without
+/// passing `--split-per-abi`, only ABI-named APKs exist; fall back to keeping
+/// them rather than returning an empty list.
+fn select_apks(files: Vec<PathBuf>, split_per_abi: bool) -> Vec<PathBuf> {
+    let filtered: Vec<PathBuf> = files
+        .iter()
+        .filter(|file| android_apk_abi(file).is_some() == split_per_abi)
+        .cloned()
+        .collect();
+    if filtered.is_empty() && !split_per_abi {
+        files
+    } else {
+        filtered
+    }
+}
+
+fn resolve_ohos_output_files(
+    output_directory: &Path,
+    flavor: &str,
+    extension: &str,
+    config: &BuildConfig,
+) -> Result<Vec<PathBuf>, BuildError> {
+    // Packagers use the first output file. Prefer signed artifacts unless signing
+    // was explicitly disabled, and fall back to unsigned builds when necessary.
+    let no_codesign = matches!(
+        config.arguments.get("no-codesign"),
+        Some(value) if !matches!(value, serde_json::Value::Bool(false))
+    );
+    let signing_states: &[&str] = if no_codesign {
+        &["unsigned"]
+    } else {
+        &["signed", "unsigned"]
+    };
+    for signing_state in signing_states {
+        let pattern = format!(
+            "{}/**/*-{}-{}.{}",
+            output_directory.display(),
+            flavor,
+            signing_state,
+            extension
+        );
+        let files = resolve_glob(&pattern)?;
+        if !files.is_empty() {
+            return Ok(files);
+        }
+    }
+    Ok(Vec::new())
 }
 
 /// Parses `PRODUCT_NAME` from a macOS `AppInfo.xcconfig` file.
@@ -222,7 +265,7 @@ impl AppBuilder for IOSBuilder {
         Platform::IOS
     }
     fn matches(&self, platform: &Platform, target: Option<&str>) -> bool {
-        platform == &Platform::IOS && target.is_none_or(|t| t == "ipa")
+        platform == &Platform::IOS && target.is_none_or(|t| matches!(t, "ipa" | "custom"))
     }
     fn is_supported_on_current_platform(&self) -> bool {
         current_platform() == Some(Platform::MacOS)
@@ -537,8 +580,8 @@ impl AppBuilder for OhosHapBuilder {
     ) -> Result<(PathBuf, Vec<PathBuf>), BuildError> {
         let flavor = config.flavor().unwrap_or("default");
         let output_directory = PathBuf::from(format!("ohos/entry/build/{0}/outputs/{0}", flavor));
-        let pattern = format!("{}/**/*-{}-signed.hap", output_directory.display(), flavor);
-        Ok((output_directory, resolve_glob(&pattern)?))
+        let files = resolve_ohos_output_files(&output_directory, flavor, "hap", config)?;
+        Ok((output_directory, files))
     }
     fn build_result(
         &self,
@@ -581,8 +624,8 @@ impl AppBuilder for OhosAppBuilder {
     ) -> Result<(PathBuf, Vec<PathBuf>), BuildError> {
         let flavor = config.flavor().unwrap_or("default");
         let output_directory = PathBuf::from(format!("ohos/build/outputs/{}", flavor));
-        let pattern = format!("{}/**/*-{}-signed.app", output_directory.display(), flavor);
-        Ok((output_directory, resolve_glob(&pattern)?))
+        let files = resolve_ohos_output_files(&output_directory, flavor, "app", config)?;
+        Ok((output_directory, files))
     }
     fn build_result(
         &self,
@@ -605,7 +648,10 @@ impl AppBuilder for OhosAppBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::FlutterAppBuilder;
     use serde_json::{Map, Value};
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn android_apk_selection_follows_split_per_abi() {
@@ -637,6 +683,45 @@ mod tests {
     }
 
     #[test]
+    fn android_apk_selection_falls_back_when_only_abi_splits_exist() {
+        let split_only = [
+            "build/app/outputs/flutter-apk/app-arm64-v8a-release.apk",
+            "build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk",
+            "build/app/outputs/flutter-apk/app-x86_64-release.apk",
+            "build/app/outputs/flutter-apk/app-x86-release.apk",
+        ]
+        .map(PathBuf::from)
+        .to_vec();
+        let names = |files: Vec<PathBuf>| {
+            files
+                .iter()
+                .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+
+        // Gradle `splits { abi { enable true } }` without `--split-per-abi`:
+        // filtering out ABI APKs yields empty, so fall back to keeping them.
+        assert_eq!(
+            names(select_apks(split_only, false)),
+            [
+                "app-arm64-v8a-release.apk",
+                "app-armeabi-v7a-release.apk",
+                "app-x86_64-release.apk",
+                "app-x86-release.apk",
+            ]
+        );
+
+        // Empty input stays empty.
+        assert!(select_apks(Vec::new(), false).is_empty());
+
+        // When `--split-per-abi` is explicitly requested, do not fall back to universal APK.
+        let universal_only = vec![PathBuf::from(
+            "build/app/outputs/flutter-apk/app-release.apk",
+        )];
+        assert!(select_apks(universal_only, true).is_empty());
+    }
+
+    #[test]
     fn android_apk_path_resolution() {
         let mut args = Map::new();
         args.insert("flavor".to_string(), Value::String("dev".to_string()));
@@ -645,6 +730,22 @@ mod tests {
             .resolve_output_files(&config, None)
             .expect("resolve should work");
         assert_eq!(dir.to_string_lossy(), "build/app/outputs/flutter-apk");
+    }
+
+    #[test]
+    fn ios_matches_ipa_custom_and_none() {
+        assert!(IOSBuilder.matches(&Platform::IOS, None));
+        assert!(IOSBuilder.matches(&Platform::IOS, Some("ipa")));
+        assert!(IOSBuilder.matches(&Platform::IOS, Some("custom")));
+        assert!(!IOSBuilder.matches(&Platform::IOS, Some("apk")));
+        assert!(!IOSBuilder.matches(&Platform::Android, Some("custom")));
+
+        let app_builder = FlutterAppBuilder::default();
+        assert!(
+            app_builder
+                .is_supported_on_current_platform(&Platform::IOS, Some("custom"))
+                .is_some()
+        );
     }
 
     #[test]
@@ -689,6 +790,63 @@ mod tests {
             path.to_string_lossy(),
             "ohos/entry/build/default/outputs/default"
         );
+        let (app_path, _) = OhosAppBuilder
+            .resolve_output_files(&config, None)
+            .expect("resolve app path");
+        assert_eq!(app_path.to_string_lossy(), "ohos/build/outputs/default");
+    }
+
+    #[test]
+    fn ohos_prefers_signed_and_falls_back_to_unsigned() {
+        for ext in ["hap", "app"] {
+            let dir = tempdir().expect("tempdir");
+            let signed = dir.path().join(format!("entry-default-signed.{ext}"));
+            let unsigned = dir.path().join(format!("entry-default-unsigned.{ext}"));
+            fs::write(&unsigned, b"unsigned").expect("write unsigned");
+
+            // Only unsigned exists -> falls back to unsigned.
+            let default_cfg = BuildConfig::new(Map::new());
+            let found = resolve_ohos_output_files(dir.path(), "default", ext, &default_cfg)
+                .expect("resolve unsigned fallback");
+            assert_eq!(found, vec![unsigned.clone()]);
+
+            // Both signed and unsigned exist -> prefers signed by default.
+            fs::write(&signed, b"signed").expect("write signed");
+            let found = resolve_ohos_output_files(dir.path(), "default", ext, &default_cfg)
+                .expect("resolve signed preferred");
+            assert_eq!(found, vec![signed.clone()]);
+
+            // Explicitly falsy `no-codesign: false` still prefers signed.
+            let mut falsy_args = Map::new();
+            falsy_args.insert("no-codesign".to_string(), Value::Bool(false));
+            let found = resolve_ohos_output_files(
+                dir.path(),
+                "default",
+                ext,
+                &BuildConfig::new(falsy_args),
+            )
+            .expect("resolve with falsy no-codesign");
+            assert_eq!(found, vec![signed.clone()]);
+
+            // With `no-codesign` present (true / null / empty string) -> selects unsigned only.
+            for flag_value in [Value::Bool(true), Value::Null, Value::String(String::new())] {
+                let mut args = Map::new();
+                args.insert("no-codesign".to_string(), flag_value);
+                let found =
+                    resolve_ohos_output_files(dir.path(), "default", ext, &BuildConfig::new(args))
+                        .expect("resolve with no-codesign");
+                assert_eq!(found, vec![unsigned.clone()]);
+            }
+
+            // With `no-codesign` present and only signed artifact existing -> returns empty.
+            fs::remove_file(&unsigned).expect("remove unsigned");
+            let mut args = Map::new();
+            args.insert("no-codesign".to_string(), Value::Bool(true));
+            let found =
+                resolve_ohos_output_files(dir.path(), "default", ext, &BuildConfig::new(args))
+                    .expect("resolve no-codesign missing unsigned");
+            assert!(found.is_empty());
+        }
     }
 
     #[test]

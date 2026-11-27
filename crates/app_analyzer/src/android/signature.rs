@@ -2,6 +2,7 @@ use crate::android::sdk;
 use crate::command;
 use crate::json_util;
 use serde_json::{Map, Value};
+use std::path::Path;
 
 /// Reports how an APK is signed, using `apksigner` from the Android SDK.
 ///
@@ -9,6 +10,10 @@ use serde_json::{Map, Value};
 /// rather than implying the APK is unsigned.
 pub fn inspect(apk_path: &str) -> Option<Value> {
     let apksigner = sdk::build_tool("apksigner")?;
+    inspect_with(&apksigner, apk_path)
+}
+
+fn inspect_with(apksigner: &Path, apk_path: &str) -> Option<Value> {
     let output = command::run(
         &apksigner.to_string_lossy(),
         &["verify", "-v", "--print-certs", apk_path],
@@ -112,4 +117,48 @@ fn signer_field(line: &str) -> Option<(String, &'static str, String)> {
             line[start + marker.len()..].trim().to_string(),
         ))
     })
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inspects_signature_using_windows_apksigner_bat() {
+        let temp = tempfile::tempdir().unwrap();
+        let rev = temp.path().join("build-tools").join("36.0.0");
+        std::fs::create_dir_all(&rev).unwrap();
+        let payload = rev.join("apksigner.txt");
+        std::fs::write(
+            &payload,
+            "Verifies\n\
+             Verified using v2 scheme (APK Signature Scheme v2): true\n\
+             Verified using v3 scheme (APK Signature Scheme v3): true\n\
+             V2 Signer: certificate DN: CN=FastForge, O=FastForge, C=CN\n\
+             V2 Signer: certificate SHA-256 digest: abc123\n\
+             V2 Signer: key algorithm: RSA\n\
+             V2 Signer: key size (bits): 2048\n",
+        )
+        .unwrap();
+        std::fs::write(
+            rev.join("apksigner.bat"),
+            format!("@echo off\r\ntype \"{}\"\r\n", payload.display()),
+        )
+        .unwrap();
+
+        let apksigner = sdk::build_tool_in_sdk(temp.path(), "apksigner").expect("apksigner.bat");
+        let signature = inspect_with(&apksigner, "app.apk").expect("signature output");
+        assert_eq!(signature["verified"], Value::Bool(true));
+        assert_eq!(
+            signature["schemes"],
+            Value::Array(vec!["v2".into(), "v3".into()])
+        );
+        assert_eq!(
+            signature["signers"][0]["subject"],
+            "CN=FastForge, O=FastForge, C=CN"
+        );
+        assert_eq!(signature["signers"][0]["sha256"], "abc123");
+        assert_eq!(signature["signers"][0]["keyAlgorithm"], "RSA");
+        assert_eq!(signature["signers"][0]["keySizeBits"], 2048);
+    }
 }

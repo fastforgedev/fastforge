@@ -14,9 +14,9 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 /// Loads a maker's `make_config.yaml`. Returns `Ok(None)` when the file does
-/// not exist so callers can fall back to defaults (Dart requires the file for
-/// deb/rpm/pacman/appimage; the Rust CLI keeps working without one, using the
-/// same defaults as before).
+/// not exist or is empty / comment-only so callers can fall back to defaults
+/// (Dart requires the file for deb/rpm/pacman/appimage; the Rust CLI keeps
+/// working without one, using the same defaults as before).
 pub(crate) fn load_make_config<T: DeserializeOwned>(
     path: &Path,
 ) -> Result<Option<T>, PackageError> {
@@ -25,9 +25,9 @@ pub(crate) fn load_make_config<T: DeserializeOwned>(
     }
     let content = std::fs::read_to_string(path)
         .map_err(|e| PackageError::General(format!("Failed to read {}: {}", path.display(), e)))?;
-    let value: T = serde_yaml::from_str(&content)
+    let value: Option<T> = serde_yaml::from_str(&content)
         .map_err(|e| PackageError::General(format!("Failed to parse {}: {}", path.display(), e)))?;
-    Ok(Some(value))
+    Ok(value)
 }
 
 /// `name`/`email` pair used by `maintainer:` and `co_authors:` entries.
@@ -354,6 +354,32 @@ mod tests {
             ("Name", Some("Demo".into())),
         ]);
         assert_eq!(out, "[Desktop Entry]\nType=Application\nName=Demo");
+    }
+
+    #[test]
+    fn load_make_config_handles_missing_empty_and_comment_only_files() {
+        #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+        struct Dummy {
+            name: Option<String>,
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("make_config.yaml");
+        assert_eq!(load_make_config::<Dummy>(&path).unwrap(), None);
+
+        std::fs::write(&path, "").unwrap();
+        assert_eq!(load_make_config::<Dummy>(&path).unwrap(), None);
+
+        std::fs::write(&path, "# comment only\n# name: demo\n").unwrap();
+        assert_eq!(load_make_config::<Dummy>(&path).unwrap(), None);
+
+        std::fs::write(&path, "name: demo\n").unwrap();
+        assert_eq!(
+            load_make_config::<Dummy>(&path).unwrap(),
+            Some(Dummy {
+                name: Some("demo".into())
+            })
+        );
     }
 
     #[test]

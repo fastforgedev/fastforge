@@ -64,22 +64,23 @@ function Resolve-Release {
   try {
     $headers  = Get-ApiHeaders
     $releases = Invoke-RestMethod `
-      -Uri "https://api.github.com/repos/$Repo/releases" `
+      -Uri "https://api.github.com/repos/$Repo/releases?per_page=100" `
       -Headers $headers
   } catch {
     Write-Fail "Failed to fetch releases from GitHub: $_`nSet `$env:FASTFORGE_VERSION to specify a version manually."
   }
 
-  # Pick the newest release that ships a binary for this target (releases
-  # from the Dart era carry no binaries).
+  # Pick the newest published (non-draft, non-prerelease) release that ships
+  # a binary for this target (releases from the Dart era carry no binaries).
   $pattern = "^$([regex]::Escape($BinaryName))-(.+)-$([regex]::Escape($target))\.zip$"
   $asset = $releases |
+    Where-Object { -not $_.draft -and -not $_.prerelease } |
     ForEach-Object { $_.assets } |
     Where-Object { $_.name -match $pattern } |
     Select-Object -First 1
 
   if (-not $asset) {
-    Write-Fail "No release provides a prebuilt binary for '$target'.`nSet `$env:FASTFORGE_VERSION to specify a version manually."
+    Write-Fail "No published release provides a prebuilt binary for '$target'.`nSet `$env:FASTFORGE_VERSION to specify a version manually."
   }
 
   $archiveName = $asset.name
@@ -179,6 +180,31 @@ function Verify-Install {
     }
   } else {
     Write-Warn "Could not verify installation. Binary not found at $exePath"
+    return
+  }
+
+  $resolvedCmd = Get-Command $BinaryName -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $resolvedCmd) {
+    Write-Warn "$BinaryName is not on your current PATH. Restart your terminal or add '$InstallDir' to PATH."
+    return
+  }
+
+  $expectedFull = [System.IO.Path]::GetFullPath($exePath)
+  $resolvedSource = if ($resolvedCmd.Source) { $resolvedCmd.Source } else { "$($resolvedCmd.CommandType) '$($resolvedCmd.Name)'" }
+  $resolvedFull = try {
+    if ($resolvedCmd.Source) { [System.IO.Path]::GetFullPath($resolvedCmd.Source) } else { $null }
+  } catch {
+    $null
+  }
+
+  if (-not $resolvedFull -or -not $resolvedFull.Equals($expectedFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Write-Warn "Another '$BinaryName' at '$resolvedSource' shadows '$exePath' on your PATH."
+    if ($resolvedSource -match 'pub-cache|Pub[\\/]Cache') {
+      Write-Warn "This looks like an older Dart installation. Remove it with:"
+      Write-Warn "  dart pub global deactivate fastforge"
+    } else {
+      Write-Warn "Adjust your PATH so '$InstallDir' appears earlier, or remove the shadowing binary (e.g. 'dart pub global deactivate fastforge' if installed via Dart)."
+    }
   }
 }
 
